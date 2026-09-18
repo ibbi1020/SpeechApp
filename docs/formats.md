@@ -1,0 +1,46 @@
+# Formats — Canonical Names
+
+Use these names in conversation and new writing. Numbers (`Format 1/2/3`) are aliases only.
+
+**Live document.** If a name here disagrees with an older doc, this file wins.
+
+---
+
+## The three core formats
+
+| Name | Alias | What the user does | What it is for |
+|---|---|---|---|
+| **Reading** | Format 1 | Reads a known short passage aloud (connected sentences, not isolated word drills) | Pronunciation / diagnosis. Only format where phoneme-level scoring is technically honest, because the target script is known. |
+| **Conversation** | Format 2 | Open-ended talk with an AI partner | The product’s target behavior: spontaneous, interactive speech. Post-session feedback only. |
+| **Monologue** | Format 3 | Gets a topic, ~1 min prep, then talks 5–15+ min | Planned extended speech: fluency, organization, delivery. |
+
+**Reading is not “open-vocabulary speech.”** The passage is connected prose (that is the “open reading” people mean in conversation), but the app knows every word in advance. That closed script is the whole point.
+
+**Conversation is the product MVP** in `docs/product-spec.md`. Reading is the diagnostic / drill loop. Monologue is specified, not built.
+
+---
+
+## Cross-format drills (not fourth/fifth formats)
+
+These ride on sessions from the three above. Do not treat them as extra core loops.
+
+| Name | Hosts | Job |
+|---|---|---|
+| **Explain It Another Way** | Conversation | After a stall / L1 switch: say the same idea three ways, no translation. |
+| **Say It Like You Mean It** | Reading tech, used as a drill | Produce a sentence with an intended attitude; score contour *class*, not exact pitch. |
+| **Connected Speech Challenge** | Standalone drill + sometimes inside Conversation | Fast native clip → what was actually said (reduced vs citation form). |
+| **Storytelling** | Monologue variant | “Tell about a time when…” with a beginning / tension / resolution rubric. |
+
+---
+
+## Named, not committed
+
+Logged in the spec, not in the product yet: **Shadowing**, **HVPT / minimal-pair drills**, **PREP frameworks**, **graduated anxiety ladder**, **formulaic-chunk retrieval**.
+
+---
+
+## What exists in code today
+
+Only **Reading**, Slice A: live follow-along (karaoke caret with mic-driven fill, sticky heard trail, blinking skip pills on *real* unique-content skips, optional next-word hint if stuck, extra/swap on the report), stall nudge, struggle-led next passage. Pronunciation scoring (GOP) is stubbed. Conversation and Monologue are spec-only.
+
+**How Reading live follow-along works (tech + UI + every decision’s reasoning):** `docs/scoping-reading-follow-along.md`.

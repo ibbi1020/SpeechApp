@@ -1,0 +1,16 @@
+# Xcode / SPM
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+**/DerivedData/
+**/.build/
+**/xcuserdata/
+*.xcuserstate
+
+# macOS
+.DS_Store
+
+# Secrets / local signing (never commit a real team id override)
+ios/local.xcconfig
+
+# Device session diagnostics (share locally; do not commit)
+logs/

@@ -1,0 +1,279 @@
+{
+  "passages": [
+    {
+      "id": "ship-sheep-1",
+      "family": "ship-sheep",
+      "length": "short",
+      "title": "Harbor Morning",
+      "text": "The ship and the sheep share the same shore this morning",
+      "contrastTags": ["ɪ-i", "ʃ"],
+      "phoneTags": ["ɪ", "i", "ʃ"],
+      "isBalancedDefault": true,
+      "flBand": "high"
+    },
+    {
+      "id": "ship-sheep-2",
+      "family": "ship-sheep",
+      "length": "medium",
+      "title": "Harbor Morning — longer",
+      "text": "The ship left the harbor before the sheep were led to the shore. She still hears the sheep bleat as the ship slips past the reef. If you say ship for sheep or sheep for ship a listener can lose the meaning of the story.",
+      "contrastTags": ["ɪ-i", "ʃ"],
+      "phoneTags": ["ɪ", "i", "ʃ"],
+      "isBalancedDefault": false,
+      "flBand": "high"
+    },
+    {
+      "id": "ship-sheep-3",
+      "family": "ship-sheep",
+      "length": "long",
+      "title": "Harbor Morning — full",
+      "text": "This morning the ship sits quiet in the harbor while sheep graze on the green hill above the shore. A child points at the sheep then at the ship and laughs because the two words sound almost the same in her mind. The guide asks her to say ship when she means the boat and sheep when she means the animals. Clear speech matters here because a wrong vowel can send a listener looking at the wrong thing. Practice the short vowel in ship and the longer vowel in sheep until both feel easy.",
+      "contrastTags": ["ɪ-i", "ʃ"],
+      "phoneTags": ["ɪ", "i", "ʃ"],
+      "isBalancedDefault": false,
+      "flBand": "high"
+    },
+    {
+      "id": "l-r-1",
+      "family": "l-r",
+      "length": "short",
+      "title": "River Light",
+      "text": "A light rain ran along the long river road",
+      "contrastTags": ["l-r"],
+      "phoneTags": ["l", "r"],
+      "isBalancedDefault": false,
+      "flBand": "high"
+    },
+    {
+      "id": "l-r-2",
+      "family": "l-r",
+      "length": "medium",
+      "title": "River Light — longer",
+      "text": "Early light rolls over the river as rain runs along the long red road. Travelers really like the rural route when the river is low and the rocks look clear. Listen for the difference between light and right and between long and wrong as you read.",
+      "contrastTags": ["l-r"],
+      "phoneTags": ["l", "r"],
+      "isBalancedDefault": false,
+      "flBand": "high"
+    },
+    {
+      "id": "l-r-3",
+      "family": "l-r",
+      "length": "long",
+      "title": "River Light — full",
+      "text": "A light rain ran along the long river road while riders raced toward the old bridge. On the left a large red lantern glowed; on the right a row of low houses reflected in the water. Really clear speech helps a stranger tell left from right and long from wrong without guessing. Read slowly through the liquid sounds and keep the tongue tip light for l and more curled for r. When you finish compare how river and liver would change the whole scene if one letter slipped.",
+      "contrastTags": ["l-r"],
+      "phoneTags": ["l", "r"],
+      "isBalancedDefault": false,
+      "flBand": "high"
+    },
+    {
+      "id": "th-1",
+      "family": "th",
+      "length": "short",
+      "title": "Think Thanks",
+      "text": "They think the thick thread is thinner than that",
+      "contrastTags": ["θ-ð"],
+      "phoneTags": ["θ", "ð"],
+      "isBalancedDefault": false,
+      "flBand": "medium"
+    },
+    {
+      "id": "th-2",
+      "family": "th",
+      "length": "medium",
+      "title": "Think Thanks — longer",
+      "text": "They think the thick thread is thinner than that cloth on the other table. Those three brothers thank their mother for the thoughtful gift. Whether you breathe or voice the th sound changes words like think and this.",
+      "contrastTags": ["θ-ð"],
+      "phoneTags": ["θ", "ð"],
+      "isBalancedDefault": false,
+      "flBand": "medium"
+    },
+    {
+      "id": "th-3",
+      "family": "th",
+      "length": "long",
+      "title": "Think Thanks — full",
+      "text": "They think the thick thread is thinner than that cloth their mother chose for the theater curtain. Throughout the afternoon those three friends thank each other with thoughtful words rather than gifts. The difference between think and this or between breath and breathe can hide in a soft tongue between the teeth. Practice both the quiet th and the voiced th until neither collapses into a simple t or d. Then read the whole paragraph again without rushing the endings.",
+      "contrastTags": ["θ-ð"],
+      "phoneTags": ["θ", "ð"],
+      "isBalancedDefault": false,
+      "flBand": "medium"
+    },
+    {
+      "id": "v-w-1",
+      "family": "v-w",
+      "length": "short",
+      "title": "Vivid Waves",
+      "text": "We view the vivid waves with very wide eyes",
+      "contrastTags": ["v-w"],
+      "phoneTags": ["v", "w"],
+      "isBalancedDefault": false,
+      "flBand": "high"
+    },
+    {
+      "id": "v-w-2",
+      "family": "v-w",
+      "length": "medium",
+      "title": "Vivid Waves — longer",
+      "text": "We view the vivid waves with very wide eyes while the west wind whips the water. Every visitor wants a photograph of the velvet evening light over the harbor. Keep v and w distinct so vine and wine do not collapse into one word.",
+      "contrastTags": ["v-w"],
+      "phoneTags": ["v", "w"],
+      "isBalancedDefault": false,
+      "flBand": "high"
+    },
+    {
+      "id": "p-b-1",
+      "family": "p-b",
+      "length": "short",
+      "title": "Park Bench",
+      "text": "Please put the big bag by the park bench",
+      "contrastTags": ["p-b"],
+      "phoneTags": ["p", "b"],
+      "isBalancedDefault": false,
+      "flBand": "high"
+    },
+    {
+      "id": "p-b-2",
+      "family": "p-b",
+      "length": "medium",
+      "title": "Park Bench — longer",
+      "text": "Please put the big bag by the park bench before people begin to pack the bus. A pale blue balloon pops beside a pile of brown paper. Pair and bear can confuse listeners if the first sound is not clear.",
+      "contrastTags": ["p-b"],
+      "phoneTags": ["p", "b"],
+      "isBalancedDefault": false,
+      "flBand": "high"
+    },
+    {
+      "id": "stress-1",
+      "family": "stress",
+      "length": "short",
+      "title": "Record Progress",
+      "text": "Please record the record and present the present",
+      "contrastTags": ["word-stress"],
+      "phoneTags": ["stress"],
+      "isBalancedDefault": false,
+      "flBand": "medium"
+    },
+    {
+      "id": "stress-2",
+      "family": "stress",
+      "length": "medium",
+      "title": "Record Progress — longer",
+      "text": "Please record the record and present the present before you protest the protest. Object to the object if the stress lands on the wrong syllable. English often moves stress when a word changes from verb to noun.",
+      "contrastTags": ["word-stress"],
+      "phoneTags": ["stress"],
+      "isBalancedDefault": false,
+      "flBand": "medium"
+    },
+    {
+      "id": "colloc-1",
+      "family": "collocation",
+      "length": "short",
+      "title": "Make a Decision",
+      "text": "They make a decision and take a break before they do the work",
+      "contrastTags": ["collocation"],
+      "phoneTags": ["k"],
+      "isBalancedDefault": true,
+      "flBand": "medium"
+    },
+    {
+      "id": "colloc-2",
+      "family": "collocation",
+      "length": "long",
+      "title": "Make a Decision — full",
+      "text": "They make a decision and take a break before they do the work that really needs attention. Later they pay attention to the feedback and make an effort to improve without making excuses. Formulaic chunks like take a break and pay attention help speech move forward when searching for single words feels slow. Read the whole passage as connected speech rather than stopping after every phrase. When you finish notice which chunks felt automatic and which still needed planning time.",
+      "contrastTags": ["collocation"],
+      "phoneTags": ["k"],
+      "isBalancedDefault": false,
+      "flBand": "medium"
+    },
+    {
+      "id": "s-z-1",
+      "family": "s-z",
+      "length": "short",
+      "title": "Busy Cities",
+      "text": "Busy cities buzz as buses zip past the shops",
+      "contrastTags": ["s-z"],
+      "phoneTags": ["s", "z"],
+      "isBalancedDefault": false,
+      "flBand": "medium"
+    },
+    {
+      "id": "s-z-2",
+      "family": "s-z",
+      "length": "medium",
+      "title": "Busy Cities — longer",
+      "text": "Busy cities buzz as buses zip past the shops and offices close for the evening. Voices rise and fall while musicians play jazz beside the plaza. Listen for the soft s and the buzzing z in places like buses and buzz.",
+      "contrastTags": ["s-z"],
+      "phoneTags": ["s", "z"],
+      "isBalancedDefault": false,
+      "flBand": "medium"
+    },
+    {
+      "id": "ae-e-1",
+      "family": "ae-e",
+      "length": "short",
+      "title": "Bad Bed",
+      "text": "The bad bed had a red blanket and a black bag",
+      "contrastTags": ["æ-e"],
+      "phoneTags": ["æ", "e"],
+      "isBalancedDefault": false,
+      "flBand": "high"
+    },
+    {
+      "id": "ae-e-2",
+      "family": "ae-e",
+      "length": "medium",
+      "title": "Bad Bed — longer",
+      "text": "The bad bed had a red blanket and a black bag beside a metal pan. He said he slept better after he left that flat and found a better bed. Keep bad and bed apart so a listener does not hear the wrong story.",
+      "contrastTags": ["æ-e"],
+      "phoneTags": ["æ", "e"],
+      "isBalancedDefault": false,
+      "flBand": "high"
+    },
+    {
+      "id": "n-ng-1",
+      "family": "n-ng",
+      "length": "short",
+      "title": "Singing Rain",
+      "text": "The singing rain ran down the green hanging vines",
+      "contrastTags": ["n-ŋ"],
+      "phoneTags": ["n", "ŋ"],
+      "isBalancedDefault": false,
+      "flBand": "medium"
+    },
+    {
+      "id": "n-ng-2",
+      "family": "n-ng",
+      "length": "medium",
+      "title": "Singing Rain — longer",
+      "text": "The singing rain ran down the green hanging vines while children were singing along. Something in the evening air made the song feel longer than the night. Notice the ending of sing versus sin and of hanging versus handing.",
+      "contrastTags": ["n-ŋ"],
+      "phoneTags": ["n", "ŋ"],
+      "isBalancedDefault": false,
+      "flBand": "medium"
+    },
+    {
+      "id": "mixed-1",
+      "family": "mixed",
+      "length": "long",
+      "title": "Evening Walk — mixed practice",
+      "text": "On an evening walk by the river we view vivid lights while a light rain runs along the long road. A ship sits near the shore and sheep rest on the hill. They think the thick fog is thinner than it was this morning. Please put the big bag by the park bench before we make a decision and take a break. Busy voices buzz as buses pass and someone records a short record of the scene. Read this mixed passage at a calm pace and keep going forward even if one word feels hard.",
+      "contrastTags": ["ɪ-i", "l-r", "θ-ð", "v-w", "p-b", "collocation"],
+      "phoneTags": ["ɪ", "i", "l", "r", "θ", "ð", "v", "w"],
+      "isBalancedDefault": true,
+      "flBand": "high"
+    },
+    {
+      "id": "mixed-2",
+      "family": "mixed",
+      "length": "long",
+      "title": "Office Morning — mixed practice",
+      "text": "Before the meeting they present the present and then record the record of who will speak first. People put paper by the bench and bring a black bag with a bad habit of spilling pens. She wants very wide windows so the west light can fill the room. Whether they thank each other or think aloud the conversation still needs clear sounds. This longer office scene lets you practice several contrasts in one continuous read without stopping to fix every word.",
+      "contrastTags": ["word-stress", "æ-e", "v-w", "θ-ð", "p-b"],
+      "phoneTags": ["stress", "æ", "e", "v", "w", "θ", "ð"],
+      "isBalancedDefault": false,
+      "flBand": "high"
+    }
+  ]
+}

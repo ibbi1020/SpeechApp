@@ -1,0 +1,46 @@
+name: SpeechApp
+options:
+  bundleIdPrefix: com.speechapp
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    GENERATE_INFOPLIST_FILE: NO
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+packages:
+  SpeechAppKit:
+    path: Packages/SpeechAppKit
+targets:
+  SpeechApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.speechapp.prototype.format1
+        PRODUCT_NAME: SpeechApp
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        # Personal Team (free provisioning) — Ibraheem Farooq
+        DEVELOPMENT_TEAM: 45SVH8S72R
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+    dependencies:
+      - package: SpeechAppKit
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: SpeechApp
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSMicrophoneUsageDescription: SpeechApp listens while you read a passage so it can show which words you skipped, added, or swapped. Audio is processed on device and not kept after the session.
+        NSSpeechRecognitionUsageDescription: SpeechApp uses on-device speech recognition to follow along as you read and mark skips, extras, and wrong words. Recognition runs on your device.
