@@ -8,10 +8,22 @@ public final class ReadingSession {
         case idle
         case running
         case stalled
+        /// Mic still up; ASR/PCM are gated until resume.
+        case paused
+        /// Mic off; draining ASR finalize before the report.
+        case finishing
         case finished
     }
 
+    /// Live registration health — occupancy progress, not mic volume.
+    public enum RegistrationHealth: Equatable, Sendable {
+        case idle
+        case keepingUp
+        case fallingBehind
+    }
+
     public private(set) var phase: Phase = .idle
+    public private(set) var registrationHealth: RegistrationHealth = .idle
     public private(set) var currentWordID: String?
     /// Script words matched by the latest volatile hypothesis (not yet finalized).
     public private(set) var provisionalMatchedIDs: [String] = []
@@ -20,7 +32,7 @@ public final class ReadingSession {
     /// Sticky heard trail (provisional ∪ committed). Never rewinds mid-session — optimistic success.
     public private(set) var heardWordIDs: [String] = []
     public private(set) var marks: [LiveMark] = []
-    /// Skip marks visible live as blinking pills (subset of marks).
+    /// Skip marks collected for the report (not painted live).
     public private(set) var liveSkipMarks: [LiveMark] = []
     public private(set) var events: [AlignmentEvent] = []
     public private(set) var showStallNudge: Bool = false
@@ -36,20 +48,13 @@ public final class ReadingSession {
     public private(set) var isHearingSpeech: Bool = false
     /// Normalized mic energy 0…1 for continuous speaking feedback.
     public private(set) var speechEnergy: Float = 0
-    /// 0…1 left-to-right fill of the presence word while speaking (mirrors `presenceProgress`).
-    public private(set) var optimisticWordProgress: Double = 0
-    /// Live “with you” caret — may walk ahead of ASR without committing heard occupancy.
-    public private(set) var presenceWordID: String?
-    /// 0…1 fill on `presenceWordID`.
-    public private(set) var presenceProgress: Double = 0
-    /// Words presence fully walked that ASR has not sticky-heard yet.
-    public private(set) var presenceTrailIDs: [String] = []
-    /// Experience nudge: ASR isn’t locking — keep reading; next word is gently suggested.
+    /// Idle span-presence fields (Pass 7 UI uses aurora only; kept for kit API stability).
+    public private(set) var currentSpanIndex: Int = 0
+    public private(set) var spanProgress: Double = 0
+    public private(set) var passedSpanIndices: [Int] = []
     public private(set) var showKeepGoingHint: Bool = false
-    /// Soft suggestion (not the caret). Next word to try if stuck — never steals focus.
-    public private(set) var hintNextWordID: String?
-    /// Word we’re stuck trying to lock (still the caret).
-    public private(set) var stuckWordID: String?
+    public private(set) var hintNextSpanIndex: Int?
+    public private(set) var stuckSpanIndex: Int?
     /// JSONL diagnostics log for this session (share after Stop).
     public private(set) var diagnosticsLogURL: URL?
 
@@ -65,18 +70,16 @@ public final class ReadingSession {
     private var engine: (any TranscriptionEngine)?
     private var audioTask: Task<Void, Never>?
     private var transcriptTask: Task<Void, Never>?
-    private var startedAt: Date?
+    private var runningAccumulated: TimeInterval = 0
+    private var runningStartedAt: Date?
     private var matchedSyllables: Int = 0
     private var stallEventCount: Int = 0
     private var sessionHostStart: TimeInterval?
     private var lastLoggedCaretWordID: String?
     private var enginePreference: LiveTranscriptionEngine.EnginePreference = .autoPreferSpeechTranscriber
-    private var presenceState = PresenceWalkState()
-    private var wordIDList: [String] = []
-    private var syllableByID: [String: Int] = [:]
-    private var stuckSpeechStartedAt: TimeInterval?
-    private var lastCaretForStuckTracking: String?
-    private var lastHintLoggedFor: String?
+    private var lastOccupancyAdvanceAt: TimeInterval?
+    private var lastRawHypothesis: String = ""
+    private static let fallingBehindSeconds: TimeInterval = 1.25
 
     public init(
         passage: Passage,
@@ -87,19 +90,18 @@ public final class ReadingSession {
         self.passage = passage
         self.ledgerAverageRate = ledgerAverageRate
         self.gopScorer = gopScorer
+        // Minimal-pair contrast passages: exact occupancy only (ship≠sheep).
+        let soft = !passage.contrastTags.contains("ɪ-i")
         self.aligner = TokenAligner(
             passage: passage,
-            configuration: .init(softScriptMatch: true)
+            configuration: .init(softScriptMatch: soft)
         )
         self.stallDetector = StallDetector(
             configuration: .init(silenceTimeout: stallTimeout)
         )
-        self.wordIDList = passage.words.map(\.id)
-        self.syllableByID = Dictionary(uniqueKeysWithValues: passage.words.map { ($0.id, $0.syllableCount) })
         let firstID = passage.words.first?.id
         self.currentWordID = firstID
-        self.presenceWordID = firstID
-        self.presenceState = PresenceWalkState(presenceWordID: firstID)
+        self.currentSpanIndex = 0
     }
 
     public func start(
@@ -111,7 +113,8 @@ public final class ReadingSession {
         self.engine = engine
         self.enginePreference = preference
         phase = .running
-        startedAt = Date()
+        runningAccumulated = 0
+        runningStartedAt = Date()
         showStallNudge = false
         provisionalMatchedIDs = []
         committedMatchedIDs = []
@@ -125,18 +128,12 @@ public final class ReadingSession {
         sessionHostStart = ProcessInfo.processInfo.systemUptime
         isHearingSpeech = false
         speechEnergy = 0
-        optimisticWordProgress = 0
-        presenceProgress = 0
-        presenceTrailIDs = []
+        clearSpanPresenceState()
+        registrationHealth = .idle
+        lastOccupancyAdvanceAt = nil
+        lastRawHypothesis = ""
         let firstID = passage.words.first?.id
-        presenceWordID = firstID
-        presenceState = PresenceWalkState(presenceWordID: firstID)
-        showKeepGoingHint = false
-        hintNextWordID = nil
-        stuckWordID = nil
-        stuckSpeechStartedAt = nil
-        lastCaretForStuckTracking = nil
-        lastHintLoggedFor = nil
+        currentWordID = firstID
         let diag = SessionDiagnostics(passageID: passage.id)
         diagnostics = diag
         diagnosticsLogURL = diag.logFileURL
@@ -173,45 +170,55 @@ public final class ReadingSession {
         }
     }
 
+    public func pause() {
+        guard phase == .running || phase == .stalled else { return }
+        accumulateRunningTime()
+        phase = .paused
+        isHearingSpeech = false
+        speechEnergy = 0
+        registrationHealth = .idle
+        showStallNudge = false
+        stallDetector.dismiss()
+    }
+
+    public func resume() {
+        guard phase == .paused else { return }
+        runningStartedAt = Date()
+        phase = .running
+        stallDetector.dismiss()
+    }
+
     public func stop() async -> SessionReport {
+        accumulateRunningTime()
+        let duration = runningAccumulated
+        // Stop = mic off. Recognition still finalizes and drains before the report.
+        phase = .finishing
+        registrationHealth = .idle
+        isHearingSpeech = false
+        speechEnergy = 0
+        showStallNudge = false
+
         audioTask?.cancel()
+        audioTask = nil
         await audioSource?.stop()
 
-        // Finalize recognizer WHILE transcriptTask is still alive so late finals ingest.
+        // Engine drains late finals into transcriptTask before closing updates.
         await engine?.stop()
-        // Brief drain for finalize callbacks / last volatile→final flush.
-        try? await Task.sleep(for: .milliseconds(200))
-        transcriptTask?.cancel()
+
+        if let transcriptTask {
+            await Self.awaitTask(transcriptTask, timeoutMs: 3_000)
+            transcriptTask.cancel()
+        }
         transcriptTask = nil
 
-        // What the user already saw as blue progress must become committed matches,
-        // otherwise finish() marks the whole script as skipped.
-        let provisionalIDs: [String]
-        if !provisionalMatchedIDs.isEmpty {
-            provisionalIDs = provisionalMatchedIDs
-        } else if !volatileHint.isEmpty {
-            let surfaces = volatileHint
-                .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
-                .map(String.init)
-            provisionalIDs = aligner.previewVolatile(surfaces: surfaces).provisionalMatchedIDs
-        } else {
-            provisionalIDs = []
-        }
-        if !provisionalIDs.isEmpty {
-            let committed = aligner.commitProvisionalMatches(provisionalIDs)
-            events.append(contentsOf: committed)
-            addMatchedSyllables(from: committed)
-            refreshCommittedMatches()
-            stickyHear(committedMatchedIDs)
-        }
+        // Flush volatile occupancy → sticky-heard trail → unread skips.
+        flushStopRecoveryMatches()
 
         provisionalMatchedIDs = []
         volatileHint = ""
 
         let trailing = aligner.finish()
         events.append(contentsOf: trailing)
-        // Evaluative marks (extra / substitute) appear only after Stop.
-        // Skip pills were already live; full mark set is for the report.
         marks = aligner.liveMarks()
         liveSkipMarks = marks.filter { $0.kind == .skip }
 
@@ -229,7 +236,6 @@ public final class ReadingSession {
         )
         diagnosticsLogURL = logURL
 
-        let duration = Date().timeIntervalSince(startedAt ?? Date())
         let built = await SessionAnalyzer.buildReport(
             passage: passage,
             events: events,
@@ -248,13 +254,21 @@ public final class ReadingSession {
         report = built
         phase = .finished
         currentWordID = nil
-        presenceWordID = nil
-        presenceProgress = 0
-        presenceTrailIDs = []
-        optimisticWordProgress = 0
+        clearSpanPresenceState(includeHints: false)
         showStallNudge = false
         diagnostics = nil
         return built
+    }
+
+    private static func awaitTask(_ task: Task<Void, Never>, timeoutMs: UInt64) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await task.value }
+            group.addTask {
+                try? await Task.sleep(for: .milliseconds(timeoutMs))
+            }
+            _ = await group.next()
+            group.cancelAll()
+        }
     }
 
     /// Sliding upcoming unigrams (+ a few rare content words), capped at 100.
@@ -301,13 +315,26 @@ public final class ReadingSession {
         return sorted[idx]
     }
 
+    private func accumulateRunningTime() {
+        if let start = runningStartedAt {
+            runningAccumulated += Date().timeIntervalSince(start)
+            runningStartedAt = nil
+        }
+    }
+
     private func handle(update: TranscriptionUpdate) {
+        guard phase != .paused else { return }
         engineKind = update.engineKind
         let finals = update.tokens.filter(\.isFinal)
         let volatileTokens = update.tokens.filter { !$0.isFinal }
         let hasVolatile = !volatileTokens.isEmpty || (finals.isEmpty && !update.rawText.isEmpty)
         let previousCaret = currentWordID
+        let previousHeardCount = heardWordIDs.count
         let speakingAtUpdate = isHearingSpeech
+
+        if !update.rawText.isEmpty {
+            lastRawHypothesis = update.rawText
+        }
 
         if !finals.isEmpty {
             for token in finals {
@@ -358,6 +385,10 @@ public final class ReadingSession {
             currentWordID = aligner.monotonicWordID(proposing: aligner.currentWordID)
         }
 
+        if currentWordID != previousCaret || heardWordIDs.count > previousHeardCount {
+            noteOccupancyAdvance()
+        }
+
         diagnostics?.noteASRUpdate(
             engineKind: update.engineKind.rawValue,
             finalCount: finals.count,
@@ -366,14 +397,6 @@ public final class ReadingSession {
             caretAfter: currentWordID,
             wasSpeaking: speakingAtUpdate
         )
-
-        if currentWordID != previousCaret {
-            reconcilePresenceWithASR()
-            clearKeepGoingHint()
-        } else {
-            prunePresenceTrailAgainstHeard()
-            evaluateKeepGoingHint()
-        }
     }
 
     private func addMatchedSyllables(from events: [AlignmentEvent]) {
@@ -394,8 +417,43 @@ public final class ReadingSession {
     /// Optimistic success: once a word is painted “heard,” keep it until Stop.
     private func stickyHear(_ ids: [String]) {
         var seen = Set(heardWordIDs)
+        var grew = false
         for id in ids where seen.insert(id).inserted {
             heardWordIDs.append(id)
+            grew = true
+        }
+        if grew {
+            noteOccupancyAdvance()
+        }
+    }
+
+    private func noteOccupancyAdvance() {
+        lastOccupancyAdvanceAt = ProcessInfo.processInfo.systemUptime
+        if isLivePhase {
+            registrationHealth = .keepingUp
+        }
+    }
+
+    private var isLivePhase: Bool {
+        phase == .running || phase == .stalled
+    }
+
+    private func refreshRegistrationHealth(speaking: Bool) {
+        guard isLivePhase else {
+            registrationHealth = .idle
+            return
+        }
+        guard speaking else {
+            if registrationHealth == .fallingBehind {
+                registrationHealth = .idle
+            }
+            return
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        if let last = lastOccupancyAdvanceAt {
+            registrationHealth = (now - last >= Self.fallingBehindSeconds) ? .fallingBehind : .keepingUp
+        } else if let sessionHostStart, now - sessionHostStart >= Self.fallingBehindSeconds {
+            registrationHealth = .fallingBehind
         }
     }
 
@@ -413,105 +471,10 @@ public final class ReadingSession {
         }
     }
 
-    private func clearKeepGoingHint() {
-        showKeepGoingHint = false
-        hintNextWordID = nil
-        stuckWordID = nil
-        stuckSpeechStartedAt = nil
-        lastCaretForStuckTracking = currentWordID
-        lastHintLoggedFor = nil
-    }
-
-    /// After speech without ASR lock-in, suggest the next word — do not move the caret.
-    /// Thresholds align with caret_freeze diagnostics (0.8s speaking / fill ≥0.85).
-    /// Hint sits one ahead of the **presence** cursor so it stays useful during a walk.
-    private func evaluateKeepGoingHint() {
-        guard phase == .running || phase == .stalled else { return }
-        let anchor = presenceWordID ?? currentWordID
-        guard let caret = anchor,
-              let index = passage.words.firstIndex(where: { $0.id == caret }),
-              index + 1 < passage.words.count else {
-            clearKeepGoingHint()
-            return
-        }
-        // Already heard the ASR caret and presence hasn't walked past — no nudge.
-        if let asr = currentWordID,
-           (heardWordIDs.contains(asr) || provisionalMatchedIDs.contains(asr)),
-           presenceWordID == asr || presenceWordID == nil {
-            clearKeepGoingHint()
-            return
-        }
-
-        if lastCaretForStuckTracking != caret {
-            lastCaretForStuckTracking = caret
-            stuckSpeechStartedAt = nil
-        }
-
-        let now = ProcessInfo.processInfo.systemUptime
-        if isHearingSpeech {
-            if stuckSpeechStartedAt == nil {
-                stuckSpeechStartedAt = now
-            }
-        }
-
-        let spokenLongEnough: Bool = {
-            guard let started = stuckSpeechStartedAt else { return false }
-            return now - started >= SessionDiagnostics.freezeSpeakingSeconds
-        }()
-        let filledEnough = presenceProgress >= 0.85
-
-        if spokenLongEnough || filledEnough {
-            let nextID = passage.words[index + 1].id
-            stuckWordID = caret
-            hintNextWordID = nextID
-            showKeepGoingHint = true
-            if lastHintLoggedFor != caret {
-                lastHintLoggedFor = caret
-                diagnostics?.noteHint(stuckWordID: caret, nextWordID: nextID)
-            }
-        }
-    }
-
     private func refreshContextWindow() {
         engine?.setContextualPhrases(
             Self.contextualPhrases(for: passage, fromIndex: aligner.scriptCursor)
         )
-    }
-
-    private func publishPresence(_ state: PresenceWalkState, event: PresenceWalkEvent?) {
-        presenceState = state
-        presenceWordID = state.presenceWordID
-        presenceProgress = state.presenceProgress
-        presenceTrailIDs = state.presenceTrailIDs
-        optimisticWordProgress = state.presenceProgress
-        switch event {
-        case .advanced(let from, let to):
-            diagnostics?.notePresenceAdvance(from: from, to: to)
-        case .snapped(let to):
-            diagnostics?.notePresenceSnap(to: to)
-        case nil:
-            break
-        }
-    }
-
-    private func prunePresenceTrailAgainstHeard() {
-        let heard = Set(heardWordIDs)
-        let pruned = presenceState.presenceTrailIDs.filter { !heard.contains($0) }
-        guard pruned != presenceState.presenceTrailIDs else { return }
-        presenceState.presenceTrailIDs = pruned
-        presenceTrailIDs = pruned
-    }
-
-    private func reconcilePresenceWithASR() {
-        let (next, event) = PresenceWalk.reconcile(
-            state: presenceState,
-            asrWordID: currentWordID,
-            wordIDs: wordIDList,
-            heardIDs: Set(heardWordIDs),
-            speaking: isHearingSpeech,
-            now: ProcessInfo.processInfo.systemUptime
-        )
-        publishPresence(next, event: event)
     }
 
     private func recordCaretLatency(token: SpokenToken, wordID: String?, volatile: Bool) {
@@ -553,6 +516,7 @@ public final class ReadingSession {
     }
 
     private func handle(chunk: AudioChunk) {
+        guard phase != .paused else { return }
         let handleStart = ProcessInfo.processInfo.systemUptime
         pcmStore.append(chunk)
         engine?.append(chunk)
@@ -562,9 +526,7 @@ public final class ReadingSession {
         isHearingSpeech = speaking
         // Soft ceiling so typical conversational levels sit near 0.6–1.0
         speechEnergy = min(1, rms / 0.06)
-
-        updatePresenceWalk(speaking: speaking)
-        evaluateKeepGoingHint()
+        refreshRegistrationHealth(speaking: speaking)
 
         let fired = stallDetector.process(samples: chunk.samples, at: chunk.hostTime)
         if fired {
@@ -581,27 +543,61 @@ public final class ReadingSession {
             handleDuration: handleDuration,
             speaking: speaking,
             rmsEnergy: speechEnergy,
-            fill: presenceProgress,
-            currentWordID: presenceWordID ?? currentWordID
+            fill: 0,
+            currentWordID: currentWordID
         )
     }
 
-    /// Called from the reading UI when a comfort-band scroll actually fires.
+    /// Optional scroll telemetry (Pass 7 UI no longer auto-scrolls).
     public func noteScroll(to wordID: String, reason: String) {
         diagnostics?.noteScroll(wordID: wordID, reason: reason)
     }
 
-    /// Mic-driven presence fill / walk — stays with speech when ASR stalls.
-    private func updatePresenceWalk(speaking: Bool) {
-        let (next, event) = PresenceWalk.tick(
-            state: presenceState,
-            speaking: speaking,
-            now: ProcessInfo.processInfo.systemUptime,
-            wordIDs: wordIDList,
-            syllableCounts: syllableByID,
-            asrWordID: currentWordID,
-            heardIDs: Set(heardWordIDs)
-        )
-        publishPresence(next, event: event)
+    /// Resets unused span-presence fields. Stop omits hint fields to match prior behavior.
+    private func clearSpanPresenceState(includeHints: Bool = true) {
+        currentSpanIndex = 0
+        spanProgress = 0
+        passedSpanIndices = []
+        guard includeHints else { return }
+        showKeepGoingHint = false
+        hintNextSpanIndex = nil
+        stuckSpanIndex = nil
+    }
+
+    private func pendingProvisionalMatchIDs() -> [String] {
+        if !provisionalMatchedIDs.isEmpty {
+            return provisionalMatchedIDs
+        }
+        return previewMatchIDs(from: volatileHint)
+    }
+
+    /// On Stop: commit what the user already saw as progress before `finish()` skips the rest.
+    private func flushStopRecoveryMatches() {
+        absorbMatchEvents(aligner.commitProvisionalMatches(pendingProvisionalMatchIDs()))
+
+        // Last full hypothesis if provisional list was empty/stale.
+        if aligner.scriptCursor < passage.words.count {
+            absorbMatchEvents(
+                aligner.commitProvisionalMatches(previewMatchIDs(from: lastRawHypothesis))
+            )
+        }
+
+        absorbMatchEvents(aligner.commitHeardTrail(Set(heardWordIDs)))
+    }
+
+    private func previewMatchIDs(from raw: String) -> [String] {
+        guard !raw.isEmpty else { return [] }
+        let surfaces = raw
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .map(String.init)
+        return aligner.previewVolatile(surfaces: surfaces).provisionalMatchedIDs
+    }
+
+    private func absorbMatchEvents(_ produced: [AlignmentEvent]) {
+        guard !produced.isEmpty else { return }
+        events.append(contentsOf: produced)
+        addMatchedSyllables(from: produced)
+        refreshCommittedMatches()
+        stickyHear(committedMatchedIDs)
     }
 }

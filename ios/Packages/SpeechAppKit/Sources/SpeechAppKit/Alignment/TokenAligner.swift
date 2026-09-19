@@ -353,6 +353,19 @@ public final class TokenAligner: @unchecked Sendable {
         return spoken
     }
 
+    /// Promote sticky-heard script words still sitting at the cursor into matches.
+    /// Used on Stop so volatile “heard” trail isn’t wiped by `finish()` skips.
+    @discardableResult
+    public func commitHeardTrail(_ heardIDs: Set<String>) -> [AlignmentEvent] {
+        var ids: [String] = []
+        var index = scriptCursor
+        while index < script.count, heardIDs.contains(script[index].id) {
+            ids.append(script[index].id)
+            index += 1
+        }
+        return commitProvisionalMatches(ids)
+    }
+
     /// Promote a volatile occupancy preview into committed match events (e.g. on Stop).
     /// Used when Apple finals never arrived but the user already saw progress on screen.
     @discardableResult
@@ -422,6 +435,11 @@ public final class TokenAligner: @unchecked Sendable {
         if scriptNorm == spokenNorm { return true }
         guard !scriptNorm.isEmpty, !spokenNorm.isEmpty else { return false }
 
+        // Never soft-collapse minimal pairs used as contrast drills (ship≠sheep, …).
+        if blockedMinimalPairs.contains([scriptNorm, spokenNorm]) {
+            return false
+        }
+
         // Function words: exact only — soft "a"/"an"/"to" caused false locks.
         if isFunctionWord(scriptNorm) || isFunctionWord(spokenNorm) {
             return false
@@ -448,6 +466,13 @@ public final class TokenAligner: @unchecked Sendable {
         }
         return levenshtein(scriptNorm, spokenNorm) <= threshold
     }
+
+    private static let blockedMinimalPairs: Set<Set<String>> = [
+        ["ship", "sheep"],
+        ["sit", "seat"],
+        ["bit", "beat"],
+        ["live", "leave"],
+    ]
 
     private func matches(_ scriptNorm: String, _ spokenNorm: String) -> Bool {
         if scriptNorm == spokenNorm { return true }

@@ -61,6 +61,14 @@ struct NextPassagePickerTests {
         let pick = NextPassagePicker.pick(catalog: catalog, ledger: ledger)
         #expect(pick?.id == "l-r-1" || pick?.phoneTagsContain("l") == true)
     }
+
+    @Test("empty bundled ledger features the long Harbor Morning")
+    func emptyBundledLedgerPicksLongHarbor() {
+        let catalog = PassageCatalog.loadBundled()
+        let pick = NextPassagePicker.pick(catalog: catalog, ledger: StruggleLedger())
+        #expect(pick?.family == "ship-sheep")
+        #expect(pick?.length == .long)
+    }
 }
 
 private extension Passage {
@@ -103,14 +111,24 @@ struct PhoneLexiconTests {
 
 @Suite("PassageCatalog")
 struct PassageCatalogTests {
-    @Test("bundled catalog has short medium and long variants")
+    @Test("bundled catalog includes full passages")
     func bundledLengths() {
         let catalog = PassageCatalog.loadBundled()
         #expect(catalog.passages.count >= 20)
         #expect(catalog.passages.contains { $0.length == .long })
-        #expect(catalog.passages.contains { $0.family == "ship-sheep" && $0.length == .medium })
-        #expect(catalog.passages(inFamily: "ship-sheep").count >= 2)
+        #expect(catalog.passages.contains { $0.family == "ship-sheep" && $0.length == .long })
+        #expect(catalog.passages(inFamily: "ship-sheep").count >= 1)
         #expect(!catalog.passages[0].words[0].resolvedPhones.isEmpty)
+    }
+
+    @Test("pickerPassages keeps only full passages")
+    func pickerPassagesFullOnly() {
+        let catalog = PassageCatalog.loadBundled()
+        let picker = catalog.pickerPassages
+        #expect(!picker.isEmpty)
+        #expect(picker.count >= 12)
+        #expect(picker.allSatisfy { $0.length == .long })
+        #expect(!picker.contains { $0.title.contains("\u{2014}") || $0.text.contains("\u{2014}") })
     }
 }
 

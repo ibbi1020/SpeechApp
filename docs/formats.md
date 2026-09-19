@@ -41,6 +41,6 @@ Logged in the spec, not in the product yet: **Shadowing**, **HVPT / minimal-pair
 
 ## What exists in code today
 
-Only **Reading**, Slice A: live follow-along (karaoke caret with mic-driven fill, sticky heard trail, blinking skip pills on *real* unique-content skips, optional next-word hint if stuck, extra/swap on the report), stall nudge, struggle-led next passage. Pronunciation scoring (GOP) is stubbed. Conversation and Monologue are spec-only.
+Only **Reading**, Slice A: live presence (**top aurora waveform** from mic energy + plain serif book passage; no live text tracking), stall nudge, struggle-led next passage; match/skip/extra on the report after Stop. Pronunciation scoring (GOP) is stubbed. Conversation and Monologue are spec-only.
 
 **How Reading live follow-along works (tech + UI + every decision’s reasoning):** `docs/scoping-reading-follow-along.md`.

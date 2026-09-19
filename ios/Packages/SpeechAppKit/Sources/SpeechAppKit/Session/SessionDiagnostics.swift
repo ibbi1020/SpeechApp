@@ -267,6 +267,25 @@ public final class SessionDiagnostics: @unchecked Sendable {
         )
     }
 
+    public func noteSpanAdvance(from: Int, to: Int) {
+        emit(
+            "span_advance",
+            [
+                "from": String(from),
+                "to": String(to),
+            ]
+        )
+    }
+
+    public func noteSpanSnap(to index: Int) {
+        emit(
+            "span_snap",
+            [
+                "to": String(index),
+            ]
+        )
+    }
+
     public func finishSummary(
         volatileLatencies: [TimeInterval],
         finalLatencies: [TimeInterval]

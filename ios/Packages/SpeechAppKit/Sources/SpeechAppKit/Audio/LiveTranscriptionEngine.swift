@@ -257,12 +257,13 @@ public final class LiveTranscriptionEngine: @unchecked Sendable {
         fallbackRequest?.append(pcm)
     }
 
+    /// Stop accepting audio, finalize recognition, and drain late finals into
+    /// `updates` before closing the stream. Cancelling first dropped end-of-utterance tokens.
     public func stop() async {
-        resultsTask?.cancel()
-        resultsTask = nil
         inputContinuation?.finish()
         inputContinuation = nil
 
+        // Finalize while resultsTask still consumes results.
         if let analyzer {
             try? await analyzer.finalizeAndFinishThroughEndOfInput()
         }
@@ -270,12 +271,39 @@ public final class LiveTranscriptionEngine: @unchecked Sendable {
         dictationTranscriber = nil
         speechTranscriber = nil
 
+        if let resultsTask {
+            await Self.awaitTask(resultsTask, timeoutMs: 2_500)
+            resultsTask.cancel()
+        }
+        resultsTask = nil
+
+        await drainFallback()
+
+        // Close only after drain so ReadingSession can ingest late finals.
+        updateContinuation?.finish()
+        updateContinuation = nil
+    }
+
+    private func drainFallback() async {
         fallbackRequest?.endAudio()
+        if fallbackTask != nil {
+            try? await Task.sleep(for: .milliseconds(800))
+        }
         fallbackTask?.cancel()
         fallbackTask = nil
         fallbackRequest = nil
-        updateContinuation?.finish()
-        updateContinuation = nil
+        fallbackRecognizer = nil
+    }
+
+    private static func awaitTask(_ task: Task<Void, Never>, timeoutMs: UInt64) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await task.value }
+            group.addTask {
+                try? await Task.sleep(for: .milliseconds(timeoutMs))
+            }
+            _ = await group.next()
+            group.cancelAll()
+        }
     }
 
     // MARK: - SpeechTranscriber path

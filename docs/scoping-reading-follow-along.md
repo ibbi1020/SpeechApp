@@ -11,10 +11,10 @@
 
 | Priority | Meaning |
 |---|---|
-| **1. Experience** | Caret feels alive *while* the user speaks; never grades mid-flow; never teleports through unread lines. |
-| **2. Trust** | Wash means “I’m with you,” never “you said it correctly.” Park 2026: ASR overcorrects L2 ~82% — occupancy ≠ pronunciation. |
-| **3. Latency** | Spoken→caret p99 target &lt;500ms on-device. Cloud STT is out (P90 emission already eats the budget). |
-| **4. Occupancy accuracy** | Caret on the intended script word. Secondary to experience when the two conflict in the live path. |
+| **1. Experience** | Quiet book reading + lag-free proof the mic hears you; never grades mid-flow; never teleports through unread lines. |
+| **2. Trust** | Aurora energy means “I hear your voice,” never “you said this word correctly.” Park 2026: ASR overcorrects L2 ~82% — occupancy ≠ pronunciation. |
+| **3. Latency** | Live presence follows mic RMS (`speechEnergy`) at chunk rate — not ASR word emission. Occupancy may lag; that is OK for the report. |
+| **4. Occupancy accuracy** | Report marks land on the intended script word. Secondary to experience in the live path. |
 
 GOP / phoneme scoring is **out of scope** for this path (Slice B, stubbed).
 
@@ -32,11 +32,12 @@ Mic PCM
        volatile: previewVolatile → provisional matches / unique-content skip-ahead
        final:   ingest → match | unique-content skip-ahead | insert-spoken (hold)
   → ReadingSession (Observable)
-       committed + sticky heard trail
-       mic RMS → optimistic word fill
-       keep-going *hint* (does not move caret)
-  → ReadingSessionView karaoke chips
+       word occupancy (report) + sticky heard IDs
+       mic RMS → speechEnergy (aurora)
+       stall detector
+  → ReadingSessionView: top AuroraPresenceView + plain serif BookPassageText
 ```
+
 
 **Engines (A/B, measure then lock):**
 
@@ -54,29 +55,30 @@ Mic PCM
 
 ## 3. UI approach (what the user sees)
 
-### Live word states
+### Live presence (Pass 7 — aurora + book passage)
 
-| State | Look | Meaning |
+| Element | Look | Meaning |
 |---|---|---|
-| **Upcoming** | Dimmer primary | Not yet reached |
-| **Current (idle)** | Outlined accent pill | Caret — say this word |
-| **Speaking** | L→R progressive fill + light energy pulse | Mic is hot *before* ASR returns (optimistic) |
-| **Heard** | Solid accent wash + accent text | Sticky success trail — never clears mid-session |
-| **Hint next** | Dashed accent outline | Optional suggestion if ASR won’t lock; **not** the caret |
-| **Skipped** | Blinking orange pill | Real skip (unique later content word matched) |
+| **Aurora band** | Soft teal/indigo ribbons under nav; idle shimmer when quiet; taller/brighter when loud | Mic is hearing volume/shape of speech (companionship, not a grade) |
+| **Book passage** | Continuous New York–style serif on warm paper; no wash, chips, or highlight | Eyes only — user reads; app does not claim a place in the text |
+| **Listening caption** | Optional “Listening” when mic energy is hot | Confirms live session without positional claim |
+| **Stall nudge** | Bottom banner | Permission-giving pause — unchanged |
+
+Word karaoke, span highlight, presence/span walk UI, keep-going hints, and live skip pills are **retired**. Skip / extra / swap stay on the **report** after Stop. `PassageSpan` / `SpanWalk` remain in the kit as unused-for-UI code this pass.
 
 ### Chrome rules
 
 - **No live raw transcript** — it read as a live substitute grade.
-- **No live extra / swap paint** — report-only after Stop.
-- **No per-word spring** — 80ms ease or instant; CHI 2023: interim flicker raises fatigue.
-- **Keep-in-view** — `ScrollViewReader` follows `currentWordID` only (not hints).
-- **VoiceOver** — short summary (current / heard / skipped), not full-passage reannounce every word.
+- **No live text place-markers** — no span wash, word caret, or next-line hint paint.
+- **No live extra / swap / skip paint** — report-only after Stop.
+- **Aurora respects Reduce Motion** — static soft glow + opacity pulse only.
+- **VoiceOver** — “Listening, voice level …” when live; passage is selectable plain text.
 - **Stall nudge** — permission-giving (“Take your time”), never a countdown.
+- **User scrolls** — no auto-scroll chasing a caret.
 
 ### Copy stance
 
-Live copy stays guidance (“I’m with you” / “try the next word if this one won’t lock”). Never “correct” / “wrong” on the wash.
+Live copy is presence-only (“Listening” / “Ready when you are”). Never “correct” / “wrong” / “on this line.”
 
 ---
 
@@ -199,15 +201,17 @@ Every live-path decision below was made or hardened on 2026-09-18. **Do not reve
 4. **“Skips lines I didn’t skip; caret unnatural”** — root-caused false skip-ahead on common/ambiguous ASR tokens + caret steal; **fixed** with unique-content exact skip rule, safer restart, hint-only keep-going.
 5. **(2026-09-19) Presence walk** — UI cursor walks ahead of ASR on sustained speech; occupancy truth unchanged. Latency freezes cleared in follow-up log (`freezeCount: 0`).
 6. **(2026-09-19) Occupancy accuracy regression report** — user still saw false skips/extras with equal counts after presence walk. **Audit:** not caused by presence; caused by ASR finals omitting words + `findAhead` skip-script, plus soft `ship`↔`sheep`. Full write-up: [`docs/audit-occupancy-accuracy-2026-09-19.md`](audit-occupancy-accuracy-2026-09-19.md).
+7. **(2026-09-19) Pass 6 — span highlight** — Retire word karaoke + word presence walk as the live metaphor. Live place-marker is **sentence/clause** (`PassageSpan` / `SpanWalk`): mic pulse on the current span, max **one** span ahead of occupancy, next-span hint, stall nudge unchanged. Skip/extra/swap report-only. Reason: measured ASR spoken→caret lag (~3–9s) made a mouth-adjacent word carrot feel broken; coarser grain keeps “with you” without fighting emission physics. Dual cursors rejected (one live index only).
+8. **(2026-09-19) Pass 7 — aurora presence** — Device showed Pass 6 still lags (ASR emission physics unchanged at coarser grain). Drop **all** live text place-markers. Trust while speaking = **top aurora** driven by `speechEnergy` (mic RMS, chunk-rate). Passage = plain serif book text. ASR + stall + report unchanged; SpanWalk not driven for UI. Inspired by Gemini Live–style energy bands (adapt teal/indigo aurora, not a brand clone).
+9. **(2026-09-19) Pass 8 — stop drain + registration health** — Stop means **mic off**, not “cut the pipeline”: finalize ASR while the results task still drains late finals (was cancelling results *before* finalize). On Stop also commit provisional + sticky-heard trail before remainder skips. Live caption: **Keeping up** / **falling behind** from occupancy advance vs speech (not aurora). Soft match blocks ship↔sheep; ɪ-i contrast passages use exact occupancy.
 
 ---
 
 ## 7. Success metrics (internal)
 
-- Spoken→caret p99 (volatile vs final), on device.
-- Occupancy: caret on intended word.
-- False-skip rate: skip pills / ahead jumps when user did not move on (target → ~0 for function-word cases).
-- Rewind count (target → 0).
+- Felt liveness: mic → aurora amplitude (not ASR word/span caret p99 as the UX bar).
+- Occupancy accuracy for the **report** (match / skip / extra).
+- False-skip rate on the report (target → ~0 for linear reads of unique-content skips).
 - Session completion.
 
 ---
@@ -218,10 +222,11 @@ Every live-path decision below was made or hardened on 2026-09-18. **Do not reve
 |---|---|
 | Engine / timestamps / n-best / preheat | `LiveTranscriptionEngine.swift`, `TranscriptionEngine.swift` |
 | Align / soft / skip / hold / volatile | `TokenAligner.swift` |
-| Session / heard trail / fill / hint / latency | `ReadingSession.swift` |
-| Karaoke UI | `ReadingSessionView.swift`, `SpeechChrome.swift` |
+| Session / speechEnergy / stall / report | `ReadingSession.swift` |
+| Span split (kit only; UI unused Pass 7) | `PassageSpan.swift`, `Passage.swift` |
+| Span walk (kit only; UI unused Pass 7) | `SpanWalk.swift` |
+| Live UI (aurora + book) | `ReadingSessionView.swift`, `AuroraPresenceView.swift`, `SpeechChrome.swift` |
 | Occupancy harness | `ReadingSessionIntegrationTests.swift`, `ScriptedTranscriptEngine` |
-| Presence walk | `PresenceWalk.swift`, `ReadingSession.swift`, `ReadingSessionView.swift` |
 | Occupancy accuracy audit (2026-09-19) | `docs/audit-occupancy-accuracy-2026-09-19.md` |
 
 ---

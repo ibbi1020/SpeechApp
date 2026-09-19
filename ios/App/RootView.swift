@@ -6,40 +6,46 @@ struct RootView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                switch model.route {
-                case .consent:
-                    ConsentView()
-                case .availability:
-                    AvailabilitySpikeView()
-                case .library:
-                    PassageLibraryView()
-                case .reading:
-                    if let passage = model.currentPassage {
-                        ReadingSessionView(passage: passage)
-                    } else {
-                        ContentUnavailableView(
-                            "No passages",
-                            systemImage: "text.book.closed",
-                            description: Text("The catalog didn’t load.")
-                        )
-                    }
-                case .report(let report):
-                    SessionReportView(report: report)
+            PassageLibraryView()
+                .navigationDestination(isPresented: sessionPresented) {
+                    sessionDestination
                 }
-            }
-            .animation(SpeechMotion.settle, value: routeIdentity)
         }
         .tint(.accentColor)
+        .preferredColorScheme(.dark)
     }
 
-    private var routeIdentity: String {
+    private var sessionPresented: Binding<Bool> {
+        Binding(
+            get: {
+                switch model.route {
+                case .reading, .report: true
+                case .library: false
+                }
+            },
+            set: { presented in
+                if !presented {
+                    model.chooseAnotherPassage()
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var sessionDestination: some View {
         switch model.route {
-        case .consent: return "consent"
-        case .availability: return "availability"
-        case .library: return "library"
-        case .reading: return "reading"
-        case .report: return "report"
+        case .report(let report):
+            SessionReportView(report: report)
+        case .reading, .library:
+            if let passage = model.currentPassage {
+                ReadingSessionView(passage: passage)
+            } else {
+                ContentUnavailableView(
+                    "No passages",
+                    systemImage: "text.book.closed",
+                    description: Text("The catalog didn’t load.")
+                )
+            }
         }
     }
 }

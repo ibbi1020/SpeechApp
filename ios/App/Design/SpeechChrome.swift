@@ -12,6 +12,19 @@ enum SpeechMotion {
     static let scroll = Animation.easeInOut(duration: 0.45)
 }
 
+enum SpeechSpacing {
+    /// Page gutter.
+    static let page: CGFloat = 24
+    /// Reading passage gutter (wider than chrome).
+    static let reading: CGFloat = 32
+    /// Tight grouping inside a header or card cluster.
+    static let cluster: CGFloat = 8
+    /// Related items in one section.
+    static let related: CGFloat = 16
+    /// Break between different sections.
+    static let section: CGFloat = 36
+}
+
 struct SpeechScreenBackground: View {
     var body: some View {
         LinearGradient(
@@ -32,7 +45,7 @@ struct SpeechPrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.body.weight(.semibold))
+            .font(.headline)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .foregroundStyle(.white)
@@ -62,31 +75,3 @@ struct SpeechSecondaryButtonStyle: ButtonStyle {
     }
 }
 
-struct SpeechMetricCard: View {
-    let title: String
-    let value: String
-    var footnote: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .tracking(0.2)
-            Text(value)
-                .font(.title2.weight(.semibold))
-                .monospacedDigit()
-            if let footnote {
-                Text(footnote)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
-    }
-}

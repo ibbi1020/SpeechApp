@@ -67,6 +67,8 @@ public struct Passage: Equatable, Sendable, Codable, Identifiable {
     /// Shared practice theme (e.g. ship-sheep) across short/medium/long variants.
     public let family: String
     public let length: PassageLength
+    /// Sentence / clause place-markers for live UI (derived from `words`).
+    public let spans: [PassageSpan]
 
     public init(
         id: String,
@@ -75,7 +77,8 @@ public struct Passage: Equatable, Sendable, Codable, Identifiable {
         contrastTags: [String] = [],
         isBalancedDefault: Bool = false,
         family: String? = nil,
-        length: PassageLength = .short
+        length: PassageLength = .short,
+        spans: [PassageSpan]? = nil
     ) {
         self.id = id
         self.title = title
@@ -84,6 +87,7 @@ public struct Passage: Equatable, Sendable, Codable, Identifiable {
         self.isBalancedDefault = isBalancedDefault
         self.family = family ?? id
         self.length = length
+        self.spans = spans ?? PassageSpanSplitter.split(words: words, passageID: id)
     }
 
     public var text: String {
@@ -99,5 +103,20 @@ public struct Passage: Equatable, Sendable, Codable, Identifiable {
         max(15, Int((Double(totalSyllables) / 150.0) * 60.0))
     }
 
+    /// Compact duration for picker and reading chrome.
+    public var durationLabel: String {
+        let minutes = max(1, Int((Double(estimatedSeconds) / 60.0).rounded()))
+        return "~\(minutes) min"
+    }
+
     public var wordCount: Int { words.count }
+
+    public func spanIndex(forWordID wordID: String) -> Int? {
+        spans.firstIndex { $0.contains(wordID: wordID) }
+    }
+
+    public func span(at index: Int) -> PassageSpan? {
+        guard spans.indices.contains(index) else { return nil }
+        return spans[index]
+    }
 }

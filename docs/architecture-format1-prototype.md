@@ -2,7 +2,7 @@
 
 **Format name:** **Reading** (alias Format 1). See `docs/formats.md`.
 
-**Status:** Revised twice after product steer (2026-09-05), then compute placement revised 2026-09-18, then live UI locked to karaoke + skip pills (2026-09-18 follow-along scoping), then **device-hardened** the same day (optimistic live fill + sticky heard trail; false skip-ahead closed). Pass 1 added live skip / extra / wrong-word feedback, a forced-pace caret, and struggle-led next passages. Pass 2 **removed the forced-pace caret** after a dedicated scoping-roundtable literature pass found it fights the app's own diagnostic goal and its own anxious-persona ethics stance. Pass 3 (**constrained optimism**): live path advances karaoke on volatile script match, **never rewinds** the caret, paints **blinking skip pills** only (no live extra/swap, no live raw transcript). Pass 4 (**caret honesty**): skip-ahead only on **unique exact content words**; keep-going is a **hint**, not a caret move. Pass 5 (**presence walk**, 2026-09-19): UI presence cursor may lead ASR; occupancy/score still ASR+aligner only. **Occupancy accuracy audit** (same day): false skips/extras after presence walk are **not** from presence racing — see `docs/audit-occupancy-accuracy-2026-09-19.md`. **Full decision log with reasoning:** `docs/scoping-reading-follow-along.md`. GOP still does **not** consume Apple's transcript. Live follow-along stays on-device (sub-500ms cursor). Pronunciation scoring is backend-eligible; on-device-only is no longer a product lock.
+**Status:** Revised twice after product steer (2026-09-05), then compute placement revised 2026-09-18, then live UI locked to karaoke + skip pills (2026-09-18 follow-along scoping), then **device-hardened** the same day (optimistic live fill + sticky heard trail; false skip-ahead closed). Pass 1–5 iterated caret / presence / skip honesty (see decision log). Pass 6 (**span highlight**, 2026-09-19): sentence/clause wash — still lagged on device. **Pass 7 (aurora presence, 2026-09-19):** drop all live text place-markers; trust = **top aurora** from mic `speechEnergy` + plain serif book passage; ASR + stall + report unchanged. Word occupancy still powers the report only. **Full decision log with reasoning:** `docs/scoping-reading-follow-along.md`. GOP still does **not** consume Apple's transcript. Live mic path stays on-device. Pronunciation scoring is backend-eligible; on-device-only is no longer a product lock.
 
 **Overall verdict:** **GO-IF** — Slice A includes a real live layer (alignment, not pace). "Pronounced poorly" while Apple still heard the intended word waits for Slice B, one word behind, on CPU. Speaking rate stays a **measured, self-referential, never-forced** signal.
 
@@ -35,7 +35,8 @@ The tuner is **not** “Apple’s transcript in, scores out.”
 
 | Stream | What it sees | What it is for |
 |---|---|---|
-| **SpeechAnalyzer** | Audio → words + timestamps | Live **karaoke caret** (+ soft heard tint) and **blinking skip pills** when a later unique word matches; n-best rerank vs script |
+| **SpeechAnalyzer** | Audio → words + timestamps | Word occupancy for the **report** only. Live UI trust is **mic aurora**, not text tracking |
+| **Mic RMS** | PCM energy each chunk | Drives `speechEnergy` → top aurora band (lag-free presence) |
 | **GOP (tuner)** | Raw PCM + the **script’s** canonical phones | “You said *ship* according to Apple, but the mouth was closer to *sheep*” |
 
 If GOP were given Apple’s transcript, it would score the already-corrected sentence and miss the product bet (Park 2026: ASR overcorrects most learner errors). Live skip/add does **not** need GOP. Live “said the right word, but badly” **does**.
@@ -46,30 +47,28 @@ If GOP were given Apple’s transcript, it would score the already-corrected sen
 
 | You do | Monkeytype analogue | How we detect it | When the UI updates | Slice |
 |---|---|---|---|---|
-| Skip a script word | Missed characters | `TokenAligner` `skip-script` — **only** when a later **unique exact content** word matches (never on `the`/`to`/ambiguous repeats) | Live **blinking pill** on the skipped word | **A** |
+| Skip a script word | Missed characters | `TokenAligner` `skip-script` — **only** when a later **unique exact content** word matches (never on `the`/`to`/ambiguous repeats) | **After Stop** on the report | **A** |
 | Add a word that isn’t there | Extra characters | `insert-spoken` (hold-not-substitute) | **After Stop** only | **A** |
 | Say a different word (`cat` for `dog`) | Incorrect | occupancy hold; report may show swap | **After Stop** only | **A** |
 | Say the intended word, but the sound is wrong | No typing analogue | GOP on that word’s PCM slice | ~0.5–1 s after the word (one behind the mouth) | **B** |
 | Go silent for too long | No typing analogue | `StallDetector` (VAD timeout) | Live, non-blocking nudge only | **A** |
-| ASR won’t lock current word | — | Soft match at cursor; optional **hint** on next word (caret stays) | Dashed hint + copy; no caret steal | **A** |
+| Mic hears speech | — | `speechEnergy` from RMS | Top aurora swells immediately | **A** |
 
 Pace is deliberately **not** in this table — see *Pace verdict* above. It is a report-only metric, not a live signal.
 
-**Visual language (locked — 2026-09-18 follow-along + device harden):**
-- Live during reading: **karaoke caret** on the current word (progressive fill while mic is hot) + **sticky heard trail** + **blinking skip pills** only for *real* unique-content ahead matches. Optional dashed **hint** on the next word if stuck — does **not** move the caret. No live extra / substitute paint. No live raw ASR transcript. No live % / rate. Caret is **monotonic** (advance / freeze — never rewind).
+**Visual language (locked — Pass 7 aurora presence, 2026-09-19):**
+- Live during reading: **top aurora band** reacts to mic loudness (idle shimmer → taller/brighter when loud) + **plain serif book passage** (warm paper, New York–style). No word karaoke, span wash, next-line hint, live skip pills, live extra/substitute, live raw transcript, or live % / rate.
 - End report: evaluative marks (skip / extra / substitute) + metrics. Users keep moving forward; they do **not** re-read to “fix” like Monkeytype typing.
-- Rationale: anxious L2 persona + motor-learning delayed/faded feedback + no-live-interruption ethic. Monkeytype backspace is a typing affordance; speaking has no undo. False skip-ahead on function words was observed on device and closed — see decision log in `docs/scoping-reading-follow-along.md`.
+- Rationale: any speech-synced place-marker (word or clause) inherits ASR emission lag (~seconds). Trust while speaking must come from lag-free mic energy, not text tracking. See Pass 7 in `docs/scoping-reading-follow-along.md`.
 
-- **Live position:** current word = outlined/filled caret; speaking = L→R fill from mic energy before ASR.
-- **Heard trail:** solid accent wash that sticks for the session (optimistic success).
-- **Live Skip pill:** blinking capsule only after unique-content ahead match — guidance, not a grade.
-- **Hint next:** dashed outline + caption if ASR won’t lock — escape hatch without lying about position.
-- **Report-only Extra / Substitute / poor sound (Slice B):** after Stop (or lagged GOP). Shape + weight, not color-only (WCAG 1.4.1).
-- Do **not** invite mid-passage re-reads. Extra/swap evaluative marks appear after Stop.
+- **Aurora:** Gemini Live–inspired soft ribbons; our teal/indigo palette; Reduce Motion → opacity pulse only.
+- **Passage:** continuous serif body; user scrolls; no auto-scroll.
+- **Report-only Extra / Substitute / Skip / poor sound (Slice B):** after Stop (or lagged GOP). Shape + weight, not color-only (WCAG 1.4.1).
+- Do **not** invite mid-passage re-reads. Evaluative marks appear after Stop.
 
 Apple `transcriptionConfidence` is still **never** a pronunciation mark. A high-confidence `ship` can be a mispronounced `sheep`.
 
-**Every live-path decision and its reasoning** lives in `docs/scoping-reading-follow-along.md` §§3–5. Do not reintroduce soft skip-ahead, function-word leaps, or caret-stealing keep-going without reopening that log.
+**Every live-path decision and its reasoning** lives in `docs/scoping-reading-follow-along.md`. Do not reintroduce live text place-markers (word karaoke, span wash, dual cursors) without reopening that log.
 
 ---
 
@@ -108,7 +107,7 @@ Prototype catalog: **8–12 original short passages**, each tagged with the FL c
 
 | Slice | What ships | Live | After Stop |
 |---|---|---|---|
-| **A — Shell** | Consent, assets, 3 screens, TokenAligner (hold-not-substitute, unique-content skip-ahead, monotonic caret, n-best vs script), mic-optimistic fill, **StallDetector**, FileReplay harness, StruggleLedger over **alignment** events, next-passage picker | Karaoke caret + sticky heard trail + **blinking skip pills** (real skips only) + optional next-word hint + stall nudge (no live transcript / extra / swap) | Skip/extra/swap counts; measured speech rate (report-only, self-referential) |
+| **A — Shell** | Consent, assets, 3 screens, TokenAligner (hold-not-substitute, unique-content skip-ahead, monotonic caret, n-best vs script), mic `speechEnergy` → aurora, **StallDetector**, FileReplay harness, StruggleLedger over **alignment** events, next-passage picker | Top aurora + plain serif book passage + stall nudge (no live text tracking / karaoke / skip / transcript) | Skip/extra/swap counts; measured speech rate (report-only, self-referential) |
 | **B — GOP** | Per-**finalized-word** GOP on **CPU** (SpeechAnalyzer keeps running on system ANE), plus a full-pass report | Previous-word “poor sound” underline | FL-ranked **Easy to catch**; ledger updated with phones |
 
 Slice A without B is already a Monkeytype-shaped reader. It still cannot catch *ship*→*sheep* if Apple wrote `ship`. That remains the honesty test for B.
@@ -119,7 +118,7 @@ Slice A without B is already a Monkeytype-shaped reader. It still cannot catch *
 
 1. **Occupancy.** SpeechAnalyzer (system ANE) **may** run at the same time as **CPU-only** GOP on a **short, already-finalized** PCM slice. Never run GOP on the Neural Engine while SpeechAnalyzer is live. Full-pass GOP after Stop still happens after `finalizeAndFinish` + analyzer release.
 2. **A19 is not required.** Target floor after reliability: **iPhone 11 (A13) / iOS 26**, with DictationTranscriber when available and **SFSpeechRecognizer on-device** (`requiresOnDeviceRecognition`) as the broad path. **iPhone X is not this floor** (max iOS 16 — no SpeechAnalyzer). See `docs/scoping-on-device-compatibility.md`. Do not market A18-class as required.
-3. **Live UI is karaoke + sticky heard trail + skip pills.** Blinking skip pills are live in A **only** after unique-content ahead match. Extra / substitute are report-only. Keep-going is a **hint**, not a caret move. Poor-sound GOP is live-but-lagged in B. No ASR-confidence paint. No live raw transcript. Caret never rewinds. Decision log: `docs/scoping-reading-follow-along.md`.
+3. **Live UI is top aurora + plain serif book passage.** No live text place-markers. Skip / extra / substitute are report-only. Poor-sound GOP is live-but-lagged in B. No ASR-confidence paint. No live raw transcript. Decision log: `docs/scoping-reading-follow-along.md`.
 4. **DictationTranscriber** with `progressiveShortDictation` + `.audioTimeRange` + `.atypicalSpeech` **or** `SpeechTranscriber` + `fastResults` (A/B). Sliding rare-token `contextualStrings` (≤100). N-best `.alternativeTranscriptions` reranked against the script window.
 5. **No SpeechDetector in v0.**
 6. **TokenAligner** operators: match, substitute, skip-script, insert-spoken, repeat, restart, unmatched. Skip-ahead = exact + unique + content word only. Soft match = current word only (not function words, not ahead). Vanilla global NW forbidden.
@@ -128,8 +127,8 @@ Slice A without B is already a Monkeytype-shaped reader. It still cannot catch *
 9. **Process-and-delete PCM.** Persist word-level scalars + StruggleLedger counts. No embeddings. If GOP runs on a backend, the same rule applies there: score, then delete audio.
 10. **Conversation remains product MVP.** This prototype is the diagnostic + drill loop, not a reversal of §5.
 11. **No forced pace, ever, in this format.** Rate is measured (report-only, self-referential if surfaced live in a later pass). No caret pulls or blocks the reader. Freezing is handled by `StallDetector`, a silence-timeout nudge, not a rate mechanic — see *Pace verdict*.
-12. **Live follow-along stays on-device. GOP may leave the phone.** Cursor bar is <500ms p99. Do not stream the karaoke path through a cloud STT. On-device-only was a publishing convenience, not a user demand (2026-09-18).
-13. **Optimistic live fill** from mic RMS before ASR; **sticky heard** trail for the session; **presence walk** may lead ASR for UI only (2026-09-19). Reasoning in `docs/scoping-reading-follow-along.md` §§4.9–4.11, §4.18.
+12. **Live mic path stays on-device. GOP may leave the phone.** Do not stream the live path through a cloud STT. On-device-only was a publishing convenience, not a user demand (2026-09-18). Word-accurate ASR caret &lt;500ms p99 is **not** the UX bar after Pass 7.
+13. **Aurora presence** from mic RMS (`speechEnergy`); word occupancy still powers the report only (2026-09-19 Pass 7). SpanWalk/PassageSpan remain in kit but are not driven for UI. Reasoning in `docs/scoping-reading-follow-along.md` §3, §6 item 8.
 
 ---
 
@@ -140,10 +139,8 @@ Live:
   AudioSource → PCMStore
        ├─► SpeechTranscriber or DictationTranscriber (volatile + n-best + time ranges)
        │         └─► TokenAligner (soft@cursor, hold-not-substitute, unique-content skip-ahead, monotonic caret)
-       │                        → currentWordID (ASR caret truth / occupancy)
-       │                        → sticky heardWordIDs + liveSkipMarks
-       │                        → hintNextWordID (suggestion only)
-       ├─► PresenceWalk (mic RMS only) → presenceWordID / trail (UI paint + scroll; never heard/score)
+       │                        → currentWordID / sticky heardWordIDs (report occupancy only)
+       ├─► speechEnergy (RMS) → AuroraPresenceView (live trust; lag-free)
        ├─► StallDetector (VAD silence timeout → gentle nudge, never blocks)
        └─► [Slice B] when a word becomes finalized:
                  GOPScorer.cpuOnly(pcmSlice, canonicalPhones)
@@ -186,7 +183,7 @@ Full reasoning for each live rule: `docs/scoping-reading-follow-along.md`.
 - No Azure / ELSA AccuracyScore.
 - No LLM-generated passages.
 - No live IPA, spectrograms, or 0–100 accent meter.
-- Anxiety: live marks are **karaoke occupancy + sticky heard trail + skip pills** (guidance, not a grade), not a native-likeness cop. Keep-going is a hint only. Extra/swap wait until Stop. Poor-sound marks wait one word and stay non-red.
+- Anxiety: live marks are **span wash + mic pulse** (guidance, not a grade), not a native-likeness cop. Keep-going is a next-span hint only. Skip/extra/swap wait until Stop. Poor-sound marks wait one word and stay non-red.
 - **No forced pace caret, ever, in this format** (this revision) — rate is measured and self-referential only; freezing is handled by a non-blocking stall nudge, not a rate mechanic.
 
 ---

@@ -84,8 +84,8 @@ public struct SessionReport: Equatable, Sendable, Codable, Identifiable {
         missedPhoneTags: [MissedPhoneTag],
         wordAnalyses: [WordAnalysis] = [],
         engineKind: String,
-        followAlongNote: String = "Blue words mean we’re with you on that spot in the passage — not that pronunciation was graded. Scoring happens after you stop.",
-        gopNote: String = "Fine sound-by-sound scoring uses a specialized model path (not Apple’s general speech recognizer). That scorer is not wired yet; audio was captured for analysis and then discarded.",
+        followAlongNote: String = "Follow-along counts words we heard against the passage. It is not a pronunciation grade.",
+        gopNote: String = "Sound-by-sound scoring is not on yet. Audio used for that is discarded after this report.",
         diagnosticsLogPath: String? = nil
     ) {
         self.id = id

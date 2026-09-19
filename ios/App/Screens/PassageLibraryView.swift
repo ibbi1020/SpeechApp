@@ -9,68 +9,104 @@ struct PassageLibraryView: View {
         ZStack {
             SpeechScreenBackground()
 
-            List {
-                Section {
-                    Text("Pick a passage to practice. Longer versions give the follow-along path more to work with.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .listRowBackground(Color.clear)
-                }
-
-                ForEach(model.catalog.families, id: \.self) { family in
-                    Section(familyTitle(family)) {
-                        ForEach(model.catalog.passages(inFamily: family)) { passage in
-                            Button {
-                                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                                    model.selectPassage(passage)
-                                }
-                            } label: {
-                                HStack(alignment: .top, spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(passage.title)
-                                            .font(.body.weight(.semibold))
-                                            .foregroundStyle(.primary)
-                                            .multilineTextAlignment(.leading)
-                                        Text("\(passage.wordCount) words · ~\(passage.estimatedSeconds)s · \(passage.length.label)")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                        if !passage.contrastTags.isEmpty {
-                                            Text(passage.contrastTags.joined(separator: " · "))
-                                                .font(.caption2)
-                                                .foregroundStyle(.tertiary)
-                                                .lineLimit(1)
-                                        }
-                                    }
-                                    Spacer(minLength: 8)
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.tertiary)
-                                }
-                                .padding(.vertical, 4)
-                            }
-                        }
+            ScrollView {
+                VStack(alignment: .leading, spacing: SpeechSpacing.section) {
+                    if let featured = model.featuredPassage {
+                        featuredCard(featured)
                     }
+
+                    moreSection
                 }
+                .padding(.horizontal, SpeechSpacing.page)
+                .padding(.top, SpeechSpacing.related)
+                .padding(.bottom, 40)
             }
-            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Passages")
         .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Suggested") {
-                    withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                        model.beginSuggestedReading()
-                    }
+    }
+
+    private func featuredCard(_ passage: Passage) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: SpeechSpacing.cluster) {
+                Text(passage.title)
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(passage.text)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+            }
+
+            Text(passage.durationLabel)
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+                .padding(.top, SpeechSpacing.related)
+
+            Button("Start") {
+                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
+                    model.selectPassage(passage)
                 }
             }
+            .buttonStyle(SpeechPrimaryButtonStyle())
+            .padding(.top, 22)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
+    }
+
+    private var moreSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("More to read")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.6)
+
+            VStack(spacing: 0) {
+                ForEach(Array(model.morePassages.enumerated()), id: \.element.id) { index, passage in
+                    if index > 0 {
+                        Divider()
+                            .padding(.leading, 20)
+                    }
+                    moreRow(passage)
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
+            )
         }
     }
 
-    private func familyTitle(_ family: String) -> String {
-        family
-            .replacingOccurrences(of: "-", with: " / ")
-            .replacingOccurrences(of: "ae", with: "æ")
-            .capitalized
+    private func moreRow(_ passage: Passage) -> some View {
+        Button {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
+                model.selectPassage(passage)
+            }
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                Text(passage.title)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 16)
+                Text(passage.durationLabel)
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

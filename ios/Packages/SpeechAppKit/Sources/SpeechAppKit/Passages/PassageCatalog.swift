@@ -29,6 +29,11 @@ public struct PassageCatalog: Equatable, Sendable {
             }
     }
 
+    /// Full passages only. Short variants stay in the bundle for later work.
+    public var pickerPassages: [Passage] {
+        passages.filter { $0.length == .long }
+    }
+
     private func lengthRank(_ length: PassageLength) -> Int {
         switch length {
         case .short: return 0
@@ -82,7 +87,7 @@ public struct PassageCatalog: Equatable, Sendable {
                 id: "mixed-1",
                 family: "mixed",
                 length: .long,
-                title: "Evening Walk — mixed practice",
+                title: "Evening Walk",
                 text: "On an evening walk by the river we view vivid lights while a light rain runs along the long road",
                 tags: ["ɪ-i", "l-r"],
                 phones: ["ɪ", "i", "l", "r"],
@@ -199,10 +204,14 @@ extension PassageCatalog {
 
 public enum NextPassagePicker {
     public static func pick(catalog: PassageCatalog, ledger: StruggleLedger) -> Passage? {
-        guard !catalog.passages.isEmpty else { return nil }
+        let pool = catalog.pickerPassages
+        guard !pool.isEmpty else { return nil }
 
         if ledger.phones.isEmpty && ledger.skipWords.isEmpty {
-            return catalog.passages.first(where: \.isBalancedDefault) ?? catalog.passages.first
+            if let balanced = catalog.passages.first(where: \.isBalancedDefault) {
+                return pool.first { $0.family == balanced.family } ?? pool.first
+            }
+            return pool.first
         }
 
         let highFL = Set(ledger.phones.filter { $0.flBand == .high }.map(\.phone))
@@ -216,7 +225,7 @@ public enum NextPassagePicker {
             return (highHits, otherHits, unseenBoost)
         }
 
-        return catalog.passages.max { lhs, rhs in
+        return pool.max { lhs, rhs in
             let a = score(lhs)
             let b = score(rhs)
             if a.0 != b.0 { return a.0 < b.0 }

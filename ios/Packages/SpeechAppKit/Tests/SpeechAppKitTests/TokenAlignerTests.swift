@@ -233,4 +233,28 @@ struct TokenAlignerTests {
         #expect(phrases.contains("word39"))
         #expect(!phrases.contains("word0 word1 word2"))
     }
+
+    @Test("commitHeardTrail promotes sticky-heard words at the cursor")
+    func commitHeardTrail() {
+        let aligner = TokenAligner(script: words(["the", "quick", "fox", "jumps"]))
+        _ = aligner.ingest(spoken("the"))
+        // Simulate sticky heard of next two without finals.
+        let events = aligner.commitHeardTrail(Set(["w1", "w2"]))
+        #expect(events.map(\.op) == [.match, .match])
+        #expect(aligner.scriptCursor == 3)
+        #expect(aligner.currentWordID == "w3")
+    }
+
+    @Test("soft match does not collapse ship and sheep")
+    func shipSheepNotSoft() {
+        #expect(TokenAligner.isSoftMatch("ship", "sheep") == false)
+        #expect(TokenAligner.isSoftMatch("sheep", "ship") == false)
+        let aligner = TokenAligner(
+            script: words(["ship", "then"]),
+            configuration: .init(softScriptMatch: true)
+        )
+        let events = aligner.ingest(spoken("sheep"))
+        #expect(events.map(\.op) == [.insertSpoken])
+        #expect(aligner.scriptCursor == 0)
+    }
 }

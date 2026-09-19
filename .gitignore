@@ -14,3 +14,6 @@ ios/local.xcconfig
 
 # Device session diagnostics (share locally; do not commit)
 logs/
+
+# Local visual-companion mockups
+.superpowers/
