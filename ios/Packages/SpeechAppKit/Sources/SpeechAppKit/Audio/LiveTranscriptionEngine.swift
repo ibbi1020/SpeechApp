@@ -272,7 +272,7 @@ public final class LiveTranscriptionEngine: @unchecked Sendable {
         speechTranscriber = nil
 
         if let resultsTask {
-            await Self.awaitTask(resultsTask, timeoutMs: 2_500)
+            await Self.awaitTask(resultsTask, timeoutMs: Self.resultsDrainTimeoutMs)
             resultsTask.cancel()
         }
         resultsTask = nil
@@ -294,6 +294,9 @@ public final class LiveTranscriptionEngine: @unchecked Sendable {
         fallbackRequest = nil
         fallbackRecognizer = nil
     }
+
+    /// Apple on-device final p50 is ~6s; shorter caps cut the occupancy tail.
+    private static let resultsDrainTimeoutMs: UInt64 = 15_000
 
     private static func awaitTask(_ task: Task<Void, Never>, timeoutMs: UInt64) async {
         await withTaskGroup(of: Void.self) { group in

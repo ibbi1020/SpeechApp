@@ -5,6 +5,7 @@ import SpeechAppKit
 struct ReadingSessionView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let passage: Passage
 
     @State private var session: ReadingSession?
@@ -26,16 +27,47 @@ struct ReadingSessionView: View {
         session?.phase == .finishing
     }
 
+    /// Fog until listening starts (countdown or engine prep).
+    private var isFogged: Bool {
+        countdownRemaining != nil || isPreparing
+    }
+
+    private var fogBlurRadius: CGFloat {
+        isFogged && !reduceTransparency ? SpeechCountdown.fogBlurRadius : 0
+    }
+
+    private var fogWashOpacity: Double {
+        guard isFogged else { return 0 }
+        return reduceTransparency
+            ? SpeechCountdown.reducedTransparencyWash
+            : SpeechCountdown.fogWashOpacity
+    }
+
     var body: some View {
         ZStack {
             SpeechScreenBackground()
 
             passageScroll
                 .scrollEdgeEffectStyle(.soft, for: .bottom)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    bottomChrome
+                .blur(radius: fogBlurRadius)
+                .overlay {
+                    Color.black.opacity(fogWashOpacity)
+                        .allowsHitTesting(false)
                 }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if !isFogged {
+                        bottomChrome
+                    }
+                }
+                .accessibilityHidden(isFogged)
+                .allowsHitTesting(!isFogged)
+
+            if isFogged {
+                ReadingCountdownOverlay(remaining: countdownRemaining)
+            }
         }
+        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
+        .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             if session == nil {
@@ -74,16 +106,16 @@ struct ReadingSessionView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(passage.title)
                         .font(.system(.title2, design: .serif).weight(.semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(isFogged ? .tertiary : .primary)
 
                     Text(passage.durationLabel)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(isFogged ? .tertiary : .secondary)
                 }
 
                 Text(passage.text)
                     .font(.system(size: 22, weight: .regular, design: .serif))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(isFogged ? .tertiary : .primary)
                     .lineSpacing(10)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -116,7 +148,6 @@ struct ReadingSessionView: View {
         .padding(.top, 12)
         .padding(.bottom, 16)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: session?.phase)
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.follow, value: countdownRemaining)
     }
 
     /*
@@ -188,8 +219,6 @@ struct ReadingSessionView: View {
                 }
                 .buttonStyle(SpeechPrimaryButtonStyle(isDestructive: true))
             }
-        } else if countdownRemaining != nil || isPreparing {
-            countdownChrome
         } else {
             Button("Start") {
                 startPulse.toggle()
@@ -199,30 +228,6 @@ struct ReadingSessionView: View {
             .buttonStyle(SpeechPrimaryButtonStyle())
             .sensoryFeedback(.impact(flexibility: .soft), trigger: startPulse)
         }
-    }
-
-    private var countdownChrome: some View {
-        VStack(spacing: 6) {
-            if let countdownRemaining {
-                Text("\(countdownRemaining)")
-                    .font(.system(size: 64, weight: .semibold))
-                    .monospacedDigit()
-                    .contentTransition(reduceMotion ? .opacity : .numericText())
-                    .animation(
-                        reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle,
-                        value: countdownRemaining
-                    )
-            } else {
-                ProgressView()
-            }
-            Text("Get ready")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(countdownRemaining.map { "Get ready, \($0)" } ?? "Starting")
     }
 
     private func beginStart() async {

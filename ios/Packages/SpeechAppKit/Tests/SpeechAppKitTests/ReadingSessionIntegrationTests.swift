@@ -78,7 +78,7 @@ struct ReadingSessionIntegrationTests {
         _ = aligner.ingest(SpokenToken(surface: "three", isFinal: true))
         _ = aligner.ingest(SpokenToken(surface: "bonus", isFinal: true))
         let kinds = aligner.liveMarks().map(\.kind)
-        #expect(kinds == [.skip, .extra])
+        #expect(kinds == [.extra])
     }
 
     @Test("FileReplayAudioSource streams bundled silence WAV")

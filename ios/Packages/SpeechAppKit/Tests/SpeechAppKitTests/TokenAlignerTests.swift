@@ -22,13 +22,47 @@ struct TokenAlignerTests {
         #expect(aligner.currentWordID == "w1")
     }
 
-    @Test("skip-script when spoken word appears ahead in lookahead")
-    func skipScript() {
-        let aligner = TokenAligner(script: words(["the", "quick", "fox"]), lookahead: 4)
-        let events = aligner.ingest(spoken("quick"))
-        #expect(events.map(\.op) == [.skipScript, .match])
-        #expect(events[0].scriptWordID == "w0")
-        #expect(aligner.scriptCursor == 2)
+    @Test("catch-up over omitted words fills occupancy instead of skip-script")
+    func catchUpIsOccupancyFill() {
+        // Apple finals often drop "vivid waves with" then emit "very" — that is
+        // ASR omission, not a user skip (session 2026-09-20T18-32-08Z).
+        let aligner = TokenAligner(
+            script: words(["the", "vivid", "waves", "with", "very", "wide"]),
+            lookahead: 4
+        )
+        let events = aligner.ingest(spoken("very"))
+        #expect(events.map(\.op) == [.match, .match, .match, .match, .match])
+        #expect(events.map(\.scriptSurface) == ["the", "vivid", "waves", "with", "very"])
+        #expect(aligner.skippedWordIDs.isEmpty)
+        #expect(aligner.scriptCursor == 5)
+    }
+
+    @Test("single-letter contrast targets do not skip-script the lead-in")
+    func vwContrastCatchUp() {
+        let aligner = TokenAligner(
+            script: words(["Keep", "v", "and", "w", "distinct"]),
+            lookahead: 4
+        )
+        let events = aligner.ingest(spoken("w"))
+        #expect(events.filter { $0.op == .skipScript }.isEmpty)
+        #expect(events.filter { $0.op == .match }.count == 4)
+        #expect(aligner.scriptCursor == 4)
+        #expect(aligner.currentWordID == "w4")
+    }
+
+    @Test("Park Bench whole/scene catch-up does not skip-script")
+    func parkBenchWholeScene() {
+        // session-2026-09-20T19-08-46Z: finals jumped whole -> scene.
+        let aligner = TokenAligner(
+            script: words(["Read", "the", "whole", "scene", "once"]),
+            lookahead: 6
+        )
+        _ = aligner.ingest(spoken("Read"))
+        _ = aligner.ingest(spoken("the"))
+        let events = aligner.ingest(spoken("scene"))
+        #expect(events.filter { $0.op == .skipScript }.isEmpty)
+        #expect(events.map(\.scriptSurface) == ["whole", "scene"])
+        #expect(aligner.skippedWordIDs.isEmpty)
     }
 
     @Test("common word the must not false-skip ahead")
@@ -107,10 +141,13 @@ struct TokenAlignerTests {
     @Test("liveMarks maps skip/extra/substitute only")
     func liveMarks() {
         let aligner = TokenAligner(script: words(["one", "two"]))
-        _ = aligner.ingest(spoken("two")) // skip "one", match "two"
+        _ = aligner.ingest(spoken("two")) // catch-up fills "one", match "two"
         _ = aligner.ingest(spoken("extra"))
         let marks = aligner.liveMarks()
-        #expect(marks.map(\.kind) == [.skip, .extra])
+        #expect(marks.map(\.kind) == [.extra])
+        // Unread tail is still a skip mark after finish.
+        _ = aligner.finish()
+        #expect(aligner.liveMarks().map(\.kind) == [.extra])
     }
 
     @Test("normalization ignores case and punctuation")
@@ -154,13 +191,16 @@ struct TokenAlignerTests {
         #expect(aligner.scriptCursor == 0)
     }
 
-    @Test("volatile preview jumps ahead and reports provisional skips")
-    func volatilePreviewKeepGoingJump() {
-        let aligner = TokenAligner(script: words(["the", "quick", "brown", "fox"]), lookahead: 6)
-        let preview = aligner.previewVolatile(surfaces: ["brown"])
-        #expect(preview.provisionalMatchedIDs == ["w2"])
-        #expect(preview.provisionalSkippedIDs == ["w0", "w1"])
-        #expect(preview.currentWordID == "w3")
+    @Test("volatile catch-up marks omitted words as heard, not skipped")
+    func volatileCatchUpHeard() {
+        let aligner = TokenAligner(
+            script: words(["the", "vivid", "waves", "with", "very"]),
+            lookahead: 6
+        )
+        let preview = aligner.previewVolatile(surfaces: ["very"])
+        #expect(preview.provisionalMatchedIDs == ["w0", "w1", "w2", "w3", "w4"])
+        #expect(preview.provisionalSkippedIDs.isEmpty)
+        #expect(preview.currentWordID == nil)
     }
 
     @Test("volatile preview advances cursor without committing events")
@@ -202,11 +242,59 @@ struct TokenAlignerTests {
         #expect(aligner.monotonicWordID(proposing: "w2") == "w2")
     }
 
-    @Test("skip-script ids are the missed words")
-    func skipScriptIDs() {
+    @Test("unread tail after finish is still skip-script")
+    func finishMarksUnreadAsSkip() {
         let aligner = TokenAligner(script: words(["the", "quick", "fox"]), lookahead: 4)
-        _ = aligner.ingest(spoken("quick"))
-        #expect(aligner.skippedWordIDs == ["w0"])
+        _ = aligner.ingest(spoken("the"))
+        let trailing = aligner.finish()
+        #expect(trailing.map(\.op) == [.skipScript, .skipScript])
+        #expect(aligner.skippedWordIDs == ["w1", "w2"])
+    }
+
+    @Test("bestScriptAlternative prefers the longer hypothesis over a short n-best")
+    func prefersLongerHypothesis() {
+        let aligner = TokenAligner(script: words(["we", "view", "the", "vivid", "waves"]))
+        let chosen = aligner.bestScriptAlternative(
+            candidates: [
+                ["we"],
+                ["wee"],
+                ["we", "view", "the", "vivid", "waves"],
+            ]
+        )
+        #expect(chosen == ["we", "view", "the", "vivid", "waves"])
+    }
+
+    @Test("cumulative hypothesis still occupies the tail after a prefix ASR miss")
+    func resilientPrefixStripOccupiesTail() {
+        // session-2026-09-20T19-17-46Z: caret stuck on "and" while volatiles
+        // grew to 10 because exact prefix-strip failed on an earlier substitution.
+        let aligner = TokenAligner(
+            script: words(["Practice", "both", "the", "quiet", "th", "and", "the", "voiced", "th"]),
+            lookahead: 8
+        )
+        for surface in ["Practice", "both", "the", "quiet", "th"] {
+            _ = aligner.ingest(spoken(surface))
+        }
+        #expect(aligner.scriptCursor == 5)
+
+        let preview = aligner.previewVolatile(surfaces: [
+            "Practice", "both", "the", "quiet", "the", // ASR said "the" not "th"
+            "and", "the", "voiced", "th",
+        ])
+        #expect(preview.provisionalMatchedIDs.contains("w5"))
+        #expect(preview.provisionalMatchedIDs.contains("w7"))
+        #expect(aligner.skippedWordIDs.isEmpty)
+    }
+
+    @Test("occupancySurfaces keeps raw text in the candidate set")
+    func occupancySurfacesIncludesRawText() {
+        let candidates = ReadingSession.occupancySurfaces(
+            rawText: "we view the vivid waves",
+            alternatives: [["we"], ["wee"]]
+        )
+        let aligner = TokenAligner(script: words(["we", "view", "the", "vivid", "waves"]))
+        let chosen = aligner.bestScriptAlternative(candidates: candidates)
+        #expect(chosen == ["we", "view", "the", "vivid", "waves"])
     }
 
     @Test("bestScriptAlternative prefers the alt that matches next script words")

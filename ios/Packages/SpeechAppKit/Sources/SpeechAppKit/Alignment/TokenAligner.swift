@@ -174,20 +174,13 @@ public final class TokenAligner: @unchecked Sendable {
             return emitMatch(spoken: spoken)
         }
 
-        // Look ahead for the spoken word in upcoming script (skip intermediates)
+        // Look ahead for the spoken word in upcoming script.
+        // Intermediates are occupancy fill, not user-skips: Apple finals routinely
+        // drop short/mid words, and unique-content leap then false-skips them.
         if let ahead = findAhead(spokenNorm) {
             var produced: [AlignmentEvent] = []
             while scriptCursor < ahead {
-                let skipped = script[scriptCursor]
-                let skipEvent = AlignmentEvent(
-                    op: .skipScript,
-                    scriptWordID: skipped.id,
-                    scriptSurface: skipped.surface,
-                    scriptIndex: scriptCursor
-                )
-                events.append(skipEvent)
-                produced.append(skipEvent)
-                scriptCursor += 1
+                produced.append(contentsOf: emitScriptMatch())
             }
             produced.append(contentsOf: emitMatch(spoken: spoken))
             return produced
@@ -207,9 +200,11 @@ public final class TokenAligner: @unchecked Sendable {
             return [event]
         }
 
-        // Restart: only when the spoken token is exactly the first script word
-        // (user started over). Soft / mid-script matches here caused false leaps.
-        if scriptCursor > 1, script[0].normalized == spokenNorm {
+        // Restart: only when the spoken token is the first script word *and* not a
+        // function word. Short late finals like "the quick" were rewinding occupancy.
+        if scriptCursor > 1,
+           script[0].normalized == spokenNorm,
+           !Self.isFunctionWord(spokenNorm) {
             let event = AlignmentEvent(
                 op: .restart,
                 scriptWordID: script[0].id,
@@ -259,13 +254,12 @@ public final class TokenAligner: @unchecked Sendable {
     /// Among ASR alternatives, pick the surface list that best occupies the
     /// upcoming script window (exact/soft matches from the committed cursor).
     public func bestScriptAlternative(candidates: [[String]]) -> [String]? {
-        guard !candidates.isEmpty else { return nil }
         var best: [String]?
-        var bestScore = -1
+        var bestRank = (score: Int.min, length: Int.min)
         for candidate in candidates {
-            let score = occupancyScore(surfaces: candidate)
-            if score > bestScore {
-                bestScore = score
+            let rank = (score: occupancyScore(surfaces: candidate), length: candidate.count)
+            if rank > bestRank {
+                bestRank = rank
                 best = candidate
             }
         }
@@ -294,63 +288,63 @@ public final class TokenAligner: @unchecked Sendable {
 
     /// Preview volatile ASR text without mutating committed alignment.
     ///
-    /// Advances on exact/soft matches at the cursor. Jump-ahead only when a later
-    /// **unique content** word matches exactly (same rule as finals) — never on
-    /// "the"/"to"/etc., which caused multi-line false skips.
+    /// Advances on exact/soft matches at the cursor. Unique-content jump-ahead
+    /// fills omitted words as heard. Function-word leftovers are skipped, not a freeze.
     public func previewVolatile(surfaces: [String]) -> VolatilePreview {
         var cursor = scriptCursor
         var provisionalMatched: [String] = []
-        var provisionalSkipped: [String] = []
 
         for spokenNorm in stripCommittedPrefix(from: surfaces) {
             guard cursor < script.count else { break }
+            let matchedThrough: Int
             if matches(script[cursor].normalized, spokenNorm) {
-                provisionalMatched.append(script[cursor].id)
-                cursor += 1
+                matchedThrough = cursor
+            } else if let ahead = findUniqueContentAhead(spokenNorm, from: cursor + 1) {
+                matchedThrough = ahead
+            } else if Self.isFunctionWord(spokenNorm) {
                 continue
+            } else {
+                break
             }
-            // Adjacent exact next-word only if unique content — or any exact unique content ahead.
-            if let ahead = findUniqueContentAhead(spokenNorm, from: cursor + 1) {
-                while cursor < ahead {
-                    provisionalSkipped.append(script[cursor].id)
-                    cursor += 1
-                }
-                provisionalMatched.append(script[ahead].id)
-                cursor = ahead + 1
-                continue
-            }
-            break
+            provisionalMatched.append(contentsOf: script[cursor...matchedThrough].map(\.id))
+            cursor = matchedThrough + 1
         }
 
-        let nextID: String? = cursor < script.count ? script[cursor].id : nil
         return VolatilePreview(
-            currentWordID: nextID,
-            provisionalMatchedIDs: provisionalMatched,
-            provisionalSkippedIDs: provisionalSkipped
+            currentWordID: cursor < script.count ? script[cursor].id : nil,
+            provisionalMatchedIDs: provisionalMatched
         )
     }
 
     /// Drop surfaces already accounted for by the committed script cursor when the
     /// hypothesis is cumulative (common for progressive Dictation/Speech results).
+    ///
+    /// Exact walk first. If the last committed word was substituted or dropped,
+    /// treat the prefix as done and keep the remainder so occupancy can continue.
     private func stripCommittedPrefix(from surfaces: [String]) -> [String] {
-        var spoken = surfaces.map(ScriptWord.normalize).filter { !$0.isEmpty }
+        let spoken = surfaces.map(ScriptWord.normalize).filter { !$0.isEmpty }
         guard scriptCursor > 0, !spoken.isEmpty else { return spoken }
 
-        var prefixIdx = 0
+        var spokenIdx = 0
         var scriptIdx = 0
-        while prefixIdx < spoken.count, scriptIdx < scriptCursor {
-            // Exact only when stripping — soft strip ate real words and desynced the caret.
-            if script[scriptIdx].normalized == spoken[prefixIdx] {
+        var extras = 0
+        let extraBudget = 4
+        while scriptIdx < scriptCursor, spokenIdx < spoken.count {
+            if script[scriptIdx].normalized == spoken[spokenIdx] {
                 scriptIdx += 1
-                prefixIdx += 1
-            } else {
-                break
+                spokenIdx += 1
+                continue
             }
+            // Last committed word was substituted — keep that spoken token and the tail.
+            if scriptIdx == scriptCursor - 1 {
+                return Array(spoken.dropFirst(spokenIdx))
+            }
+            extras += 1
+            if extras > extraBudget { break }
+            spokenIdx += 1
         }
-        if scriptIdx == scriptCursor {
-            spoken = Array(spoken[prefixIdx...])
-        }
-        return spoken
+        guard scriptIdx >= scriptCursor else { return spoken }
+        return Array(spoken.dropFirst(spokenIdx))
     }
 
     /// Promote sticky-heard script words still sitting at the cursor into matches.
@@ -367,15 +361,14 @@ public final class TokenAligner: @unchecked Sendable {
     }
 
     /// Promote a volatile occupancy preview into committed match events (e.g. on Stop).
-    /// Used when Apple finals never arrived but the user already saw progress on screen.
+    /// IDs already behind the cursor are skipped so a stale prefix does not abort the tail.
     @discardableResult
     public func commitProvisionalMatches(_ wordIDs: [String]) -> [AlignmentEvent] {
         var produced: [AlignmentEvent] = []
         for id in wordIDs {
             guard scriptCursor < script.count else { break }
-            guard script[scriptCursor].id == id else { break }
-            let surface = script[scriptCursor].surface
-            produced.append(contentsOf: emitMatch(spoken: SpokenToken(surface: surface, isFinal: true)))
+            guard script[scriptCursor].id == id else { continue }
+            produced.append(contentsOf: emitScriptMatch())
         }
         return produced
     }
@@ -495,6 +488,11 @@ public final class TokenAligner: @unchecked Sendable {
         return [event]
     }
 
+    /// Occupancy fill for a script word with no corresponding ASR token.
+    private func emitScriptMatch() -> [AlignmentEvent] {
+        emitMatch(spoken: SpokenToken(surface: script[scriptCursor].surface, isFinal: true))
+    }
+
     private func updateCurrentWordID() {
         if scriptCursor < script.count {
             currentWordID = script[scriptCursor].id
@@ -505,7 +503,7 @@ public final class TokenAligner: @unchecked Sendable {
         }
     }
 
-    /// Look ahead for a **real** skip: exact match, unique in the window, and not a
+    /// Look ahead for catch-up: exact match, unique in the window, and not a
     /// function word. Common ASR tokens like "the"/"to" must never leap the caret.
     private func findAhead(_ spokenNorm: String) -> Int? {
         findUniqueContentAhead(spokenNorm, from: scriptCursor + 1)

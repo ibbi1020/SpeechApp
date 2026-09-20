@@ -25,6 +25,17 @@ enum SpeechSpacing {
     static let section: CGFloat = 36
 }
 
+/// Reading start-gate tokens. Fog the page until listening starts.
+enum SpeechCountdown {
+    /// Soft enough that the page stays present, just not readable.
+    static let fogBlurRadius: CGFloat = 7
+    static let fogWashOpacity: Double = 0.18
+    /// Heavier wash when Reduce Transparency disables blur.
+    static let reducedTransparencyWash: Double = 0.52
+    static let digitSize: CGFloat = 92
+    static let instruction = "Take a deep breath and read at your own pace"
+}
+
 struct SpeechScreenBackground: View {
     var body: some View {
         LinearGradient(
@@ -72,6 +83,52 @@ struct SpeechSecondaryButtonStyle: ButtonStyle {
             )
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(SpeechMotion.press, value: configuration.isPressed)
+    }
+}
+
+/// Sharp 3-2-1 over a fogged passage. The number is the only in-focus object.
+struct ReadingCountdownOverlay: View {
+    let remaining: Int?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var accessibilityText: String {
+        if let remaining {
+            "\(remaining). \(SpeechCountdown.instruction)"
+        } else {
+            SpeechCountdown.instruction
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            if let remaining {
+                Text("\(remaining)")
+                    .font(.system(size: SpeechCountdown.digitSize, weight: .semibold))
+                    .monospacedDigit()
+                    .contentTransition(reduceMotion ? .opacity : .numericText())
+                    .foregroundStyle(.primary)
+                    .animation(
+                        reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle,
+                        value: remaining
+                    )
+            } else {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(.primary)
+            }
+
+            Text(SpeechCountdown.instruction)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 260)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .offset(y: -12)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.updatesFrequently)
+        .accessibilityLabel(accessibilityText)
+        .allowsHitTesting(false)
     }
 }
 

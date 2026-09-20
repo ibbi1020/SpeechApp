@@ -80,6 +80,8 @@ public final class ReadingSession {
     private var lastOccupancyAdvanceAt: TimeInterval?
     private var lastRawHypothesis: String = ""
     private static let fallingBehindSeconds: TimeInterval = 1.25
+    private static let audioDrainTimeoutMs: UInt64 = 1_000
+    private static let transcriptDrainTimeoutMs: UInt64 = 15_000
 
     public init(
         passage: Passage,
@@ -198,15 +200,21 @@ public final class ReadingSession {
         speechEnergy = 0
         showStallNudge = false
 
-        audioTask?.cancel()
-        audioTask = nil
         await audioSource?.stop()
 
+        // Drain remaining PCM into the analyzer before finalize. Cancelling first
+        // dropped the last words the user had already spoken.
+        if let audioTask {
+            await Self.awaitTask(audioTask, timeoutMs: Self.audioDrainTimeoutMs)
+        }
+        audioTask = nil
+
         // Engine drains late finals into transcriptTask before closing updates.
+        // Apple final p50 on device is ~6s; a 2.5s cap cut the tail.
         await engine?.stop()
 
         if let transcriptTask {
-            await Self.awaitTask(transcriptTask, timeoutMs: 3_000)
+            await Self.awaitTask(transcriptTask, timeoutMs: Self.transcriptDrainTimeoutMs)
             transcriptTask.cancel()
         }
         transcriptTask = nil
@@ -271,6 +279,28 @@ public final class ReadingSession {
         }
     }
 
+    /// Candidate hypotheses for occupancy rerank. Always includes the primary
+    /// `rawText` so a short n-best cannot hide the full transcript.
+    nonisolated public static func occupancySurfaces(
+        rawText: String,
+        alternatives: [[String]],
+        tokenSurfaces: [String] = []
+    ) -> [[String]] {
+        var candidates = alternatives
+        let raw = tokenizeHypothesis(rawText)
+        if !raw.isEmpty {
+            candidates.append(raw)
+        }
+        if !tokenSurfaces.isEmpty {
+            candidates.append(tokenSurfaces)
+        }
+        return candidates
+    }
+
+    nonisolated public static func tokenizeHypothesis(_ text: String) -> [String] {
+        text.split { $0.isWhitespace || $0.isNewline }.map(String.init)
+    }
+
     /// Sliding upcoming unigrams (+ a few rare content words), capped at 100.
     /// Prefer 1–2 token phrases per Apple AnalysisContext guidance — no trigram dump.
     nonisolated public static func contextualPhrases(
@@ -333,7 +363,7 @@ public final class ReadingSession {
         let speakingAtUpdate = isHearingSpeech
 
         if !update.rawText.isEmpty {
-            lastRawHypothesis = update.rawText
+            rememberHypothesis(update.rawText)
         }
 
         if !finals.isEmpty {
@@ -357,14 +387,16 @@ public final class ReadingSession {
         }
 
         if hasVolatile {
+            let candidates = Self.occupancySurfaces(
+                rawText: update.rawText,
+                alternatives: update.alternativeSurfaceLists,
+                tokenSurfaces: volatileTokens.map(\.surface).filter { !$0.isEmpty }
+            )
             let surfaces: [String]
-            if let best = aligner.bestScriptAlternative(candidates: update.alternativeSurfaceLists),
-               !best.isEmpty {
+            if let best = aligner.bestScriptAlternative(candidates: candidates), !best.isEmpty {
                 surfaces = best
             } else {
-                surfaces = update.rawText
-                    .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
-                    .map(String.init)
+                surfaces = Self.tokenizeHypothesis(update.rawText)
             }
             let preview = aligner.previewVolatile(surfaces: surfaces)
             let proposed = preview.currentWordID ?? aligner.currentWordID
@@ -379,8 +411,8 @@ public final class ReadingSession {
             if let firstVolatile = update.tokens.first(where: { !$0.isFinal }) {
                 recordCaretLatency(token: firstVolatile, wordID: currentWordID, volatile: true)
             }
-        } else {
-            provisionalMatchedIDs = []
+        } else if provisionalMatchedIDs.isEmpty {
+            // Keep an existing occupancy trail when a short final arrives with no volatile.
             volatileHint = ""
             currentWordID = aligner.monotonicWordID(proposing: aligner.currentWordID)
         }
@@ -529,7 +561,7 @@ public final class ReadingSession {
         refreshRegistrationHealth(speaking: speaking)
 
         let fired = stallDetector.process(samples: chunk.samples, at: chunk.hostTime)
-        if fired {
+        if phase != .finishing, fired {
             stallEventCount += 1
             showStallNudge = true
             phase = .stalled
@@ -568,7 +600,18 @@ public final class ReadingSession {
         if !provisionalMatchedIDs.isEmpty {
             return provisionalMatchedIDs
         }
-        return previewMatchIDs(from: volatileHint)
+        let hypothesis = lastRawHypothesis.isEmpty ? volatileHint : lastRawHypothesis
+        return previewMatchIDs(from: hypothesis)
+    }
+
+    /// Keep the hypothesis that occupies the most remaining script. Short late
+    /// finals (2–3 tokens) must not replace a 10-word volatile tail.
+    private func rememberHypothesis(_ text: String) {
+        let incoming = (occupancy: previewMatchIDs(from: text).count, length: text.count)
+        let current = (occupancy: previewMatchIDs(from: lastRawHypothesis).count, length: lastRawHypothesis.count)
+        if incoming >= current {
+            lastRawHypothesis = text
+        }
     }
 
     /// On Stop: commit what the user already saw as progress before `finish()` skips the rest.
@@ -587,10 +630,7 @@ public final class ReadingSession {
 
     private func previewMatchIDs(from raw: String) -> [String] {
         guard !raw.isEmpty else { return [] }
-        let surfaces = raw
-            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
-            .map(String.init)
-        return aligner.previewVolatile(surfaces: surfaces).provisionalMatchedIDs
+        return aligner.previewVolatile(surfaces: Self.tokenizeHypothesis(raw)).provisionalMatchedIDs
     }
 
     private func absorbMatchEvents(_ produced: [AlignmentEvent]) {
