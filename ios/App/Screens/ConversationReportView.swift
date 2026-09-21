@@ -6,10 +6,6 @@ struct ConversationReportView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let report: ConversationReport
 
-    private var displayLines: [ConversationReport.Line] {
-        report.lines.filter { $0.label == "Time spoken" || $0.label == "Turns" }
-    }
-
     var body: some View {
         ZStack {
             SpeechScreenBackground()
@@ -50,7 +46,7 @@ struct ConversationReportView: View {
 
     private var linesCard: some View {
         VStack(alignment: .leading, spacing: 20) {
-            ForEach(displayLines, id: \.label) { line in
+            ForEach(report.lines, id: \.label) { line in
                 VStack(alignment: .leading, spacing: 4) {
                     Text(line.label)
                         .font(.footnote)

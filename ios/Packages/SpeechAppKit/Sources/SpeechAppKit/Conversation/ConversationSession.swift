@@ -45,6 +45,8 @@ public final class ConversationSession {
     private var openIgnoreRetries = 0
     private var waitingForUser = true
     private var closed = false
+    private var speechRanges: [ConversationSpeechInterval] = []
+    private var userTranscript = ""
 
     public init(
         time: any ConversationTimeSource,
@@ -192,6 +194,8 @@ public final class ConversationSession {
 
     private func onSpeechStopped() async {
         guard phase == .talking else { return }
+        let started = speechStartedAt
+        let stoppedAt = time.now
         speechStartedAt = nil
         waitingForUser = true
         if ghostTurn {
@@ -217,6 +221,17 @@ public final class ConversationSession {
         if empty && userSpeechThisTurn < 0.3 { return }
         userHasSpoken = true
         userTurns += 1
+        if let started, stoppedAt > started {
+            speechRanges.append(ConversationSpeechInterval(start: started, end: stoppedAt))
+        }
+        if !empty {
+            let piece = lastUserText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if userTranscript.isEmpty {
+                userTranscript = piece
+            } else {
+                userTranscript += " " + piece
+            }
+        }
         if let pending = pendingCue, ConversationCueAssembler.v1MaySend(pending) {
             pendingCue = nil
             try? await sendCue(pending)
@@ -282,11 +297,47 @@ public final class ConversationSession {
         case .drop: phase = .dropped
         default: phase = .report
         }
+        // Detectors run after hang-up from recorded timestamps. Never delay
+        // response.create / sendCue; live SpeechAnalyzer PCM fork is deferred.
+        let unionSeconds = ConversationSpeechMetrics.unionDuration(speechRanges)
+        let claimed = userSpeechSeconds > 0 ? userSpeechSeconds : unionSeconds
+        let metrics = ConversationSpeechMetrics.from(
+            ranges: speechRanges,
+            claimedSpeechSeconds: claimed
+        )
+        let spokenForReport = userSpeechSeconds > 0 ? userSpeechSeconds : unionSeconds
         report = ConversationReportBuilder.build(
-            userSpeechSeconds: userSpeechSeconds,
+            userSpeechSeconds: spokenForReport,
             userTurns: userTurns,
-            endReason: reason
+            endReason: reason,
+            extraFullLines: extraFullLines(metrics: metrics, spokenSeconds: unionSeconds > 0 ? unionSeconds : spokenForReport),
+            limitedAnalysis: metrics.limitedAnalysis
         )
         await mouth.close()
+    }
+
+    private func extraFullLines(
+        metrics: ConversationSpeechMetrics,
+        spokenSeconds: TimeInterval
+    ) -> [ConversationReport.Line] {
+        guard !metrics.limitedAnalysis else { return [] }
+        var lines: [ConversationReport.Line] = []
+        if let pace = ConversationPace.syllablesPerMinute(
+            transcript: userTranscript,
+            speechSeconds: spokenSeconds
+        ) {
+            lines.append(ConversationReport.Line(
+                label: "Pace",
+                value: "\(Int(pace.rounded())) syl/min"
+            ))
+        }
+        if speechRanges.count >= 2 {
+            let pause = ConversationPauseTime.seconds(from: speechRanges)
+            lines.append(ConversationReport.Line(
+                label: "Pause time",
+                value: String(format: "%.1fs", pause)
+            ))
+        }
+        return lines
     }
 }

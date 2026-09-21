@@ -58,9 +58,12 @@ public enum ConversationReportBuilder {
                 lines: []
             )
         }
+        let timeValue = limitedAnalysis
+            ? "\(Self.format(userSpeechSeconds)) (uncertain)"
+            : Self.format(userSpeechSeconds)
         let time = ConversationReport.Line(
             label: "Time spoken",
-            value: Self.format(userSpeechSeconds)
+            value: timeValue
         )
         let turns = ConversationReport.Line(
             label: "Turns",
@@ -73,7 +76,8 @@ public enum ConversationReportBuilder {
                 endReason: endReason,
                 userSpeechSeconds: userSpeechSeconds,
                 userTurns: userTurns,
-                lines: [time, turns]
+                lines: [time, turns],
+                limitedAnalysis: limitedAnalysis
             )
         }
         return ConversationReport(

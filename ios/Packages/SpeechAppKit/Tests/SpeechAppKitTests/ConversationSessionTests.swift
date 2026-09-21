@@ -218,6 +218,60 @@ struct ConversationSessionTests {
         session.noteUserSpeech(seconds: 10)
         await session.confirmStop()
         #expect(session.report?.kind == .thin)
+        #expect(session.report?.lines.count == 2)
+        #expect(session.report?.lines.contains(where: { $0.label == "Pace" }) == false)
+        #expect(session.report?.lines.contains(where: { $0.label == "Pause time" }) == false)
+    }
+
+    @Test("full report attaches pace and pause time")
+    @MainActor
+    func fullReportExtraLines() async throws {
+        let (session, mouth, time) = makeSession()
+        try await reachTalking(session)
+        let createsBefore = mouth.responseCreates.count
+        for _ in 0..<3 {
+            await session.handle(.speechStarted)
+            time.advance(20)
+            session.noteUserSpeech(seconds: 20)
+            session.ingestUserText("hello")
+            await session.handle(.speechStopped)
+            time.advance(0.5)
+        }
+        #expect(mouth.responseCreates.count == createsBefore + 3)
+        await session.confirmStop()
+        let report = try #require(session.report)
+        #expect(report.kind == .full)
+        #expect(report.limitedAnalysis == false)
+        #expect(report.lines.contains(where: { $0.label == "Time spoken" && !$0.value.contains("uncertain") }))
+        #expect(report.lines.contains(where: { $0.label == "Pace" && $0.value == "6 syl/min" }))
+        #expect(report.lines.contains(where: { $0.label == "Pause time" && $0.value == "1.0s" }))
+        #expect(!report.lines.contains(where: { $0.label == "Slips" }))
+        #expect(!report.lines.contains(where: { $0.label == "Filled pauses" }))
+        #expect(!report.lines.contains(where: { $0.value.lowercased().contains("too fast") }))
+        #expect(!report.lines.contains(where: { $0.label.lowercased().contains("grammar") }))
+        #expect(!report.lines.contains(where: { $0.label.lowercased().contains("pmi") }))
+    }
+
+    @Test("uncertain coverage omits pace and pause on a full report")
+    @MainActor
+    func uncertainOmitsExtraLines() async throws {
+        let (session, _, time) = makeSession()
+        try await reachTalking(session)
+        for _ in 0..<3 {
+            await session.handle(.speechStarted)
+            time.advance(2)
+            session.noteUserSpeech(seconds: 20)
+            session.ingestUserText("hello")
+            await session.handle(.speechStopped)
+            time.advance(0.5)
+        }
+        await session.confirmStop()
+        let report = try #require(session.report)
+        #expect(report.kind == .full)
+        #expect(report.limitedAnalysis)
+        #expect(report.lines.contains(where: { $0.label == "Time spoken" && $0.value.contains("uncertain") }))
+        #expect(!report.lines.contains(where: { $0.label == "Pace" }))
+        #expect(!report.lines.contains(where: { $0.label == "Pause time" }))
     }
 
     @Test("configDrift hangups with that reason")
