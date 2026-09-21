@@ -122,3 +122,23 @@ test("failed openai mint does not stick concurrent", async () => {
   );
   assert.equal(retry.status, 200);
 });
+
+test("thrown openai mint fetch returns 502 and does not stick concurrent", async () => {
+  const uuid = randomUUID();
+  const now = Date.parse("2026-09-21T12:00:00Z");
+  const thrown = await request(
+    { method: "POST", path: "/v1/conversation/mint", uuid },
+    {
+      now,
+      openaiFetch: async () => {
+        throw new Error("network");
+      },
+    },
+  );
+  assert.equal(thrown.status, 502);
+  const retry = await request(
+    { method: "POST", path: "/v1/conversation/mint", uuid },
+    { now: now + 1000, openaiFetch: okOpenAI() },
+  );
+  assert.equal(retry.status, 200);
+});

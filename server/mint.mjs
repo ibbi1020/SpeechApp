@@ -88,25 +88,35 @@ export async function handleRequest(req, res, now = Date.now(), openaiFetch = fe
     st.mintTimes.push(now);
     const pepper = process.env.MINT_PEPPER || "dev";
     const safety = createHmac("sha256", pepper).update(uuid).digest("hex");
-    const r = await openaiFetch("https://api.openai.com/v1/realtime/client_secrets", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        session: {
-          type: "realtime",
-          model: "gpt-realtime-2.1-mini",
-          tools: [],
-          tracing: null,
-          safety_identifier: safety,
-          audio: { input: { transcription: null } },
+    let r;
+    let json;
+    try {
+      r = await openaiFetch("https://api.openai.com/v1/realtime/client_secrets", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
         },
-        expires_after: { seconds: 120 },
-      }),
-    });
-    const json = await r.json();
+        body: JSON.stringify({
+          session: {
+            type: "realtime",
+            model: "gpt-realtime-2.1-mini",
+            tools: [],
+            tracing: null,
+            safety_identifier: safety,
+            audio: { input: { transcription: null } },
+          },
+          expires_after: { seconds: 120 },
+        }),
+      });
+      json = await r.json();
+    } catch {
+      res.writeHead(502);
+      res.end(JSON.stringify({
+        starts_remaining: 20 - (st.month === month ? st.count : 0),
+      }));
+      return;
+    }
     if (r.ok) st.concurrent += 1;
     res.writeHead(r.ok ? 200 : 502);
     res.end(JSON.stringify({
