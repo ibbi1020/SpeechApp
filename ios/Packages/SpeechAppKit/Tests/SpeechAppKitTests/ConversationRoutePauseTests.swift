@@ -9,10 +9,10 @@ struct ConversationRoutePauseTests {
         #expect(ConversationRoutePause.shouldPause(reason: 2))
     }
 
-    @Test("audio override pauses")
-    func overridePauses() {
+    @Test("audio override does not pause")
+    func overrideDoesNotPause() {
         // AVAudioSession.RouteChangeReason.override
-        #expect(ConversationRoutePause.shouldPause(reason: 4))
+        #expect(!ConversationRoutePause.shouldPause(reason: 4))
     }
 
     @Test("category change does not pause")
