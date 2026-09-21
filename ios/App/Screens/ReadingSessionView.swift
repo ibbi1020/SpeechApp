@@ -78,7 +78,12 @@ struct ReadingSessionView: View {
             }
         }
         .onDisappear {
-            guard model.route == .library else { return }
+            switch model.route {
+            case .reading, .report:
+                return
+            default:
+                break
+            }
             startTask?.cancel()
             startTask = nil
             countdownRemaining = nil
