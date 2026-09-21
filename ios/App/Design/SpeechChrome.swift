@@ -89,13 +89,14 @@ struct SpeechSecondaryButtonStyle: ButtonStyle {
 /// Sharp 3-2-1 over a fogged passage. The number is the only in-focus object.
 struct ReadingCountdownOverlay: View {
     let remaining: Int?
+    var instruction: String = SpeechCountdown.instruction
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var accessibilityText: String {
         if let remaining {
-            "\(remaining). \(SpeechCountdown.instruction)"
+            "\(remaining). \(instruction)"
         } else {
-            SpeechCountdown.instruction
+            instruction
         }
     }
 
@@ -117,7 +118,7 @@ struct ReadingCountdownOverlay: View {
                     .tint(.primary)
             }
 
-            Text(SpeechCountdown.instruction)
+            Text(instruction)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

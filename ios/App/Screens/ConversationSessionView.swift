@@ -69,7 +69,10 @@ struct ConversationSessionView: View {
                 .allowsHitTesting(!isFogged)
 
             if isFogged {
-                ReadingCountdownOverlay(remaining: countdownRemaining)
+                ReadingCountdownOverlay(
+                    remaining: countdownRemaining,
+                    instruction: "Take a deep breath. Talk when you're ready."
+                )
             }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
