@@ -1,6 +1,8 @@
 import Foundation
+import Observation
 
 @MainActor
+@Observable
 public final class ConversationSession {
     public private(set) var phase: ConversationPhase = .idle
     public private(set) var countsAsBudgetStart = false

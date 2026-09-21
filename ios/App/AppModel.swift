@@ -49,6 +49,10 @@ final class AppModel {
         route = .report(report)
     }
 
+    func finishConversation(report: ConversationReport) {
+        route = .conversationReport(report)
+    }
+
     func readAgain() {
         if currentPassage == nil {
             currentPassage = NextPassagePicker.pick(catalog: catalog, ledger: ledger)

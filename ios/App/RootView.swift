@@ -67,14 +67,14 @@ struct RootView: View {
         Binding(
             get: {
                 switch model.route {
-                case .ageGate, .aiDisclosure, .conversation: true
+                case .ageGate, .aiDisclosure, .conversation, .conversationReport, .crisis: true
                 default: false
                 }
             },
             set: { presented in
                 if !presented {
                     switch model.route {
-                    case .ageGate, .aiDisclosure, .conversation:
+                    case .ageGate, .aiDisclosure, .conversation, .conversationReport, .crisis:
                         model.goHome()
                     default:
                         break
@@ -91,6 +91,10 @@ struct RootView: View {
             AgeAttestationView()
         case .aiDisclosure:
             AIDisclosureCard()
+        case .conversationReport(let report):
+            ConversationReportView(report: report)
+        case .crisis:
+            CrisisReferralView()
         default:
             ConversationSessionView()
         }
