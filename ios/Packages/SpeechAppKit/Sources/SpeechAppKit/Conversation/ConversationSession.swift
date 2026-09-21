@@ -151,6 +151,7 @@ public final class ConversationSession {
         case .sessionUpdated:
             if wrappingWaitingUpdated {
                 wrappingWaitingUpdated = false
+                guard !closed else { return }
                 try? await sendCue(.wrapClose)
                 return
             }
@@ -249,6 +250,7 @@ public final class ConversationSession {
     }
 
     private func sendCue(_ cue: ConversationCue) async throws {
+        guard !closed else { return }
         guard ConversationCueAssembler.v1MaySend(cue) else { return }
         lastSentCue = cue
         try await mouth.sendResponseCreate(
@@ -270,6 +272,7 @@ public final class ConversationSession {
     private func finish(reason: ConversationEndReason) async {
         guard !closed else { return }
         closed = true
+        wrappingWaitingUpdated = false
         switch reason {
         case .crisisReferral: phase = .crisis
         case .drop: phase = .dropped

@@ -194,6 +194,22 @@ struct ConversationSessionTests {
         #expect(session.phase == .dropped)
     }
 
+    @Test("user stop after wrap close started never sends wrap_close")
+    @MainActor
+    func userStopDuringWrapping() async throws {
+        let (session, mouth, time) = makeSession(cap: 60)
+        try await reachTalking(session)
+        await session.handle(.speechStarted)
+        time.advance(60)
+        await session.tick()
+        #expect(mouth.turnDetectionNulled == true)
+        await session.confirmStop()
+        await session.handle(.sessionUpdated)
+        #expect(session.phase == .report)
+        #expect(session.report?.endReason == .userStop)
+        #expect(mouth.responseCreates.allSatisfy { !$0.lowercased().contains("close the conversation") })
+    }
+
     @Test("thin report under 45s")
     @MainActor
     func thinReport() async throws {
