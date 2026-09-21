@@ -1,9 +1,12 @@
+import AVFoundation
 import Combine
 import SwiftUI
 import SpeechAppKit
+import UIKit
 
 struct ConversationSessionView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -20,6 +23,7 @@ struct ConversationSessionView: View {
     @State private var didRouteFinish = false
     @State private var eventPump: Task<Void, Never>?
     @State private var debugLoop: Task<Void, Never>?
+    @State private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
     private var phase: ConversationPhase {
         session?.phase ?? .idle
@@ -98,6 +102,12 @@ struct ConversationSessionView: View {
         .task { await beginSession() }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             Task { await onWallClockTick() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { note in
+            handleRouteChange(note)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            handleScenePhase(phase)
         }
         .onChange(of: phase) { _, _ in
             routeIfFinished()
@@ -302,6 +312,10 @@ struct ConversationSessionView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(8))
                 guard !Task.isCancelled, session.phase == .talking else { continue }
+                mouth.emit(.speechStarted)
+                await session.handle(.speechStarted)
+                try? await Task.sleep(for: .milliseconds(50))
+                guard !Task.isCancelled, session.phase == .talking else { continue }
                 session.ingestUserText("hello")
                 session.noteUserSpeech(seconds: 1)
                 mouth.emit(.speechStopped)
@@ -332,6 +346,50 @@ struct ConversationSessionView: View {
     private func onWallClockTick() async {
         await session?.tick()
         routeIfFinished()
+    }
+
+    private func handleRouteChange(_ note: Notification) {
+        let raw: UInt
+        if let value = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt {
+            raw = value
+        } else if let number = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber {
+            raw = number.uintValue
+        } else {
+            return
+        }
+        if ConversationRoutePause.shouldPause(reason: raw) {
+            session?.pause()
+        }
+    }
+
+    private func handleScenePhase(_ phase: ScenePhase) {
+        switch phase {
+        case .background:
+            // Keep tick() alive for the 90s silence auto-pause. Do not hang up at 30s.
+            // Live Activity is deferred; audio background mode is the keep-alive.
+            beginConversationBackgroundTask()
+        case .active:
+            endConversationBackgroundTask()
+        default:
+            break
+        }
+    }
+
+    private func beginConversationBackgroundTask() {
+        guard backgroundTask == .invalid else { return }
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "conversation-tick") {
+            Task { @MainActor in
+                endConversationBackgroundTask()
+            }
+        }
+    }
+
+    private func endConversationBackgroundTask() {
+        let identifier = backgroundTask
+        backgroundTask = .invalid
+        if identifier != .invalid {
+            UIApplication.shared.endBackgroundTask(identifier)
+        }
     }
 
     private func confirmStop() async {
@@ -365,6 +423,7 @@ struct ConversationSessionView: View {
         eventPump = nil
         debugLoop?.cancel()
         debugLoop = nil
+        endConversationBackgroundTask()
         countdownRemaining = nil
 
         switch model.route {
