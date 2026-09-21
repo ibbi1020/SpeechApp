@@ -23,9 +23,13 @@
 	<key>CONVERSATION_API_BASE</key>
 	<string></string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>SpeechApp listens while you read a passage so it can show which words you skipped, added, or swapped. Audio is processed on device and not kept after the session.</string>
+	<string>SpeechApp talks with a live AI partner. Your voice is streamed to OpenAI for the conversation. Scoring stays on this device. We do not keep the recording.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>SpeechApp uses on-device speech recognition to follow along as you read and mark skips, extras, and wrong words. Recognition runs on your device.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

@@ -7,9 +7,33 @@ struct MintResponse: Decodable {
         case clientSecret = "client_secret"
         case startsRemaining = "starts_remaining"
     }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        startsRemaining = try c.decode(Int.self, forKey: .startsRemaining)
+        if let secret = try? c.decode(String.self, forKey: .clientSecret) {
+            clientSecret = secret
+        } else {
+            clientSecret = try c.decode(SecretObject.self, forKey: .clientSecret).value
+        }
+    }
+
+    private struct SecretObject: Decodable { let value: String }
 }
 
-enum MintError: Error { case budget, concurrent, rate, auth, unavailable }
+enum MintError: Error, Equatable { case budget, concurrent, rate, auth, unavailable }
+
+extension MintError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .budget: "This month’s conversations are used."
+        case .concurrent: "A conversation is already in progress."
+        case .rate: "Too many tries. Wait a few minutes."
+        case .auth: "Couldn’t sign in to Conversation."
+        case .unavailable: "Conversation isn’t available right now."
+        }
+    }
+}
 
 /// Authenticated Conversation mint client. Server is source of truth for budget.
 ///

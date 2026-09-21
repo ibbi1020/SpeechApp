@@ -8,6 +8,7 @@ public enum MouthEvent: Equatable, Sendable {
     case responseDone(transcript: String)
     case disconnected
     case failed
+    case configDrift
 }
 
 public protocol ConversationMouth: AnyObject, Sendable {

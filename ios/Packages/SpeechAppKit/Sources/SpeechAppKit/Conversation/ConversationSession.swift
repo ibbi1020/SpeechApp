@@ -185,6 +185,8 @@ public final class ConversationSession {
             break
         case .failed:
             await finish(reason: .drop)
+        case .configDrift:
+            await noteConfigDrift()
         }
     }
 

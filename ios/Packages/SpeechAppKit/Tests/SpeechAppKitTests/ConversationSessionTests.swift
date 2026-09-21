@@ -220,6 +220,17 @@ struct ConversationSessionTests {
         #expect(session.report?.kind == .thin)
     }
 
+    @Test("configDrift hangups with that reason")
+    @MainActor
+    func configDriftHangup() async throws {
+        let (session, mouth, _) = makeSession()
+        try await reachTalking(session)
+        await session.handle(.configDrift)
+        #expect(session.phase == .report)
+        #expect(session.report?.endReason == .configDrift)
+        #expect(mouth.didClose)
+    }
+
     @MainActor
     private func reachTalking(_ session: ConversationSession) async throws {
         session.beginCountdown()

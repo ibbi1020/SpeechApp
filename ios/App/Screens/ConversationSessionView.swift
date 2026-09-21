@@ -8,7 +8,12 @@ struct ConversationSessionView: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @State private var session: ConversationSession?
-    @State private var mouth: FakeConversationMouth?
+    @State private var fakeMouth: FakeConversationMouth?
+    @State private var mint: MintClient?
+    @State private var conversationID = UUID()
+    @State private var didMint = false
+    @State private var didPostStarted = false
+    @State private var didPostEnded = false
     @State private var errorMessage: String?
     @State private var countdownRemaining: Int?
     @State private var showStopConfirm = false
@@ -183,11 +188,16 @@ struct ConversationSessionView: View {
         guard session == nil else { return }
         errorMessage = nil
         didRouteFinish = false
+        conversationID = UUID()
+        didMint = false
+        didPostStarted = false
+        didPostEnded = false
 
         do {
             let built = try makeSession()
             session = built.session
-            mouth = built.mouth
+            fakeMouth = built.fake
+            mint = built.mint
             startEventPump(session: built.session, mouth: built.mouth)
 
             built.session.beginCountdown()
@@ -199,27 +209,43 @@ struct ConversationSessionView: View {
             countdownRemaining = nil
 
             try Task.checkCancellation()
-            // Send-muted: do not mint OpenAI. Fake mouth only.
-            try await built.session.countdownReachedZero(ephemeralKey: "debug")
-
-            try await Task.sleep(for: .milliseconds(300))
-            try Task.checkCancellation()
-            // connect() does not auto-yield — drive sessionUpdated then first audioDelta.
-            built.mouth.emit(.sessionUpdated)
-            built.mouth.emit(.audioDelta)
-
-            #if DEBUG
-            startDebugUserLoop(session: built.session, mouth: built.mouth)
-            #endif
+            if let mint = built.mint {
+                let minted = try await mint.mint()
+                didMint = true
+                do {
+                    try await built.session.countdownReachedZero(ephemeralKey: minted.clientSecret)
+                } catch {
+                    await built.session.handle(.failed)
+                    throw error
+                }
+            } else if let fake = built.fake {
+                try await built.session.countdownReachedZero(ephemeralKey: "debug")
+                try await Task.sleep(for: .milliseconds(300))
+                try Task.checkCancellation()
+                fake.emit(.sessionUpdated)
+                fake.emit(.audioDelta)
+                #if DEBUG
+                startDebugUserLoop(session: built.session, mouth: fake)
+                #endif
+            }
         } catch is CancellationError {
             countdownRemaining = nil
+            await postEndedIfNeeded()
+        } catch let error as MintError {
+            countdownRemaining = nil
+            await postEndedIfNeeded()
+            if error == .budget {
+                model.budget.used = model.budget.limit
+            }
+            errorMessage = error.localizedDescription
         } catch {
             countdownRemaining = nil
+            await postEndedIfNeeded()
             errorMessage = error.localizedDescription
         }
     }
 
-    private func makeSession() throws -> (session: ConversationSession, mouth: FakeConversationMouth) {
+    private func makeSession() throws -> SessionStart {
         let deck = try StanceDeck.loadBundled()
         let bank = try OpenPromptBank.loadBundled()
         guard !bank.prompts.isEmpty else {
@@ -229,7 +255,17 @@ struct ConversationSessionView: View {
         var rng = SplitMix64(seed: UInt64.random(in: 1...UInt64.max))
         let stance = deck.sample(rng: &rng).views.joined(separator: "\n")
         let openQuestion = bank.prompts[Int(rng.next() % UInt64(bank.prompts.count))]
-        let mouth = FakeConversationMouth()
+        let mint = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
+        let mouth: any ConversationMouth
+        let fake: FakeConversationMouth?
+        if mint != nil {
+            mouth = LiveConversationMouth()
+            fake = nil
+        } else {
+            let prototype = FakeConversationMouth()
+            mouth = prototype
+            fake = prototype
+        }
 
         #if DEBUG
         let cap: TimeInterval = 300
@@ -245,14 +281,15 @@ struct ConversationSessionView: View {
             stance: stance,
             openQuestion: openQuestion
         )
-        return (session, mouth)
+        return SessionStart(session: session, mouth: mouth, fake: fake, mint: mint)
     }
 
-    private func startEventPump(session: ConversationSession, mouth: FakeConversationMouth) {
+    private func startEventPump(session: ConversationSession, mouth: any ConversationMouth) {
         eventPump?.cancel()
         eventPump = Task { @MainActor in
             for await event in mouth.events {
                 await session.handle(event)
+                await postStartedIfNeeded(session)
                 routeIfFinished()
             }
         }
@@ -273,6 +310,25 @@ struct ConversationSessionView: View {
     }
     #endif
 
+    private func postStartedIfNeeded(_ session: ConversationSession) async {
+        guard session.countsAsBudgetStart, !didPostStarted, let mint else { return }
+        didPostStarted = true
+        do {
+            let remaining = try await mint.started(sessionID: conversationID)
+            model.budget.used = max(0, model.budget.limit - remaining)
+        } catch MintError.budget {
+            model.budget.used = model.budget.limit
+        } catch {
+            // Keep talking; budget is recorded on the next successful started.
+        }
+    }
+
+    private func postEndedIfNeeded() async {
+        guard didMint, !didPostEnded, let mint else { return }
+        didPostEnded = true
+        try? await mint.ended()
+    }
+
     private func onWallClockTick() async {
         await session?.tick()
         routeIfFinished()
@@ -289,10 +345,12 @@ struct ConversationSessionView: View {
         switch session.phase {
         case .crisis:
             didRouteFinish = true
+            Task { await postEndedIfNeeded() }
             model.presentCrisis(possibleMinorFlag: session.possibleMinorFlag)
         case .report, .dropped:
             guard let report = session.report else { return }
             didRouteFinish = true
+            Task { await postEndedIfNeeded() }
             model.finishConversation(
                 report: report,
                 possibleMinorFlag: session.possibleMinorFlag
@@ -311,12 +369,14 @@ struct ConversationSessionView: View {
 
         switch model.route {
         case .conversationReport, .crisis:
+            Task { await postEndedIfNeeded() }
             return
         default:
             break
         }
 
         didRouteFinish = true
+        Task { await postEndedIfNeeded() }
         guard let session else { return }
         switch session.phase {
         case .idle, .report, .crisis, .dropped:
@@ -325,6 +385,13 @@ struct ConversationSessionView: View {
             Task { await session.confirmStop() }
         }
     }
+}
+
+private struct SessionStart {
+    let session: ConversationSession
+    let mouth: any ConversationMouth
+    let fake: FakeConversationMouth?
+    let mint: MintClient?
 }
 
 private enum ConversationSessionError: LocalizedError {

@@ -16,6 +16,9 @@ settings:
 packages:
   SpeechAppKit:
     path: Packages/SpeechAppKit
+  WebRTC:
+    url: https://github.com/stasel/WebRTC.git
+    from: 153.0.0
 targets:
   SpeechApp:
     type: application
@@ -33,6 +36,7 @@ targets:
         SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
     dependencies:
       - package: SpeechAppKit
+      - package: WebRTC
     info:
       path: App/Info.plist
       properties:
@@ -40,8 +44,10 @@ targets:
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "3"
         CONVERSATION_API_BASE: ""
+        UIBackgroundModes:
+          - audio
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        NSMicrophoneUsageDescription: SpeechApp listens while you read a passage so it can show which words you skipped, added, or swapped. Audio is processed on device and not kept after the session.
+        NSMicrophoneUsageDescription: SpeechApp talks with a live AI partner. Your voice is streamed to OpenAI for the conversation. Scoring stays on this device. We do not keep the recording.
         NSSpeechRecognitionUsageDescription: SpeechApp uses on-device speech recognition to follow along as you read and mark skips, extras, and wrong words. Recognition runs on your device.
