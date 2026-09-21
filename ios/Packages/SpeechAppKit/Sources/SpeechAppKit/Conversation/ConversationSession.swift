@@ -177,7 +177,6 @@ public final class ConversationSession {
             ghostTurn = false
             speechStartedAt = time.now
             waitingForUser = false
-            lastUserText = ""
             userSpeechThisTurn = 0
         case .speechStopped:
             await onSpeechStopped()
@@ -198,11 +197,6 @@ public final class ConversationSession {
         let stoppedAt = time.now
         speechStartedAt = nil
         waitingForUser = true
-        if ghostTurn {
-            ghostTurn = false
-            return
-        }
-        lastUserSpeechAt = time.now
         switch CrisisGate.evaluate(lastUserText) {
         case .crisis:
             await finish(reason: .crisisReferral)
@@ -217,6 +211,11 @@ public final class ConversationSession {
         case .allow:
             break
         }
+        if ghostTurn {
+            ghostTurn = false
+            return
+        }
+        lastUserSpeechAt = time.now
         let empty = lastUserText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if empty && userSpeechThisTurn < 0.3 { return }
         userHasSpoken = true

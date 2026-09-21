@@ -155,6 +155,21 @@ struct ConversationSessionTests {
         #expect(mouth.responseCreates.count == 1)
     }
 
+    @Test("ghost turn still evaluates crisis keywords")
+    @MainActor
+    func ghostTurnStillEvaluatesCrisis() async throws {
+        let (session, mouth, time) = makeSession()
+        try await reachTalking(session)
+        session.ingestUserText("I want to kill myself")
+        await session.handle(.speechStarted)
+        time.advance(8)
+        await session.tick()
+        await session.handle(.speechStopped)
+        #expect(session.phase == .crisis)
+        #expect(session.report?.kind == .crisis)
+        #expect(mouth.responseCreates.count == 1)
+    }
+
     @Test("silent at cap skips spoken close")
     @MainActor
     func skipCloseWhenSilentAtCap() async throws {
