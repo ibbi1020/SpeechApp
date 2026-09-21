@@ -39,6 +39,7 @@ targets:
         CFBundleDisplayName: SpeechApp
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "3"
+        CONVERSATION_API_BASE: ""
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

@@ -289,11 +289,14 @@ struct ConversationSessionView: View {
         switch session.phase {
         case .crisis:
             didRouteFinish = true
-            model.route = .crisis
+            model.presentCrisis(possibleMinorFlag: session.possibleMinorFlag)
         case .report, .dropped:
             guard let report = session.report else { return }
             didRouteFinish = true
-            model.finishConversation(report: report)
+            model.finishConversation(
+                report: report,
+                possibleMinorFlag: session.possibleMinorFlag
+            )
         default:
             break
         }

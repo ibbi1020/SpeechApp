@@ -49,8 +49,18 @@ final class AppModel {
         route = .report(report)
     }
 
-    func finishConversation(report: ConversationReport) {
+    func finishConversation(report: ConversationReport, possibleMinorFlag: Bool = false) {
+        notePossibleMinorIfNeeded(possibleMinorFlag)
+        if report.kind == .crisis {
+            route = .crisis
+            return
+        }
         route = .conversationReport(report)
+    }
+
+    func presentCrisis(possibleMinorFlag: Bool = false) {
+        notePossibleMinorIfNeeded(possibleMinorFlag)
+        route = .crisis
     }
 
     func readAgain() {
@@ -90,6 +100,15 @@ final class AppModel {
     func startConversation() {
         guard budget.startEnabled else { return }
         route = .conversation
+    }
+
+    private func notePossibleMinorIfNeeded(_ flagged: Bool) {
+        guard flagged else { return }
+        account.possibleMinorFlag = true
+        guard let client = MintClient.makeIfConfigured(uuid: account.accountUUID) else { return }
+        Task {
+            await client.possibleMinor()
+        }
     }
 
     private func continueAfterAgeGate() {

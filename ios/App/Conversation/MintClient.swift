@@ -21,11 +21,27 @@ enum MintError: Error { case budget, concurrent, rate, auth, unavailable }
 /// - drop before report: `ended()` and do **not** call `started` (session never counted)
 /// - if `started` already ran, do not refund
 final class MintClient: Sendable {
+    static let apiBaseKey = "CONVERSATION_API_BASE"
+
     let base: URL
     let uuid: UUID
     init(base: URL, uuid: UUID) {
         self.base = base
         self.uuid = uuid
+    }
+
+    /// `nil` when `CONVERSATION_API_BASE` is missing, empty, or not a host URL.
+    /// Empty plist value means skip POSTs — never fall back to a baked-in host.
+    static func makeIfConfigured(
+        uuid: UUID,
+        info: [String: Any]? = Bundle.main.infoDictionary
+    ) -> MintClient? {
+        guard let raw = info?[apiBaseKey] as? String else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = URL(string: trimmed), url.host != nil else {
+            return nil
+        }
+        return MintClient(base: url, uuid: uuid)
     }
 
     func mint() async throws -> MintResponse {
@@ -50,11 +66,11 @@ final class MintClient: Sendable {
     }
 
     func crisis() async {
-        try? await post("v1/conversation/crisis", body: [:], decode: OptionalEmpty.self)
+        _ = try? await post("v1/conversation/crisis", body: [:], decode: OptionalEmpty.self)
     }
 
     func possibleMinor() async {
-        try? await post("v1/conversation/possible-minor", body: [:], decode: OptionalEmpty.self)
+        _ = try? await post("v1/conversation/possible-minor", body: [:], decode: OptionalEmpty.self)
     }
 
     private struct OptionalEmpty: Decodable {}

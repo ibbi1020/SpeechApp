@@ -11,22 +11,53 @@ struct CrisisReferralView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Spacer()
 
-                Text("Crisis")
+                Text("Call or text 988")
                     .font(.system(.title2, design: .serif).weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
 
-                Button("Done") {
-                    withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                        model.goHome()
-                    }
-                }
-                .buttonStyle(SpeechPrimaryButtonStyle())
-                .padding(.top, 22)
+                Text("chat 988lifeline.org")
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, SpeechSpacing.cluster)
+
+                Text("If you are not in the US, use your local emergency number.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, SpeechSpacing.related)
+
+                Button("Back to home", action: goHome)
+                    .buttonStyle(SpeechPrimaryButtonStyle())
+                    .padding(.top, 22)
+
+                Button("Back to home", action: goHome)
+                    .buttonStyle(SpeechSecondaryButtonStyle())
+                    .padding(.top, 10)
 
                 Spacer()
             }
             .padding(.horizontal, SpeechSpacing.page)
         }
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear(perform: pingCrisisIfConfigured)
+    }
+
+    private func goHome() {
+        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
+            model.goHome()
+        }
+    }
+
+    private func pingCrisisIfConfigured() {
+        guard let client = MintClient.makeIfConfigured(uuid: model.account.accountUUID) else {
+            return
+        }
+        Task {
+            await client.crisis()
+        }
     }
 }

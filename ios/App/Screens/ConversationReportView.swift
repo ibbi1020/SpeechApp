@@ -6,13 +6,19 @@ struct ConversationReportView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let report: ConversationReport
 
+    private var displayLines: [ConversationReport.Line] {
+        report.lines.filter { $0.label == "Time spoken" || $0.label == "Turns" }
+    }
+
     var body: some View {
         ZStack {
             SpeechScreenBackground()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    header
+                    Text("Your conversation")
+                        .font(.system(.title2, design: .serif).weight(.semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, SpeechSpacing.section)
 
                     linesCard
@@ -25,14 +31,14 @@ struct ConversationReportView: View {
                             .padding(.top, SpeechSpacing.related)
                     }
 
-                    Button("Done") {
-                        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                            model.goHome()
-                        }
-                    }
-                    .buttonStyle(SpeechPrimaryButtonStyle())
-                    .padding(.top, SpeechSpacing.section)
-                    .padding(.bottom, 32)
+                    Button("Done", action: goHome)
+                        .buttonStyle(SpeechPrimaryButtonStyle())
+                        .padding(.top, SpeechSpacing.section)
+
+                    Button("Back to home", action: goHome)
+                        .buttonStyle(SpeechSecondaryButtonStyle())
+                        .padding(.top, 10)
+                        .padding(.bottom, 32)
                 }
                 .padding(.horizontal, SpeechSpacing.page)
                 .padding(.top, 20)
@@ -42,15 +48,9 @@ struct ConversationReportView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private var header: some View {
-        Text("Your conversation")
-            .font(.system(.title2, design: .serif).weight(.semibold))
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     private var linesCard: some View {
         VStack(alignment: .leading, spacing: 20) {
-            ForEach(report.lines, id: \.label) { line in
+            ForEach(displayLines, id: \.label) { line in
                 VStack(alignment: .leading, spacing: 4) {
                     Text(line.label)
                         .font(.footnote)
@@ -68,5 +68,11 @@ struct ConversationReportView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
         )
+    }
+
+    private func goHome() {
+        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
+            model.goHome()
+        }
     }
 }

@@ -20,6 +20,8 @@
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
 	<string>3</string>
+	<key>CONVERSATION_API_BASE</key>
+	<string></string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>SpeechApp listens while you read a passage so it can show which words you skipped, added, or swapped. Audio is processed on device and not kept after the session.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
