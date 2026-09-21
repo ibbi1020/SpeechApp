@@ -14,6 +14,7 @@ final class AppModel {
         case conversationReport(ConversationReport)
         case crisis
         case ageGate
+        case aiDisclosure
     }
 
     var route: Route = .home
@@ -21,6 +22,7 @@ final class AppModel {
     var ledger = StruggleLedgerStore.loadOrCreate()
     var currentPassage: Passage?
     var speechEngineKind: LiveTranscriptionEngine.EngineKind = .unknown
+    var account = AccountStore()
     var budget = ConversationBudgetSnapshot(
         limit: 20,
         used: 0,
@@ -62,9 +64,36 @@ final class AppModel {
         route = .home
     }
 
+    func requestStartConversation() {
+        guard budget.startEnabled else { return }
+        if !account.attested18 {
+            route = .ageGate
+            return
+        }
+        continueAfterAgeGate()
+    }
+
+    func confirmAgeAttestation() {
+        account.attested18 = true
+        continueAfterAgeGate()
+    }
+
+    func confirmAIDisclosure() {
+        account.lastDisclosureDay = AccountStore.todayString()
+        startConversation()
+    }
+
     func startConversation() {
         guard budget.startEnabled else { return }
         route = .conversation
+    }
+
+    private func continueAfterAgeGate() {
+        if account.lastDisclosureDay != AccountStore.todayString() {
+            route = .aiDisclosure
+            return
+        }
+        startConversation()
     }
 
     private static func currentCalendarMonth(now: Date = .now, calendar: Calendar = .current) -> String {

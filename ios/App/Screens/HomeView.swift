@@ -44,7 +44,7 @@ struct HomeView: View {
 
             Button("Start a conversation") {
                 withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                    model.startConversation()
+                    model.requestStartConversation()
                 }
             }
             .buttonStyle(SpeechPrimaryButtonStyle())

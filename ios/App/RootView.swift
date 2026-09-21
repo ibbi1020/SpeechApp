@@ -14,7 +14,7 @@ struct RootView: View {
                         }
                 }
                 .navigationDestination(isPresented: conversationPresented) {
-                    ConversationSessionView()
+                    conversationDestination
                 }
         }
         .tint(.accentColor)
@@ -65,13 +65,35 @@ struct RootView: View {
 
     private var conversationPresented: Binding<Bool> {
         Binding(
-            get: { model.route == .conversation },
+            get: {
+                switch model.route {
+                case .ageGate, .aiDisclosure, .conversation: true
+                default: false
+                }
+            },
             set: { presented in
-                if !presented, model.route == .conversation {
-                    model.goHome()
+                if !presented {
+                    switch model.route {
+                    case .ageGate, .aiDisclosure, .conversation:
+                        model.goHome()
+                    default:
+                        break
+                    }
                 }
             }
         )
+    }
+
+    @ViewBuilder
+    private var conversationDestination: some View {
+        switch model.route {
+        case .ageGate:
+            AgeAttestationView()
+        case .aiDisclosure:
+            AIDisclosureCard()
+        default:
+            ConversationSessionView()
+        }
     }
 
     @ViewBuilder
