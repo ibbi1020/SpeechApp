@@ -49,6 +49,7 @@ struct HomeView: View {
             }
             .buttonStyle(SpeechPrimaryButtonStyle())
             .disabled(!model.budget.startEnabled)
+            .opacity(model.budget.startEnabled ? 1 : 0.45)
             .padding(.top, 22)
         }
         .padding(24)

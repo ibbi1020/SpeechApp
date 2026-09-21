@@ -63,6 +63,7 @@ final class AppModel {
     }
 
     func startConversation() {
+        guard budget.startEnabled else { return }
         route = .conversation
     }
 
