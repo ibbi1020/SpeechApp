@@ -7,7 +7,6 @@ export function monthKey(ms = Date.now()) {
 }
 
 export function decideStart(st, month) {
-  if ((st.concurrent ?? 0) >= 1) return { allow: false, reason: "concurrent" };
   const count = st.month === month ? st.count : 0;
   if (count >= 20) return { allow: false, reason: "budget" };
   return { allow: true, nextCount: count + 1 };
@@ -69,6 +68,11 @@ export async function handleRequest(req, res, now = Date.now(), openaiFetch = fe
     return;
   }
   if (url.pathname === "/v1/conversation/mint" && req.method === "POST") {
+    if ((st.concurrent ?? 0) >= 1) {
+      res.writeHead(429);
+      res.end(JSON.stringify({ error: "concurrent" }));
+      return;
+    }
     st.mintTimes = st.mintTimes.filter((t) => now - t < RATE_WINDOW_MS);
     if (st.mintTimes.length >= 3) {
       res.writeHead(429);
@@ -82,7 +86,6 @@ export async function handleRequest(req, res, now = Date.now(), openaiFetch = fe
       return;
     }
     st.mintTimes.push(now);
-    st.concurrent += 1;
     const pepper = process.env.MINT_PEPPER || "dev";
     const safety = createHmac("sha256", pepper).update(uuid).digest("hex");
     const r = await openaiFetch("https://api.openai.com/v1/realtime/client_secrets", {
@@ -104,6 +107,7 @@ export async function handleRequest(req, res, now = Date.now(), openaiFetch = fe
       }),
     });
     const json = await r.json();
+    if (r.ok) st.concurrent += 1;
     res.writeHead(r.ok ? 200 : 502);
     res.end(JSON.stringify({
       client_secret: json.value ?? json.client_secret ?? json,
