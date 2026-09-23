@@ -24,6 +24,8 @@ struct ConversationSessionView: View {
     @State private var eventPump: Task<Void, Never>?
     @State private var debugLoop: Task<Void, Never>?
     @State private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    /// Agent audio in flight (`audioDelta` until `responseDone`).
+    @State private var agentSpeaking = false
 
     private var phase: ConversationPhase {
         session?.phase ?? .idle
@@ -45,6 +47,14 @@ struct ConversationSessionView: View {
         switch phase {
         case .connecting, .talking, .paused, .wrapping: true
         default: false
+        }
+    }
+
+    private var pillMode: AuroraPill.Mode {
+        switch phase {
+        case .connecting: .connect
+        case .wrapping: .speak
+        default: agentSpeaking ? .speak : .listen
         }
     }
 
@@ -123,12 +133,6 @@ struct ConversationSessionView: View {
                 .font(.footnote)
                 .foregroundStyle(isFogged ? .tertiary : .secondary)
 
-            AuroraPresenceView(
-                energy: 0,
-                isLive: phase == .talking,
-                isHearingSpeech: false
-            )
-
             Spacer(minLength: 0)
 
             if isPaused {
@@ -164,7 +168,7 @@ struct ConversationSessionView: View {
     @ViewBuilder
     private var actionRow: some View {
         if showsControls {
-            HStack(spacing: 12) {
+            HStack(spacing: 16) {
                 Button {
                     if isPaused {
                         session?.resume()
@@ -173,24 +177,29 @@ struct ConversationSessionView: View {
                     }
                 } label: {
                     Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 52, height: 52)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color(.tertiarySystemFill))
-                        )
+                        .speechGlassCircle()
                 }
                 .buttonStyle(.plain)
                 .disabled(phase != .talking && !isPaused)
                 .accessibilityLabel(isPaused ? "Resume" : "Pause")
 
-                Button("Stop") {
+                AuroraPill(
+                    energy: 0.1,
+                    mode: pillMode,
+                    animating: !isPaused
+                )
+
+                Button {
                     session?.requestStop()
                     showStopConfirm = true
+                } label: {
+                    Image(systemName: "stop.fill")
+                        .speechGlassCircle(tint: .red)
                 }
-                .buttonStyle(SpeechPrimaryButtonStyle(isDestructive: true))
+                .buttonStyle(.plain)
+                .accessibilityLabel("Stop")
             }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -202,6 +211,7 @@ struct ConversationSessionView: View {
         didMint = false
         didPostStarted = false
         didPostEnded = false
+        agentSpeaking = false
 
         do {
             let built = try makeSession()
@@ -298,6 +308,12 @@ struct ConversationSessionView: View {
         eventPump?.cancel()
         eventPump = Task { @MainActor in
             for await event in mouth.events {
+                // Drive speak mode from agent audio windows.
+                switch event {
+                case .audioDelta: agentSpeaking = true
+                case .responseDone: agentSpeaking = false
+                default: break
+                }
                 await session.handle(event)
                 await postStartedIfNeeded(session)
                 routeIfFinished()

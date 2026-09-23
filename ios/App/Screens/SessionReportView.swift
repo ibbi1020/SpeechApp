@@ -201,11 +201,9 @@ struct SessionReportView: View {
                         }
                     } label: {
                         Text(showAllWords ? "Show less" : "Show \(hiddenWordCount) more")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(SpeechSecondaryButtonStyle())
+                    .padding(12)
                 }
             }
             .background(cardBackground)

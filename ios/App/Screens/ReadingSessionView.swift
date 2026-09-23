@@ -94,17 +94,6 @@ struct ReadingSessionView: View {
         }
     }
 
-    // MARK: - Aurora (later)
-    /*
-    private var auroraHeader: some View {
-        AuroraPresenceView(
-            energy: (isLive ? session?.speechEnergy : 0) ?? 0,
-            isLive: isLive,
-            isHearingSpeech: session?.isHearingSpeech ?? false
-        )
-    }
-    */
-
     private var passageScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -137,9 +126,6 @@ struct ReadingSessionView: View {
 
     private var bottomChrome: some View {
         VStack(alignment: .leading, spacing: SpeechSpacing.related) {
-            // Listening pill reserved. Aurora can carry live status later.
-            // if isLive || isPaused || isFinishing { statusCapsule }
-
             if let errorMessage {
                 Text(errorMessage)
                     .font(.footnote)
@@ -155,51 +141,10 @@ struct ReadingSessionView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: session?.phase)
     }
 
-    /*
-    private var statusCapsule: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(capsuleDot)
-                .frame(width: 7, height: 7)
-            Text(capsuleText)
-                .font(.footnote)
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Color(.tertiarySystemFill))
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(capsuleText)
-    }
-
-    private var capsuleText: String {
-        if isFinishing { return "Finishing" }
-        if isPaused { return "Paused" }
-        if session?.phase == .stalled { return "Take your time" }
-        if session?.registrationHealth == .fallingBehind { return "Falling behind" }
-        return "Listening"
-    }
-
-    private var capsuleDot: Color {
-        if isFinishing || isPaused { return .secondary }
-        if session?.phase == .stalled { return .orange }
-        if session?.registrationHealth == .fallingBehind { return .orange }
-        return .green
-    }
-    */
-
     @ViewBuilder
     private var actionRow: some View {
-        if isFinishing {
-            Button("Finishing") {}
-                .buttonStyle(SpeechPrimaryButtonStyle(isDestructive: true))
-                .disabled(true)
-                .opacity(0.7)
-        } else if isLive || isPaused {
-            HStack(spacing: 12) {
+        if isLive || isPaused || isFinishing {
+            HStack(spacing: 16) {
                 Button {
                     if isPaused {
                         session?.resume()
@@ -208,29 +153,37 @@ struct ReadingSessionView: View {
                     }
                 } label: {
                     Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 52, height: 52)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color(.tertiarySystemFill))
-                        )
+                        .speechGlassCircle()
                 }
                 .buttonStyle(.plain)
+                .disabled(isFinishing)
                 .accessibilityLabel(isPaused ? "Resume" : "Pause")
 
-                Button("Stop") {
+                AuroraPill(
+                    energy: isLive ? (session?.speechEnergy ?? 0) : 0,
+                    mode: .listen,
+                    animating: isLive
+                )
+
+                Button {
                     Task { await stopSession() }
+                } label: {
+                    Image(systemName: "stop.fill")
+                        .speechGlassCircle(tint: .red)
                 }
-                .buttonStyle(SpeechPrimaryButtonStyle(isDestructive: true))
+                .buttonStyle(.plain)
+                .disabled(isFinishing)
+                .accessibilityLabel("Stop")
             }
+            .frame(maxWidth: .infinity)
+            .opacity(isFinishing ? 0.7 : 1)
         } else {
             Button("Start") {
                 startPulse.toggle()
                 startTask?.cancel()
                 startTask = Task { await beginStart() }
             }
-            .buttonStyle(SpeechPrimaryButtonStyle())
+            .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
             .sensoryFeedback(.impact(flexibility: .soft), trigger: startPulse)
         }
     }

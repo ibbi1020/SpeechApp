@@ -89,8 +89,6 @@ struct RootView: View {
         switch model.route {
         case .ageGate:
             AgeAttestationView()
-        case .aiDisclosure:
-            AIDisclosureCard()
         case .conversationReport(let report):
             ConversationReportView(report: report)
         case .crisis:

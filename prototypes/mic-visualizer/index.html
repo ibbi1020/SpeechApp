@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Aurora pill — one component, both formats</title>
+  <style>
+    :root {
+      --paper: #f3eee6;
+      --ink: #1a1713;
+      --muted: #6a645c;
+      --line: rgba(26, 23, 19, 0.12);
+      --black: #050506;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: "Iowan Old Style", Palatino, Georgia, serif;
+      background: #e8e1d4;
+      color: var(--ink);
+    }
+    header { max-width: 1120px; margin: 0 auto; padding: 28px 24px 10px; }
+    h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.03em; margin: 0 0 8px; }
+    .lede { font-size: 16px; line-height: 1.45; color: var(--muted); max-width: 72ch; }
+    .controls {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+      margin: 18px 0 6px;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    button {
+      font: 600 13px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+      border: 0; border-radius: 12px; padding: 11px 14px; cursor: pointer;
+    }
+    #mic { background: var(--ink); color: #fff; }
+    #mic.on { background: #b91c1c; }
+    .ghost { background: #fff; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+    .ghost.on { background: #1d4ed8; color: #fff; box-shadow: none; }
+    .meter { width: 148px; height: 8px; background: rgba(26,23,19,.12); border-radius: 99px; overflow: hidden; }
+    .meter > i { display: block; height: 100%; width: 0; background: #3b82f6; }
+    .hint { font-size: 12px; color: var(--muted); font-family: -apple-system, sans-serif; }
+    .stage {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 28px;
+      max-width: 1120px; margin: 0 auto 36px; padding: 8px 24px 0;
+    }
+    @media (max-width: 920px) { .stage { grid-template-columns: 1fr; } }
+    .col h2 { font-size: 18px; margin: 0 0 4px; }
+    .col p { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+    .phone {
+      width: min(100%, 390px); height: 760px; margin: 0 auto;
+      background: #111; border-radius: 42px; padding: 12px;
+      box-shadow: 0 28px 70px rgba(26,23,19,.2);
+    }
+    .screen {
+      height: 100%; border-radius: 32px; overflow: hidden;
+      display: flex; flex-direction: column; background: var(--paper);
+    }
+    .screen.night { background: var(--black); color: #f4efe6; }
+    .nav {
+      font-family: -apple-system, sans-serif; font-size: 13px; font-weight: 600;
+      text-align: center; padding: 16px 16px 8px; opacity: .55;
+    }
+    .passage { flex: 1; padding: 8px 28px 16px; }
+    .passage h3 { font-size: 22px; margin: 0 0 4px; }
+    .meta { font-family: -apple-system, sans-serif; font-size: 12px; color: var(--muted); margin-bottom: 18px; }
+    .passage p { font-size: 19px; line-height: 1.55; margin: 0; }
+    .conv-body { flex: 1; display: flex; align-items: flex-start; padding: 8px 28px; }
+    .conv-body p { font-size: 20px; line-height: 1.4; margin: 0; font-weight: 500; }
+    .chrome {
+      display: flex; align-items: center; justify-content: center;
+      gap: 14px; padding: 14px 18px 22px;
+      background: var(--black);
+    }
+    .icon {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: #1c1c1e; color: #f4efe6;
+      display: grid; place-items: center;
+      font-family: -apple-system, sans-serif; font-size: 15px;
+    }
+    .pill-slot { width: 132px; height: 52px; flex: 0 0 auto; }
+    .pill-slot canvas { width: 100%; height: 100%; display: block; border-radius: 999px; }
+    .screen { position: relative; }
+    .glow-slot {
+      position: absolute; inset: 0; pointer-events: none;
+    }
+    .glow-slot canvas { width: 100%; height: 100%; display: block; }
+    .glow-screen .passage { padding: 8px 36px 28px; }
+    .glow-screen .conv-body { align-items: center; padding: 22% 40px 18%; }
+    .solo {
+      max-width: 1120px; margin: 0 auto 48px; padding: 0 24px;
+    }
+    .solo-frame {
+      background: var(--black); border-radius: 28px; padding: 36px 24px 28px;
+      display: flex; flex-direction: column; align-items: center; gap: 18px;
+    }
+    .solo-frame canvas { width: min(420px, 100%); height: 160px; display: block; }
+    .solo-frame span {
+      font-family: -apple-system, sans-serif; font-size: 12px;
+      letter-spacing: .08em; text-transform: uppercase; color: #8a8680;
+    }
+    .notes {
+      max-width: 1120px; margin: 0 auto 64px; padding: 0 24px;
+      font-size: 14px; line-height: 1.55; color: var(--muted);
+    }
+    .notes h3 { color: var(--ink); font-size: 16px; margin: 22px 0 6px; }
+    .notes a { color: #1d4ed8; }
+    ul { padding-left: 1.2em; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>One aurora pill</h1>
+    <p class="lede">
+      Recreated from your Gemini Live recording: a stadium clip, a black well,
+      and a soft blue–white–violet curtain that lifts with voice.
+      Same component on Reading and Conversation.
+      Full screen is a different shape: the prototype below is an edge glow, not a wider wave.
+    </p>
+    <div class="controls">
+      <button id="mic" type="button">Start microphone</button>
+      <button id="demo" class="ghost" type="button">Pulse demo</button>
+      <button id="connect" class="ghost" type="button">Connecting</button>
+      <button id="talk" class="ghost" type="button">AI speaking</button>
+      <div class="meter"><i id="meter"></i></div>
+      <span class="hint" id="hint">Hold Space to talk without a mic. Every canvas shares one level.</span>
+    </div>
+  </header>
+
+  <div class="stage">
+    <section class="col">
+      <h2>Reading</h2>
+      <p>Paper passage. Presence lives in the same bottom pill.</p>
+      <div class="phone"><div class="screen">
+        <div class="nav">Reading</div>
+        <div class="passage">
+          <h3>The morning market</h3>
+          <div class="meta">~90 seconds · connected prose</div>
+          <p>The stallholders were already shouting prices when we arrived. A boy stacked oranges into a pyramid that leaned, then held. Steam from the tea cart mixed with diesel and wet cardboard.</p>
+        </div>
+        <div class="chrome">
+          <div class="icon">❚❚</div>
+          <div class="pill-slot"><canvas id="read-pill"></canvas></div>
+          <div class="icon">■</div>
+        </div>
+      </div></div>
+    </section>
+    <section class="col">
+      <h2>Conversation</h2>
+      <p>Same pill. Energy is whoever is talking.</p>
+      <div class="phone"><div class="screen night">
+        <div class="nav">AI partner</div>
+        <div class="conv-body">
+          <p id="conv-copy">Listening.</p>
+        </div>
+        <div class="chrome">
+          <div class="icon">❚❚</div>
+          <div class="pill-slot"><canvas id="conv-pill"></canvas></div>
+          <div class="icon">■</div>
+        </div>
+      </div></div>
+    </section>
+  </div>
+
+  <div class="stage">
+    <section class="col">
+      <h2>Reading, edge glow</h2>
+      <p>The light sits on the bezel. The passage stays in the clear middle.</p>
+      <div class="phone"><div class="screen glow-screen">
+        <div class="nav">Reading</div>
+        <div class="passage">
+          <h3>The morning market</h3>
+          <div class="meta">~90 seconds · connected prose</div>
+          <p>The stallholders were already shouting prices when we arrived. A boy stacked oranges into a pyramid that leaned, then held. Steam from the tea cart mixed with diesel and wet cardboard.</p>
+        </div>
+        <div class="glow-slot"><canvas id="read-glow"></canvas></div>
+      </div></div>
+    </section>
+    <section class="col">
+      <h2>Conversation, edge glow</h2>
+      <p>Same ring on black. Speed and brightness follow who is talking.</p>
+      <div class="phone"><div class="screen night glow-screen">
+        <div class="nav">AI partner</div>
+        <div class="conv-body">
+          <p id="conv-glow-copy">Listening.</p>
+        </div>
+        <div class="glow-slot"><canvas id="conv-glow"></canvas></div>
+      </div></div>
+    </section>
+  </div>
+
+  <div class="solo">
+    <div class="solo-frame">
+      <canvas id="hero-pill"></canvas>
+      <span>Shared component, enlarged</span>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h3>Why the wave does not go full screen</h3>
+    <p>
+      The pill is a 1-D heightfield clipped to a capsule about 132 points wide. Two listening crests
+      fill that width. Spread across a phone, the same shape is either a stranded pair of hills or a
+      row of spikes on a blue bar. Gemini ran the same experiment in public and retreated:
+      <a href="https://www.androidcentral.com/apps-software/ai/i-barely-use-chatbot-after-trying-new-gemini-live">Live used to be a full-screen waveform</a>,
+      and the current UI is a pill, with a floating orb only when you leave the conversation.
+      ChatGPT's full-screen voice screen is an orb, which stays round when the phone gets wider.
+      The pattern that is drawn at screen size, rather than scaled up from a small widget, is an edge glow.
+    </p>
+    <h3>Prototype: edge glow</h3>
+    <p>
+      The phones above borrow the Apple Intelligence / Siri grammar: lobes of light travel the rounded
+      bezel, and the center is punched out so type stays readable. Palette is this lab's ice, electric
+      blue, violet, and bottle green. It is a canvas approximation (conic stroke plus radial lobes),
+      not Apple's shader and not a Siri impersonation. Listening is dim and slow, connecting is a
+      steady drift, speaking is brighter and faster. Mic energy thickens it. Reduce Motion holds one frame.
+    </p>
+    <h3>What the recording actually is</h3>
+    <p>
+      Not a waveform, not a 3D orb, not overlapping blobs. A <b>capsule on black</b>
+      whose fill is a 1-D heightfield.       Listening is two slow crests. Connecting is a steady ripple traveling left to right.
+      While the AI is speaking the horizon breaks into three faster peaks with deep troughs
+      between them, and the tall ones pick up magenta and bottle green. Sampled from your Gemini Live
+      recording (the visualizer itself is proprietary — Gemini said so in the same clip).
+    </p>
+    <h3>Swift practice (iOS 18+ MeshGradient)</h3>
+    <p>
+      Pixel-match to this lab: <code>TimelineView(.animation)</code> + <code>Canvas</code>
+      drawing the same heightfield. GPU-cheap cousin: a 4×3 <code>MeshGradient</code> in a
+      <code>Capsule</code> — top row near-black and pinned, middle row is the ice ridge
+      (only interior points move), bottom row electric blue and pinned.
+      Never mutate grid size (Metal recompiles). <code>smoothsColors: true</code>,
+      <code>colorSpace: .perceptual</code>, <code>background: .black</code>.
+      Animate points, not hues. Energy is fast attack / slow release so the ridge doesn’t chatter.
+      Reduce Motion freezes on a static dim glow.
+    </p>
+    <h3>Edge glow</h3>
+    <p>The family the prototype belongs to. Light on the boundary, content in the middle. Width is the design.</p>
+    <ul>
+      <li><a href="https://vp0.com/blogs/apple-intelligence-siri-overlay-clone-swiftui">Apple Intelligence edge glow, explained</a>. System UI, no public API. Stacked angular strokes, a soft bloom, hue motion. State lamp: hot while listening, slower while thinking, gone when idle.</li>
+      <li><a href="https://github.com/christopherkarani/aurora">christopherkarani/aurora</a>. SwiftUI + Metal. The practical port: anchored metaballs and a noise-warped SDF around the screen, <code>.subtle</code> / <code>.standard</code> / <code>.dramatic</code>. This is the iOS path if the prototype holds.</li>
+    </ul>
+    <h3>Centered orb</h3>
+    <p>Full screen because the empty field around a circle is intentional. The orb does not stretch. It does cover the middle, which fights a reading passage.</p>
+    <ul>
+      <li><a href="https://openai.com/index/chatgpt-can-now-see-hear-and-speak/">ChatGPT Advanced Voice</a>. Blue-white orb, audio-reactive, optional separate full-screen mode.</li>
+      <li><a href="https://www.androidcentral.com/apps-software/ai/i-barely-use-chatbot-after-trying-new-gemini-live">Gemini Live, before the pill</a>. Full-screen animated gradient. Google has since shrunk it.</li>
+      <li><a href="https://ui.elevenlabs.io/docs/components/orb">ElevenLabs Orb</a> and <a href="https://github.com/elevenlabs/components-swift">Swift OrbVisualizer</a>. Three.js / SwiftUI orb with listening, thinking, talking. The production state machine to copy, not the silhouette.</li>
+      <li><a href="https://orb-ui.com/docs/themes/voice-states">orb-ui themes</a>. One React orb, themes <code>circle</code>, <code>cloud</code>, <code>radial</code>, <code>bars</code>. Adapters for Vapi, ElevenLabs, LiveKit, Pipecat, OpenAI Realtime, Gemini Live.</li>
+      <li><a href="https://github.com/krispuckett/murmur">Murmur</a> and <a href="https://murmur.krispuckett.com/">Murmur for the web</a>. 18 Metal glass species, including <code>.aura</code>, designed at 120 pt, 46 pt, and 18 pt. Steal <code>level</code> + <code>activity</code>, not a species, unless the presence is an orb.</li>
+      <li><a href="https://github.com/metasidd/Orb">metasidd/Orb</a>. Particle orb. A round agent face, not a screen.</li>
+    </ul>
+    <h3>Shader aura</h3>
+    <p>A bounded ellipse you can make large. Still a widget. Scaling it up is the same trap as scaling the pill.</p>
+    <ul>
+      <li><a href="https://docs.livekit.io/reference/components/agents-ui/component/agent-audio-visualizer-aura/">LiveKit AgentAudioVisualizerAura</a>. Unicorn Studio shader, sizes <code>icon</code> through <code>xl</code>, state plus volume. The reputable component kit.</li>
+      <li><a href="https://docs.livekit.io/frontends/agents-ui/audio-visualizer/custom/">LiveKit custom shader guide</a>. How that aura is built, if you fork the GLSL.</li>
+      <li><a href="https://www.unicorn.studio/">Unicorn Studio</a>. The shader author LiveKit partnered with.</li>
+      <li><a href="https://docs.livekit.io/reference/components/agents-ui/block/agent-session-view-01/">AgentSessionView</a>. Full session chrome (transcript, controls) with a swappable visualizer. The layout, not the light.</li>
+    </ul>
+    <h3>Bars, waves, grids</h3>
+    <p>Honest at pill size. They are the family this page already is. Do not expand them.</p>
+    <ul>
+      <li><a href="https://docs.livekit.io/frontends/agents-ui/audio-visualizer/prebuilt/">LiveKit bar, grid, radial, wave</a>. Same props as Aura. Swift ships <code>AgentBarAudioVisualizer</code> only.</li>
+      <li><a href="https://ui.elevenlabs.io/docs/components/bar-visualizer">ElevenLabs BarVisualizer</a>. Frequency bars with the same agent states as the orb.</li>
+      <li><a href="https://mindwiredai.com/2026/05/18/gemini-live-interactive-bar-pill-ui/">Gemini's pill</a>. The full-screen waveform, condensed. This lab's capsule is the local version of that decision.</li>
+    </ul>
+    <h3>Providers that borrow a face</h3>
+    <p>These ship voice, not a full-screen visual. The UI in front of them is usually an orb from the list above.</p>
+    <ul>
+      <li><a href="https://orb-ui.com/docs/adapters/vapi">Vapi adapter</a>.</li>
+      <li><a href="https://orb-ui.com/docs/quickstart">Pipecat, OpenAI Realtime, and Gemini Live adapters</a>.</li>
+    </ul>
+  </div>
+
+<script>
+const state = { energy: 0.08, demo: false, keys: false, mode: "listen", analyser: null, stream: null };
+
+function sizeCanvas(canvas) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = canvas.clientWidth || 132;
+  const h = canvas.clientHeight || 52;
+  if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w, h };
+}
+
+function stadium(ctx, w, h) {
+  const r = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(r, 0);
+  ctx.arcTo(w, 0, w, h, r);
+  ctx.arcTo(w, h, 0, h, r);
+  ctx.arcTo(0, h, 0, 0, r);
+  ctx.arcTo(0, 0, w, 0, r);
+  ctx.closePath();
+}
+
+function lerp(a, b, t) { return a + (b - a) * Math.max(0, Math.min(1, t)); }
+function rgb(r, g, b, a = 1) { return `rgba(${r | 0},${g | 0},${b | 0},${a})`; }
+
+/**
+ * Gemini's silhouette is a 1-D heightfield: a soft horizon that lifts into
+ * two independently drifting peaks. Vertical gradient through the fill
+ * (ice / bottle-green at the crests, electric blue on the floor).
+ */
+function ridgeY(xn, t, e, peaks, field) {
+  const width = field.width;
+  const rest = field.rest;
+  let lift = 0;
+  for (let i = 0; i < peaks.length; i++) {
+    const p = peaks[i];
+    const d = xn - p.x;
+    const mountain = Math.exp(-(d * d) / (2 * width * width));
+    lift += field.lift * mountain * p.amp;
+  }
+  if (field.mode === "connect") {
+    const travel = t * 1.6;
+    return rest - 0.08 * Math.sin(xn * Math.PI * 4 - travel);
+  }
+  const wave = field.mode === "speak"
+    ? 0.055 * Math.sin(xn * Math.PI * 3.4 + t * 2.4) +
+      0.032 * Math.sin(xn * Math.PI * 6.1 - t * 3.3)
+    : (0.018 * Math.sin(xn * Math.PI * 2.05 + t * 0.62) +
+       0.010 * Math.sin(xn * Math.PI * 4.6 - t * 1.05)) * (0.22 + e * 0.12);
+  return rest - lift + wave;
+}
+
+function fillHill(ctx, w, h, t, e, { peaks, blur, yShift, stops, field }) {
+  ctx.save();
+  ctx.filter = `blur(${blur}px)`;
+  const pad = blur * 2.5;
+  ctx.beginPath();
+  ctx.moveTo(-pad, h + pad);
+  const n = 72;
+  for (let i = 0; i <= n; i++) {
+    const xn = i / n;
+    ctx.lineTo(xn * w, ridgeY(xn, t, e, peaks, field) * h + yShift);
+  }
+  ctx.lineTo(w + pad, h + pad);
+  ctx.closePath();
+  const top = (0.22 - e * 0.14) * h;
+  const g = ctx.createLinearGradient(0, top, 0, h);
+  for (const [stop, color] of stops) g.addColorStop(stop, color);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.restore();
+}
+
+function smoothstep(a, b, x) {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
+/** 0..1. Stacked incommensurate sines — two peaks never share a period. */
+function wander(t, a, b, c, phase) {
+  return 0.5 + 0.5 * (
+    0.48 * Math.sin(t * a + phase) +
+    0.32 * Math.sin(t * b + phase * 1.73) +
+    0.20 * Math.sin(t * c + phase * 2.41)
+  );
+}
+
+function drawAurora(canvas, t, energy, mode) {
+  if (mode === "speak") t *= 0.9;
+  else if (mode !== "connect") t *= 0.5;
+  const { ctx, w, h } = sizeCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+  ctx.save();
+  stadium(ctx, w, h);
+  ctx.clip();
+  ctx.fillStyle = "#050508";
+  ctx.fillRect(0, 0, w, h);
+
+  const e = Math.max(0, Math.min(1, energy));
+  const talking = mode === "speak";
+  const blur = mode === "connect"
+    ? Math.max(4, h * 0.05)
+    : Math.max(talking ? 5 : 7, h * (talking ? 0.09 : 0.13));
+  const field = mode === "speak"
+    ? { mode, width: 0.095, rest: 0.92, lift: 0.46 + e * 0.28 }
+    : mode === "connect"
+      ? { mode, width: 0.2, rest: 0.62, lift: 0 }
+      : { mode, width: 0.18, rest: 0.60, lift: 0.05 + e * 0.40 };
+
+  let peaks;
+  if (mode === "connect") {
+    peaks = [];
+  } else if (talking) {
+    // Three crests, each on its own clock. Gaps between them are the deep troughs.
+    const speak = (x0, spread, phase) => ({
+      x: x0 + spread * (wander(t, 1.9, 3.1, 4.7, phase) - 0.5),
+      amp: 0.08 + 1.12 * wander(t, 2.4, 3.8, 6.1, phase + 1.4),
+    });
+    peaks = [
+      speak(0.22, 0.12, 0.3),
+      speak(0.50, 0.10, 2.2),
+      speak(0.78, 0.12, 4.1),
+    ];
+  } else {
+    const liftL = wander(t, 0.41, 0.67, 1.13, 0.20);
+    const liftR = wander(t, 0.29, 0.83, 1.01, 2.74);
+    peaks = [
+      {
+        x: 0.18 + 0.16 * wander(t, 0.33, 0.59, 0.97, 1.12),
+        amp: 0.36 + e * 0.10 + (0.18 + e * 0.58) * liftL,
+      },
+      {
+        x: 0.64 + 0.16 * wander(t, 0.27, 0.71, 1.19, 3.41),
+        amp: 0.36 + e * 0.10 + (0.18 + e * 0.58) * liftR,
+      },
+    ];
+  }
+
+  const floor = [
+    lerp(130, 38, e),
+    lerp(168, 96, e),
+    lerp(228, 250, e),
+  ];
+  const mid = [
+    lerp(100, 44, e),
+    lerp(140, 108, e),
+    lerp(214, 248, e),
+  ];
+  const crest = [
+    lerp(150, 70, e * 0.55),
+    lerp(186, 150, e * 0.45),
+    lerp(232, 255, e * 0.2),
+  ];
+
+  fillHill(ctx, w, h, t, e, {
+    peaks,
+    blur,
+    yShift: 0,
+    field,
+    stops: [
+      [0, rgb(crest[0], crest[1], crest[2], 0.0)],
+      [0.18, rgb(crest[0], crest[1], crest[2], 0.85)],
+      [0.42, rgb(mid[0], mid[1], mid[2], 1)],
+      [1, rgb(floor[0], floor[1], floor[2], 1)],
+    ],
+  });
+
+  // Listening keeps a low shelf. Speaking and connecting leave the valleys open.
+  if (mode === "listen") {
+    fillHill(ctx, w, h, t + 1.3, e, {
+      peaks: peaks.map((p) => ({ x: p.x, amp: p.amp * 0.22 })),
+      blur: blur * 1.15,
+      yShift: h * 0.07,
+      field,
+      stops: [
+        [0, rgb(40, 80, 210, 0)],
+        [0.35, rgb(40, 90, 230, 0.55)],
+        [1, rgb(floor[0], floor[1], floor[2], 0.9)],
+      ],
+    });
+  }
+
+  ctx.globalCompositeOperation = "screen";
+
+  if (mode !== "connect") fillHill(ctx, w, h, t, e, {
+    peaks,
+    blur: blur * 0.8,
+    yShift: -h * 0.015,
+    field,
+    stops: [
+      [0, rgb(160, 210, 255, 0.20 + e * 0.14)],
+      [0.18, rgb(70, 140, 255, 0.14)],
+      [0.45, rgb(20, 50, 160, 0)],
+      [1, rgb(0, 0, 0, 0)],
+    ],
+  });
+
+  const k = mode === "connect" ? 0 : (talking ? 0.85 : smoothstep(0.36, 0.78, e));
+  if (k > 0.02) {
+    for (let i = 0; i < peaks.length; i++) {
+      const p = peaks[i];
+      const tall = k * smoothstep(talking ? 0.38 : 0.62, talking ? 0.85 : 0.95, p.amp);
+      if (tall <= 0.02) continue;
+      const magenta = talking ? (i === 0) : (i === peaks.length - 1);
+      const green = talking ? (i !== 0) : true;
+      if (magenta) {
+        fillHill(ctx, w, h, t, e, {
+          peaks: [{ x: p.x, amp: p.amp }],
+          blur: blur * 0.85,
+          yShift: -h * 0.02,
+          field,
+          stops: [
+            [0, rgb(210, 90, 255, 0.55 * tall)],
+            [0.35, rgb(80, 40, 180, 0.28 * tall)],
+            [1, rgb(0, 0, 0, 0)],
+          ],
+        });
+      }
+      if (green) {
+        fillHill(ctx, w, h, t, e, {
+          peaks: [{ x: p.x, amp: p.amp * 1.05 }],
+          blur: blur * 0.65,
+          yShift: -h * 0.03,
+          field,
+          stops: [
+            [0, rgb(168, 236, 168, 0.82 * tall)],
+            [0.22, rgb(96, 196, 120, 0.58 * tall)],
+            [0.55, rgb(36, 110, 70, 0.12 * tall)],
+            [1, rgb(0, 0, 0, 0)],
+          ],
+        });
+      }
+    }
+  }
+
+  ctx.globalCompositeOperation = "source-over";
+  ctx.restore();
+}
+
+const glowMasks = new WeakMap();
+const GLOW_HUES = [
+  [64, 146, 255],
+  [214, 232, 255],
+  [186, 112, 255],
+  [42, 96, 255],
+  [148, 224, 166],
+];
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+/** u in 0..1, clockwise from the top edge. Keeps lobes on the rounded bezel. */
+function pointOnRoundRect(u, w, h, radius) {
+  const r = Math.max(0, Math.min(radius, w / 2, h / 2));
+  const top = Math.max(0, w - 2 * r);
+  const side = Math.max(0, h - 2 * r);
+  const arc = (Math.PI * r) / 2;
+  const total = 2 * top + 2 * side + 4 * arc || 1;
+  let d = (((u % 1) + 1) % 1) * total;
+  const take = (len) => {
+    if (d <= len) return d;
+    d -= len;
+    return -1;
+  };
+  let hit = take(top);
+  if (hit >= 0) return { x: r + hit, y: 0 };
+  hit = take(arc);
+  if (hit >= 0) {
+    const a = -Math.PI / 2 + (r ? hit / r : 0);
+    return { x: w - r + Math.cos(a) * r, y: r + Math.sin(a) * r };
+  }
+  hit = take(side);
+  if (hit >= 0) return { x: w, y: r + hit };
+  hit = take(arc);
+  if (hit >= 0) {
+    const a = r ? hit / r : 0;
+    return { x: w - r + Math.cos(a) * r, y: h - r + Math.sin(a) * r };
+  }
+  hit = take(top);
+  if (hit >= 0) return { x: w - r - hit, y: h };
+  hit = take(arc);
+  if (hit >= 0) {
+    const a = Math.PI / 2 + (r ? hit / r : 0);
+    return { x: r + Math.cos(a) * r, y: h - r + Math.sin(a) * r };
+  }
+  hit = take(side);
+  if (hit >= 0) return { x: 0, y: h - r - hit };
+  hit = take(arc);
+  const a = Math.PI + (r ? Math.max(0, hit) / r : 0);
+  return { x: r + Math.cos(a) * r, y: r + Math.sin(a) * r };
+}
+
+function edgeMask(canvas, w, h) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const pw = Math.floor(w * dpr);
+  const ph = Math.floor(h * dpr);
+  const cached = glowMasks.get(canvas);
+  if (cached && cached.pw === pw && cached.ph === ph) return cached.canvas;
+  const c = document.createElement("canvas");
+  c.width = pw;
+  c.height = ph;
+  const m = c.getContext("2d");
+  m.setTransform(dpr, 0, 0, dpr, 0, 0);
+  m.fillStyle = "#fff";
+  roundRectPath(m, 0, 0, w, h, 34);
+  m.fill();
+  const blur = Math.max(18, Math.min(w, h) * 0.04);
+  const inset = Math.max(46, Math.min(w, h) * 0.11);
+  m.globalCompositeOperation = "destination-out";
+  m.filter = `blur(${blur}px)`;
+  roundRectPath(m, inset, inset, w - inset * 2, h - inset * 2, Math.max(16, 34 - 8));
+  m.fill();
+  const next = { pw, ph, canvas: c };
+  glowMasks.set(canvas, next);
+  return c;
+}
+
+/**
+ * Screen-edge glow. Lobes travel the rounded bezel; a mask clears the middle
+ * so type stays readable. Web approximation of the Apple Intelligence grammar,
+ * in this lab's palette. Not Apple's shader.
+ */
+function drawEdgeGlow(canvas, t, energy, mode) {
+  const { ctx, w, h } = sizeCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+  if (w < 20 || h < 20) return;
+  const e = Math.max(0, Math.min(1, energy));
+  const talking = mode === "speak";
+  const connecting = mode === "connect";
+  const amp = connecting ? 0.52 : talking ? 0.62 + 0.38 * e : 0.28 + 0.62 * e;
+  const speed = talking ? 0.085 : connecting ? 0.05 : 0.028;
+  const count = talking ? 8 : connecting ? 6 : 5;
+  const reach = Math.min(w, h) * (talking ? 0.2 : 0.15);
+
+  ctx.save();
+  const spin = t * speed * Math.PI * 2;
+  const cone = ctx.createConicGradient(spin, w / 2, h / 2);
+  const stops = talking
+    ? [[0, [70, 150, 255]], [0.18, [230, 240, 255]], [0.36, [196, 110, 255]], [0.55, [48, 110, 255]], [0.74, [150, 226, 168]], [1, [70, 150, 255]]]
+    : [[0, [80, 150, 255]], [0.28, [220, 236, 255]], [0.62, [90, 140, 255]], [1, [80, 150, 255]]];
+  for (const [stop, col] of stops) cone.addColorStop(stop, rgb(col[0], col[1], col[2], 0.9));
+  roundRectPath(ctx, 2, 2, w - 4, h - 4, 32);
+  ctx.strokeStyle = cone;
+  ctx.lineWidth = talking ? 14 : 9;
+  ctx.filter = `blur(${talking ? 8 : 12}px)`;
+  ctx.globalAlpha = 0.55 * amp;
+  ctx.stroke();
+  ctx.filter = "none";
+  ctx.globalAlpha = 0.9 * amp;
+  ctx.lineWidth = talking ? 2.4 : 1.6;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < count; i++) {
+    const travel = (i / count + t * speed) % 1;
+    const breathe = 0.62 + 0.38 * Math.sin(t * (talking ? 2.1 : connecting ? 0.9 : 0.45) + i * 1.9);
+    const p = pointOnRoundRect(travel, w, h, 32);
+    const rad = reach * (0.55 + 0.6 * breathe) * (0.7 + 0.45 * amp);
+    let col = GLOW_HUES[i % GLOW_HUES.length];
+    if (!talking && i % GLOW_HUES.length >= 2 && e < 0.4) col = GLOW_HUES[i % 2];
+    const g = ctx.createRadialGradient(p.x, p.y, rad * 0.04, p.x, p.y, rad);
+    g.addColorStop(0, rgb(Math.min(255, col[0] + 36), Math.min(255, col[1] + 24), col[2], 0.75 * amp));
+    g.addColorStop(0.4, rgb(col[0], col[1], col[2], 0.32 * amp));
+    g.addColorStop(1, rgb(col[0], col[1], col[2], 0));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-in";
+  ctx.drawImage(edgeMask(canvas, w, h), 0, 0, w, h);
+  ctx.restore();
+}
+
+function rmsFromAnalyser(analyser) {
+  const buf = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(buf);
+  let sum = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const v = (buf[i] - 128) / 128;
+    sum += v * v;
+  }
+  return Math.sqrt(sum / buf.length);
+}
+
+async function startMic() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true },
+  });
+  const ctx = new AudioContext();
+  const src = ctx.createMediaStreamSource(stream);
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  analyser.smoothingTimeConstant = 0.4;
+  src.connect(analyser);
+  state.stream = stream;
+  state.analyser = analyser;
+  document.getElementById("mic").textContent = "Stop microphone";
+  document.getElementById("mic").classList.add("on");
+  document.getElementById("hint").textContent = "Speak. Every canvas shares one level.";
+}
+function stopMic() {
+  state.stream?.getTracks().forEach((t) => t.stop());
+  state.stream = null;
+  state.analyser = null;
+  document.getElementById("mic").textContent = "Start microphone";
+  document.getElementById("mic").classList.remove("on");
+}
+
+document.getElementById("mic").addEventListener("click", async () => {
+  try {
+    if (state.stream) stopMic();
+    else await startMic();
+  } catch {
+    document.getElementById("hint").textContent = "Mic blocked — hold Space instead";
+  }
+});
+document.getElementById("demo").addEventListener("click", () => {
+  state.demo = !state.demo;
+  document.getElementById("demo").textContent = state.demo ? "Stop demo" : "Pulse demo";
+});
+function setMode(mode) {
+  state.mode = state.mode === mode ? "listen" : mode;
+  const connect = document.getElementById("connect");
+  const talk = document.getElementById("talk");
+  connect.classList.toggle("on", state.mode === "connect");
+  connect.textContent = state.mode === "connect" ? "Stop connecting" : "Connecting";
+  talk.classList.toggle("on", state.mode === "speak");
+  talk.textContent = state.mode === "speak" ? "Stop speaking" : "AI speaking";
+}
+document.getElementById("connect").addEventListener("click", () => setMode("connect"));
+document.getElementById("talk").addEventListener("click", () => setMode("speak"));
+window.addEventListener("keydown", (e) => { if (e.code === "Space") { e.preventDefault(); state.keys = true; } });
+window.addEventListener("keyup", (e) => { if (e.code === "Space") state.keys = false; });
+
+if (location.search.includes("demo")) {
+  state.demo = true;
+  document.getElementById("demo").textContent = "Stop demo";
+}
+if (location.search.includes("talk")) setMode("speak");
+else if (location.search.includes("connect")) setMode("connect");
+
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let last = performance.now();
+function tick(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  const t = now / 1000;
+  let target = 0.1;
+  if (state.analyser) {
+    const rms = rmsFromAnalyser(state.analyser);
+    target = Math.min(1, Math.max(0.08, (rms - 0.018) * 6.2));
+  }
+  if (state.keys) target = Math.max(target, 0.62 + 0.18 * Math.sin(t * 12));
+  if (state.demo && state.mode === "listen") target = Math.max(target, 0.18 + 0.55 * (0.5 + 0.5 * Math.sin(t * 1.18)));
+  if (state.mode === "speak") {
+    const syllable = 0.5 + 0.5 * Math.sin(t * 6.4);
+    const phrase = 0.55 + 0.45 * Math.sin(t * 1.9 + 0.4);
+    target = Math.max(target, 0.42 + 0.5 * syllable * phrase);
+  }
+  if (state.mode === "connect") target = 0.28;
+  const atkHz = state.mode === "speak"
+    ? (target > state.energy ? 7.5 : 3.4)
+    : (target > state.energy ? 4.2 : 2.0);
+  state.energy += (target - state.energy) * (1 - Math.exp(-atkHz * dt));
+  document.getElementById("meter").style.width = `${Math.round(state.energy * 100)}%`;
+  const status = state.mode === "speak"
+    ? "Speaking."
+    : state.mode === "connect"
+      ? "Connecting."
+      : (state.energy > 0.28 ? "Hearing you." : "Listening.");
+  document.getElementById("conv-copy").textContent = status;
+  document.getElementById("conv-glow-copy").textContent = status;
+
+  const drawT = reduceMotion ? 1.25 : t;
+  drawAurora(document.getElementById("read-pill"), drawT, state.energy, state.mode);
+  drawAurora(document.getElementById("conv-pill"), drawT, state.energy, state.mode);
+  drawAurora(document.getElementById("hero-pill"), drawT, state.energy, state.mode);
+  drawEdgeGlow(document.getElementById("read-glow"), drawT, state.energy, state.mode);
+  drawEdgeGlow(document.getElementById("conv-glow"), drawT, state.energy, state.mode);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

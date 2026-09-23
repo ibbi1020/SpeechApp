@@ -112,10 +112,6 @@ final class AppModel {
     }
 
     private func continueAfterAgeGate() {
-        if account.lastDisclosureDay != AccountStore.todayString() {
-            route = .aiDisclosure
-            return
-        }
         startConversation()
     }
 

@@ -47,7 +47,7 @@ struct HomeView: View {
                     model.requestStartConversation()
                 }
             }
-            .buttonStyle(SpeechPrimaryButtonStyle())
+            .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
             .disabled(!model.budget.startEnabled)
             .opacity(model.budget.startEnabled ? 1 : 0.45)
             .padding(.top, 22)
@@ -83,13 +83,11 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
-            )
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
         }
     }
 }

@@ -51,7 +51,7 @@ struct PassageLibraryView: View {
                     model.selectPassage(passage)
                 }
             }
-            .buttonStyle(SpeechPrimaryButtonStyle())
+            .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
             .padding(.top, 22)
         }
         .padding(24)
@@ -70,19 +70,11 @@ struct PassageLibraryView: View {
                 .textCase(.uppercase)
                 .tracking(0.6)
 
-            VStack(spacing: 0) {
-                ForEach(Array(model.morePassages.enumerated()), id: \.element.id) { index, passage in
-                    if index > 0 {
-                        Divider()
-                            .padding(.leading, 20)
-                    }
+            VStack(spacing: 12) {
+                ForEach(model.morePassages) { passage in
                     moreRow(passage)
                 }
             }
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
-            )
         }
     }
 
@@ -105,8 +97,10 @@ struct PassageLibraryView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
     }
 }

@@ -53,17 +53,19 @@ struct SpeechScreenBackground: View {
 struct SpeechPrimaryButtonStyle: ButtonStyle {
     var tint: Color = .accentColor
     var isDestructive: Bool = false
+    /// Tinted glass for the primary go action. Other primaries stay clear glass.
+    var showsTint: Bool = false
 
     func makeBody(configuration: Configuration) -> some View {
+        let glass: Glass = showsTint
+            ? .regular.tint(isDestructive ? .red : tint).interactive()
+            : .regular.interactive()
         configuration.label
             .font(.headline)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .foregroundStyle(.white)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isDestructive ? Color.red : tint)
-            )
+            .foregroundStyle(showsTint ? AnyShapeStyle(.white) : AnyShapeStyle(isDestructive ? Color.red : Color.primary))
+            .glassEffect(glass, in: .rect(cornerRadius: 14))
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .opacity(configuration.isPressed ? 0.92 : 1)
             .animation(SpeechMotion.press, value: configuration.isPressed)
@@ -77,12 +79,34 @@ struct SpeechSecondaryButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .foregroundStyle(.primary)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(.tertiarySystemFill))
-            )
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(SpeechMotion.press, value: configuration.isPressed)
+    }
+}
+
+/// Equal pause / stop circle chrome for live session bars.
+struct SpeechGlassCircleLabel: ViewModifier {
+    var tint: Color?
+
+    func body(content: Content) -> some View {
+        let glass: Glass = if let tint {
+            .regular.tint(tint).interactive()
+        } else {
+            .regular.interactive()
+        }
+        content
+            .font(.body.weight(.semibold))
+            .foregroundStyle(tint == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(.white))
+            .frame(width: 52, height: 52)
+            .contentShape(Circle())
+            .glassEffect(glass, in: .circle)
+    }
+}
+
+extension View {
+    func speechGlassCircle(tint: Color? = nil) -> some View {
+        modifier(SpeechGlassCircleLabel(tint: tint))
     }
 }
 
