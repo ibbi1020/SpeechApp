@@ -30,4 +30,22 @@ struct ConversationPauseTimeTests {
         ])
         #expect(pause == 0)
     }
+
+    @Test("counts gaps of at least 250ms")
+    func countsQualifyingGaps() {
+        let count = ConversationPauseTime.count(from: [
+            ConversationSpeechInterval(start: 0, end: 1),
+            ConversationSpeechInterval(start: 1.125, end: 2),
+            ConversationSpeechInterval(start: 2.5, end: 3),
+        ])
+        #expect(count == 1)
+    }
+
+    @Test("a single range has no pause count")
+    func singleRangeCount() {
+        let count = ConversationPauseTime.count(from: [
+            ConversationSpeechInterval(start: 0, end: 4),
+        ])
+        #expect(count == 0)
+    }
 }

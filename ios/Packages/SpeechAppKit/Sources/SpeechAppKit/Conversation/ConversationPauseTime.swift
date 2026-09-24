@@ -20,4 +20,20 @@ public enum ConversationPauseTime {
         }
         return total
     }
+
+    public static func count(
+        from ranges: [ConversationSpeechInterval],
+        minimumGap: TimeInterval = minimumGap
+    ) -> Int {
+        let merged = ConversationSpeechMetrics.merged(ranges)
+        guard merged.count >= 2 else { return 0 }
+        var total = 0
+        for index in 1..<merged.count {
+            let gap = merged[index].start - merged[index - 1].end
+            if gap >= minimumGap {
+                total += 1
+            }
+        }
+        return total
+    }
 }
