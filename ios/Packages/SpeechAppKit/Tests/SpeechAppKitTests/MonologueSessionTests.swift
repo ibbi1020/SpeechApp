@@ -67,6 +67,66 @@ struct MonologueSessionClockTests {
     }
 }
 
+@Suite("Monologue session takes")
+struct MonologueSessionTakeTests {
+    @MainActor
+    @Test("Done after take 1 goes between with Three minutes")
+    func afterTake1() {
+        let time = ControllableTimeSource(now: 0)
+        let session = makeSession(time: time)
+        session.ready()
+        time.advance(40)
+        session.ingestRanges([ConversationSpeechInterval(start: 0, end: 30)])
+        session.ingestText("I take the bus")
+        session.done()
+        #expect(session.phase == .between)
+        #expect(session.betweenCopy == "Three minutes.")
+        #expect(session.takeNumber == 2)
+        #expect(session.takes.count == 1)
+    }
+
+    @MainActor
+    @Test("0:00 ends the take the same as Done")
+    func zeroEqualsDone() async {
+        let time = ControllableTimeSource(now: 0)
+        let session = makeSession(time: time)
+        session.ready()
+        time.advance(240)
+        await session.tick()
+        #expect(session.phase == .between)
+        #expect(session.takes.first?.wallSeconds == 240)
+    }
+
+    @MainActor
+    @Test("take 3 Done opens the report")
+    func take3Report() {
+        let time = ControllableTimeSource(now: 0)
+        let session = makeSession(time: time)
+        for _ in 1...3 {
+            session.ready()
+            time.advance(35)
+            session.ingestRanges([ConversationSpeechInterval(start: 0, end: 30)])
+            session.ingestText("I take the bus to work every day")
+            session.done()
+        }
+        #expect(session.phase == .report)
+        #expect(session.report?.kind == .full)
+        #expect(session.report?.endReason == .completed)
+    }
+
+    @MainActor
+    @Test("between copy after take 2 is Two minutes")
+    func afterTake2() {
+        let time = ControllableTimeSource(now: 0)
+        let session = makeSession(time: time)
+        session.ready(); time.advance(35); session.done()
+        session.ready(); time.advance(35); session.done()
+        #expect(session.phase == .between)
+        #expect(session.betweenCopy == "Two minutes.")
+        #expect(session.takeNumber == 3)
+    }
+}
+
 @MainActor
 private func makeSession(
     time: ControllableTimeSource = ControllableTimeSource(now: 0),
