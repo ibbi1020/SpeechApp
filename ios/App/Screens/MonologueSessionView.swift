@@ -5,6 +5,7 @@ import SpeechAppKit
 struct MonologueSessionView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var session: MonologueSession?
     @State private var errorMessage: String?
@@ -68,6 +69,14 @@ struct MonologueSessionView: View {
                     await stopListen()
                 }
                 routeIfFinished()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { note in
+            handleRouteChange(note)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                session?.pause()
             }
         }
         .onDisappear {
@@ -448,6 +457,20 @@ struct MonologueSessionView: View {
             )
         } catch {
             errorMessage = "Topics didn’t load."
+        }
+    }
+
+    private func handleRouteChange(_ note: Notification) {
+        let raw: UInt
+        if let value = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt {
+            raw = value
+        } else if let number = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber {
+            raw = number.uintValue
+        } else {
+            return
+        }
+        if ConversationRoutePause.shouldPause(reason: raw) {
+            session?.pause()
         }
     }
 
