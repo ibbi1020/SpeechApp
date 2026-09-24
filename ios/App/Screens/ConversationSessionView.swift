@@ -84,8 +84,8 @@ struct ConversationSessionView: View {
                         bottomChrome
                     }
                 }
-                .accessibilityHidden(isFogged)
-                .allowsHitTesting(!isFogged)
+                .accessibilityHidden(isFogged || showStopConfirm)
+                .allowsHitTesting(!isFogged && !showStopConfirm)
 
             if isFogged {
                 ReadingCountdownOverlay(
@@ -93,21 +93,27 @@ struct ConversationSessionView: View {
                     instruction: "Take a deep breath. Talk when you're ready."
                 )
             }
+
+            if showStopConfirm {
+                ConversationStopModal(
+                    onStop: {
+                        showStopConfirm = false
+                        Task { await confirmStop() }
+                    },
+                    onKeepTalking: { showStopConfirm = false }
+                )
+                .transition(.opacity)
+            }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: phase)
+        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationTitle("Conversation")
         .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog(
-            "Stop this conversation?",
-            isPresented: $showStopConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Stop", role: .destructive) {
-                Task { await confirmStop() }
-            }
-            Button("Keep talking", role: .cancel) {}
+        .toolbar(showStopConfirm ? .hidden : .automatic, for: .navigationBar)
+        .background {
+            NavigationPopLock(isLocked: showStopConfirm)
         }
         .task { await beginSession() }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
@@ -458,6 +464,82 @@ struct ConversationSessionView: View {
             break
         default:
             Task { await session.confirmStop() }
+        }
+    }
+}
+
+private struct ConversationStopModal: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    var onStop: () -> Void
+    var onKeepTalking: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(reduceTransparency ? 0.72 : 0.4)
+                .ignoresSafeArea()
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Stop this conversation?")
+                    .font(.system(.title3, design: .serif).weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button("Stop", action: onStop)
+                    .buttonStyle(SpeechPrimaryButtonStyle(isDestructive: true, showsTint: true))
+                    .padding(.top, 22)
+
+                Button("Keep talking", action: onKeepTalking)
+                    .buttonStyle(SpeechSecondaryButtonStyle())
+                    .padding(.top, 10)
+            }
+            .padding(24)
+            .frame(maxWidth: 420, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
+            )
+            .padding(.horizontal, SpeechSpacing.page)
+            .accessibilityElement(children: .contain)
+            .accessibilityAddTraits(.isModal)
+        }
+    }
+}
+
+/// Blocks the navigation swipe-back while the stop modal is up.
+private struct NavigationPopLock: UIViewControllerRepresentable {
+    var isLocked: Bool
+
+    func makeUIViewController(context: Context) -> Controller {
+        Controller()
+    }
+
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        controller.isLocked = isLocked
+        controller.apply()
+    }
+
+    final class Controller: UIViewController {
+        var isLocked = false
+
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            apply()
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+        }
+
+        override func didMove(toParent parent: UIViewController?) {
+            super.didMove(toParent: parent)
+            apply()
+        }
+
+        func apply() {
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = !isLocked
         }
     }
 }
