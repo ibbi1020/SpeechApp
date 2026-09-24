@@ -49,5 +49,5 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        NSMicrophoneUsageDescription: SpeechApp talks with a live AI partner. Your voice is streamed to OpenAI for the conversation. Scoring stays on this device. We do not keep the recording.
-        NSSpeechRecognitionUsageDescription: SpeechApp uses on-device speech recognition to follow along as you read and mark skips, extras, and wrong words. Recognition runs on your device.
+        NSMicrophoneUsageDescription: SpeechApp uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Partner audio is streamed to OpenAI. Reading and topic talks are scored on this device. We do not keep the recording.
+        NSSpeechRecognitionUsageDescription: SpeechApp uses on-device speech recognition to follow reading and to time topic talks. Recognition runs on your device.

@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import SpeechAppKit
 
@@ -7,8 +8,16 @@ struct MonologueSessionView: View {
 
     @State private var session: MonologueSession?
     @State private var errorMessage: String?
+    @State private var listenError: String?
     @State private var showLeaveConfirm = false
     @State private var didRouteFinish = false
+
+    // Live capture — held so the pump Tasks and engine/source can be cancelled/stopped.
+    @State private var liveEngine: LiveTranscriptionEngine?
+    @State private var liveSource: MicAudioSource?
+    @State private var transcriptTask: Task<Void, Never>?
+    @State private var audioTask: Task<Void, Never>?
+    @State private var speechEnergy: Float = 0
 
     var body: some View {
         ZStack {
@@ -34,15 +43,22 @@ struct MonologueSessionView: View {
             titleVisibility: .visible
         ) {
             Button("Leave", role: .destructive) {
-                session?.confirmLeave()
-                routeIfFinished()
+                Task {
+                    await stopListen()
+                    session?.confirmLeave()
+                    routeIfFinished()
+                }
             }
             Button("Keep going", role: .cancel) {}
         }
         .task { await setUpSessionIfNeeded() }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             Task {
+                let wasTaking = session?.phase == .taking
                 await session?.tick()
+                if wasTaking, session?.phase != .taking {
+                    await stopListen()
+                }
                 routeIfFinished()
             }
         }
@@ -137,8 +153,15 @@ struct MonologueSessionView: View {
 
     private func planningChrome(_ session: MonologueSession) -> some View {
         VStack(alignment: .leading, spacing: SpeechSpacing.related) {
+            if let listenError {
+                Text(listenError)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Button("I’m ready") {
-                session.ready()
+                Task { await beginListen(session) }
             }
             .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
         }
@@ -192,14 +215,17 @@ struct MonologueSessionView: View {
             .accessibilityLabel(session.phase == .paused ? "Resume" : "Pause")
 
             AuroraPill(
-                energy: 0,
+                energy: speechEnergy,
                 mode: .listen,
                 animating: session.phase == .taking
             )
 
             Button {
-                session.done()
-                routeIfFinished()
+                Task {
+                    await stopListen()
+                    session.done()
+                    routeIfFinished()
+                }
             } label: {
                 Image(systemName: "checkmark")
                     .speechGlassCircle(tint: .accentColor)
@@ -245,6 +271,105 @@ struct MonologueSessionView: View {
             set: { session.reuseLine = $0 }
         )
     }
+
+    // MARK: - Live capture
+
+    /// Permission-first on-device listen. Only calls `session.ready()` (starting the
+    /// 4:00 clock) once mic + speech authorization and the engine/source are up.
+    /// No 3-2-1, no PCM storage, no WebRTC — text/ranges are pumped straight into the session.
+    private func beginListen(_ session: MonologueSession) async {
+        listenError = nil
+        // Take 2/3 "I'm ready" must not retain take-1 audio.
+        await stopListen()
+
+        #if os(iOS)
+        let granted = await requestMic()
+        guard granted else {
+            listenError = "Microphone permission is required."
+            return
+        }
+        do {
+            try await LiveTranscriptionEngine.requestSpeechAuthorization()
+        } catch {
+            listenError = "Speech recognition permission is required (Settings → SpeechApp)."
+            return
+        }
+
+        let engine = LiveTranscriptionEngine()
+        engine.setContextualPhrases([session.prompt])
+
+        var startedSource: MicAudioSource?
+        do {
+            try await engine.prepareIfNeeded()
+            let source = MicAudioSource()
+            try await source.start()
+            startedSource = source
+            try await engine.start()
+        } catch {
+            await startedSource?.stop()
+            listenError = error.localizedDescription
+            return
+        }
+
+        guard let source = startedSource else { return }
+        let updates = engine.updates
+
+        liveEngine = engine
+        liveSource = source
+
+        transcriptTask = Task {
+            for await update in updates {
+                session.ingestText(update.rawText)
+                let ranges: [ConversationSpeechInterval] = update.tokens.compactMap { token in
+                    guard let start = token.startTime, let end = token.endTime else { return nil }
+                    return ConversationSpeechInterval(start: start, end: end)
+                }
+                session.ingestRanges(ranges)
+                if session.phase == .crisis {
+                    // Don't wait for the next timer tick — stop and route now.
+                    await stopListen()
+                    routeIfFinished()
+                    break
+                }
+            }
+        }
+
+        audioTask = Task {
+            for await chunk in source.chunks {
+                engine.append(chunk)
+                speechEnergy = min(1, StallDetector.rms(chunk.samples) / 0.06)
+            }
+        }
+
+        session.ready()
+        #else
+        listenError = "Live mic requires iOS."
+        #endif
+    }
+
+    /// Cancels the pump Tasks and stops engine/source. Never stopped on user Pause —
+    /// resume continues the same engine.
+    private func stopListen() async {
+        audioTask?.cancel()
+        audioTask = nil
+        transcriptTask?.cancel()
+        transcriptTask = nil
+        await liveEngine?.stop()
+        await liveSource?.stop()
+        liveEngine = nil
+        liveSource = nil
+        speechEnergy = 0
+    }
+
+    #if os(iOS)
+    private func requestMic() async -> Bool {
+        await withCheckedContinuation { continuation in
+            AVAudioApplication.requestRecordPermission { granted in
+                continuation.resume(returning: granted)
+            }
+        }
+    }
+    #endif
 
     // MARK: - Lifecycle
 
