@@ -8,6 +8,7 @@ struct MonologueSessionView: View {
     @State private var session: MonologueSession?
     @State private var errorMessage: String?
     @State private var showLeaveConfirm = false
+    @State private var didRouteFinish = false
 
     var body: some View {
         ZStack {
@@ -274,8 +275,9 @@ struct MonologueSessionView: View {
     }
 
     private func routeIfFinished() {
-        guard let session else { return }
+        guard !didRouteFinish, let session else { return }
         if session.phase == .report || session.phase == .crisis, let report = session.report {
+            didRouteFinish = true
             model.finishMonologue(
                 report: report,
                 possibleMinorFlag: session.possibleMinorFlag
