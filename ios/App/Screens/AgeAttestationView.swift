@@ -15,7 +15,7 @@ struct AgeAttestationView: View {
             }
             .padding(.horizontal, SpeechSpacing.page)
         }
-        .navigationTitle("Conversation")
+        .navigationTitle("SpeechApp")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {

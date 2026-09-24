@@ -16,6 +16,9 @@ struct RootView: View {
                 .navigationDestination(isPresented: conversationPresented) {
                     conversationDestination
                 }
+                .navigationDestination(isPresented: monologuePresented) {
+                    monologueDestination
+                }
         }
         .tint(.accentColor)
         .preferredColorScheme(.dark)
@@ -82,6 +85,37 @@ struct RootView: View {
                 }
             }
         )
+    }
+
+    private var monologuePresented: Binding<Bool> {
+        Binding(
+            get: {
+                switch model.route {
+                case .monologue, .monologueReport: true
+                default: false
+                }
+            },
+            set: { presented in
+                if !presented {
+                    switch model.route {
+                    case .monologue, .monologueReport:
+                        model.goHome()
+                    default:
+                        break
+                    }
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var monologueDestination: some View {
+        switch model.route {
+        case .monologueReport(let report):
+            MonologueReportView(report: report)
+        default:
+            MonologueSessionView()
+        }
     }
 
     @ViewBuilder

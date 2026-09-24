@@ -12,10 +12,18 @@ final class AppModel {
         case report(SessionReport)
         case conversation
         case conversationReport(ConversationReport)
+        case monologue
+        case monologueReport(MonologueReport)
         case crisis
         case ageGate
         case aiDisclosure
     }
+
+    enum PendingStart: Equatable {
+        case conversation, monologue
+    }
+
+    var pendingStart: PendingStart = .conversation
 
     var route: Route = .home
     var catalog = PassageCatalog.loadBundled()
@@ -80,11 +88,34 @@ final class AppModel {
 
     func requestStartConversation() {
         guard budget.startEnabled else { return }
+        pendingStart = .conversation
         if !account.attested18 {
             route = .ageGate
             return
         }
         continueAfterAgeGate()
+    }
+
+    func requestStartMonologue() {
+        if !account.attested18 {
+            pendingStart = .monologue
+            route = .ageGate
+            return
+        }
+        startMonologue()
+    }
+
+    func startMonologue() {
+        route = .monologue
+    }
+
+    func finishMonologue(report: MonologueReport, possibleMinorFlag: Bool = false) {
+        notePossibleMinorIfNeeded(possibleMinorFlag)
+        if report.kind == .crisis {
+            route = .crisis
+            return
+        }
+        route = .monologueReport(report)
     }
 
     func confirmAgeAttestation() {
@@ -112,7 +143,12 @@ final class AppModel {
     }
 
     private func continueAfterAgeGate() {
-        startConversation()
+        switch pendingStart {
+        case .conversation:
+            startConversation()
+        case .monologue:
+            startMonologue()
+        }
     }
 
     private static func currentCalendarMonth(now: Date = .now, calendar: Calendar = .current) -> String {
