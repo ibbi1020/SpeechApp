@@ -2,7 +2,6 @@ import AVFoundation
 import Combine
 import SwiftUI
 import SpeechAppKit
-import UIKit
 
 struct ConversationSessionView: View {
     @Environment(AppModel.self) private var model
@@ -26,6 +25,11 @@ struct ConversationSessionView: View {
     @State private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     /// Agent audio in flight (`audioDelta` until `responseDone`).
     @State private var agentSpeaking = false
+    /// User has the floor (`speechStarted` until `speechStopped`). Wins over agent audio.
+    @State private var userSpeaking = false
+    @State private var mouth: (any ConversationMouth)?
+    @State private var speechEnergy: Float = 0
+    @State private var levelTask: Task<Void, Never>?
 
     private var phase: ConversationPhase {
         session?.phase ?? .idle
@@ -50,11 +54,21 @@ struct ConversationSessionView: View {
         }
     }
 
-    private var pillMode: AuroraPill.Mode {
+    private var orbPhase: VoiceOrb.Phase {
+        if isPaused { return .idle }
         switch phase {
-        case .connecting: .connect
-        case .wrapping: .speak
-        default: agentSpeaking ? .speak : .listen
+        case .connecting:
+            return .connecting
+        case .wrapping where !userSpeaking:
+            return .speaking
+        default:
+            if userSpeaking {
+                return .listening
+            } else if agentSpeaking {
+                return .speaking
+            } else {
+                return .listening
+            }
         }
     }
 
@@ -95,12 +109,15 @@ struct ConversationSessionView: View {
             }
 
             if showStopConfirm {
-                ConversationStopModal(
-                    onStop: {
+                SessionStopModal(
+                    title: "Stop this conversation?",
+                    confirmTitle: "Stop",
+                    dismissTitle: "Keep talking",
+                    onConfirm: {
                         showStopConfirm = false
                         Task { await confirmStop() }
                     },
-                    onKeepTalking: { showStopConfirm = false }
+                    onDismiss: { showStopConfirm = false }
                 )
                 .transition(.opacity)
             }
@@ -174,7 +191,7 @@ struct ConversationSessionView: View {
     @ViewBuilder
     private var actionRow: some View {
         if showsControls {
-            HStack(spacing: 16) {
+            HStack(spacing: VoiceOrb.controlSpacing) {
                 Button {
                     if isPaused {
                         session?.resume()
@@ -189,9 +206,10 @@ struct ConversationSessionView: View {
                 .disabled(phase != .talking && !isPaused)
                 .accessibilityLabel(isPaused ? "Resume" : "Pause")
 
-                AuroraPill(
-                    energy: 0.1,
-                    mode: pillMode,
+                VoiceOrb(
+                    phase: orbPhase,
+                    inputVolume: orbPhase == .listening ? speechEnergy : 0,
+                    outputVolume: orbPhase == .speaking ? 0.7 : 0,
                     animating: !isPaused
                 )
 
@@ -218,13 +236,16 @@ struct ConversationSessionView: View {
         didPostStarted = false
         didPostEnded = false
         agentSpeaking = false
+        userSpeaking = false
 
         do {
             let built = try makeSession()
             session = built.session
+            mouth = built.mouth
             fakeMouth = built.fake
             mint = built.mint
             startEventPump(session: built.session, mouth: built.mouth)
+            startLevelPump()
 
             built.session.beginCountdown()
             for n in [3, 2, 1] {
@@ -271,6 +292,21 @@ struct ConversationSessionView: View {
         }
     }
 
+    /// WebRTC owns the mic, so the listening orb reads the local audio level from stats.
+    private func startLevelPump() {
+        levelTask?.cancel()
+        levelTask = Task { @MainActor in
+            while !Task.isCancelled {
+                if orbPhase == .listening {
+                    let level = await mouth?.currentInputLevel() ?? 0
+                    if Task.isCancelled { return }
+                    speechEnergy = ListenDrive.normalized(rms: level)
+                }
+                try? await Task.sleep(for: .milliseconds(40))
+            }
+        }
+    }
+
     private func makeSession() throws -> SessionStart {
         let deck = try StanceDeck.loadBundled()
         let bank = try OpenPromptBank.loadBundled()
@@ -314,9 +350,11 @@ struct ConversationSessionView: View {
         eventPump?.cancel()
         eventPump = Task { @MainActor in
             for await event in mouth.events {
-                // Drive speak mode from agent audio windows.
+                // User speech owns the listen pill. Agent audio owns the speak pill only when the user does not have the floor.
                 switch event {
                 case .audioDelta: agentSpeaking = true
+                case .speechStarted: userSpeaking = true
+                case .speechStopped: userSpeaking = false
                 case .responseDone: agentSpeaking = false
                 default: break
                 }
@@ -443,6 +481,8 @@ struct ConversationSessionView: View {
     private func tearDownIfLeaving() {
         eventPump?.cancel()
         eventPump = nil
+        levelTask?.cancel()
+        levelTask = nil
         debugLoop?.cancel()
         debugLoop = nil
         endConversationBackgroundTask()
@@ -464,82 +504,6 @@ struct ConversationSessionView: View {
             break
         default:
             Task { await session.confirmStop() }
-        }
-    }
-}
-
-private struct ConversationStopModal: View {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
-    var onStop: () -> Void
-    var onKeepTalking: () -> Void
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(reduceTransparency ? 0.72 : 0.4)
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Stop this conversation?")
-                    .font(.system(.title3, design: .serif).weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Button("Stop", action: onStop)
-                    .buttonStyle(SpeechPrimaryButtonStyle(isDestructive: true, showsTint: true))
-                    .padding(.top, 22)
-
-                Button("Keep talking", action: onKeepTalking)
-                    .buttonStyle(SpeechSecondaryButtonStyle())
-                    .padding(.top, 10)
-            }
-            .padding(24)
-            .frame(maxWidth: 420, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
-            )
-            .padding(.horizontal, SpeechSpacing.page)
-            .accessibilityElement(children: .contain)
-            .accessibilityAddTraits(.isModal)
-        }
-    }
-}
-
-/// Blocks the navigation swipe-back while the stop modal is up.
-private struct NavigationPopLock: UIViewControllerRepresentable {
-    var isLocked: Bool
-
-    func makeUIViewController(context: Context) -> Controller {
-        Controller()
-    }
-
-    func updateUIViewController(_ controller: Controller, context: Context) {
-        controller.isLocked = isLocked
-        controller.apply()
-    }
-
-    final class Controller: UIViewController {
-        var isLocked = false
-
-        override func viewWillAppear(_ animated: Bool) {
-            super.viewWillAppear(animated)
-            apply()
-        }
-
-        override func viewWillDisappear(_ animated: Bool) {
-            super.viewWillDisappear(animated)
-            navigationController?.interactivePopGestureRecognizer?.isEnabled = true
-        }
-
-        override func didMove(toParent parent: UIViewController?) {
-            super.didMove(toParent: parent)
-            apply()
-        }
-
-        func apply() {
-            navigationController?.interactivePopGestureRecognizer?.isEnabled = !isLocked
         }
     }
 }

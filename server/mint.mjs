@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import { createServer } from "node:http";
 
 export function monthKey(ms = Date.now()) {
@@ -86,8 +85,6 @@ export async function handleRequest(req, res, now = Date.now(), openaiFetch = fe
       return;
     }
     st.mintTimes.push(now);
-    const pepper = process.env.MINT_PEPPER || "dev";
-    const safety = createHmac("sha256", pepper).update(uuid).digest("hex");
     let r;
     let json;
     try {
@@ -103,10 +100,9 @@ export async function handleRequest(req, res, now = Date.now(), openaiFetch = fe
             model: "gpt-realtime-2.1-mini",
             tools: [],
             tracing: null,
-            safety_identifier: safety,
             audio: { input: { transcription: null } },
           },
-          expires_after: { seconds: 120 },
+          expires_after: { anchor: "created_at", seconds: 120 },
         }),
       });
       json = await r.json();

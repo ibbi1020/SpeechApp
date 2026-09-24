@@ -17,6 +17,12 @@ public protocol ConversationMouth: AnyObject, Sendable {
     func sendResponseCreate(instructions: String) async throws
     func updateTurnDetectionNull() async throws
     func close() async
+    /// Linear mic level, 0…1, for the listen pill. 0 when the mouth has no meter.
+    func currentInputLevel() async -> Float
+}
+
+extension ConversationMouth {
+    public func currentInputLevel() async -> Float { 0 }
 }
 
 public enum MouthError: Error { case connectFailed }

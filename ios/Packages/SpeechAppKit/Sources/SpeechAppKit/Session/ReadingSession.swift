@@ -556,8 +556,7 @@ public final class ReadingSession {
         let rms = StallDetector.rms(chunk.samples)
         let speaking = rms >= 0.01
         isHearingSpeech = speaking
-        // Soft ceiling so typical conversational levels sit near 0.6–1.0
-        speechEnergy = min(1, rms / 0.06)
+        speechEnergy = ListenDrive.normalized(rms: rms)
         refreshRegistrationHealth(speaking: speaking)
 
         let fired = stallDetector.process(samples: chunk.samples, at: chunk.hostTime)

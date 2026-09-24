@@ -5,6 +5,7 @@ import SpeechAppKit
 struct MonologueSessionView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var session: MonologueSession?
@@ -12,6 +13,9 @@ struct MonologueSessionView: View {
     @State private var listenError: String?
     @State private var showLeaveConfirm = false
     @State private var didRouteFinish = false
+    @State private var countdownRemaining: Int?
+    @State private var isPreparing = false
+    @State private var startTask: Task<Void, Never>?
 
     // Live capture — held so the pump Tasks and engine/source can be cancelled/stopped.
     @State private var liveEngine: LiveTranscriptionEngine?
@@ -28,14 +32,63 @@ struct MonologueSessionView: View {
     @State private var lastRaw: String = ""
     @State private var committedRanges: [ConversationSpeechInterval] = []
 
+    /// Fog the notes page for the 3-2-1 after I’m ready. The take clock stays stopped until it ends.
+    private var isFogged: Bool {
+        countdownRemaining != nil || isPreparing
+    }
+
+    private var fogBlurRadius: CGFloat {
+        isFogged && !reduceTransparency ? SpeechCountdown.fogBlurRadius : 0
+    }
+
+    private var fogWashOpacity: Double {
+        guard isFogged else { return 0 }
+        return reduceTransparency
+            ? SpeechCountdown.reducedTransparencyWash
+            : SpeechCountdown.fogWashOpacity
+    }
+
     var body: some View {
         ZStack {
             SpeechScreenBackground()
             content
+                .blur(radius: fogBlurRadius)
+                .overlay {
+                    Color.black.opacity(fogWashOpacity)
+                        .allowsHitTesting(false)
+                }
+                .accessibilityHidden(isFogged || showLeaveConfirm)
+                .allowsHitTesting(!isFogged && !showLeaveConfirm)
+
+            if isFogged {
+                ReadingCountdownOverlay(remaining: countdownRemaining, instruction: "")
+            }
+
+            if showLeaveConfirm {
+                SessionStopModal(
+                    title: "Leave this talk?",
+                    confirmTitle: "Leave",
+                    dismissTitle: "Keep going",
+                    onConfirm: {
+                        showLeaveConfirm = false
+                        Task {
+                            await stopListen()
+                            session?.confirmLeave()
+                            routeIfFinished()
+                        }
+                    },
+                    onDismiss: { showLeaveConfirm = false }
+                )
+                .transition(.opacity)
+            }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: session?.phase)
+        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
+        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showLeaveConfirm)
+        .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .toolbar(showLeaveConfirm ? .hidden : .automatic, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -46,19 +99,8 @@ struct MonologueSessionView: View {
                 .accessibilityLabel("Back")
             }
         }
-        .confirmationDialog(
-            "Leave this talk?",
-            isPresented: $showLeaveConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Leave", role: .destructive) {
-                Task {
-                    await stopListen()
-                    session?.confirmLeave()
-                    routeIfFinished()
-                }
-            }
-            Button("Keep going", role: .cancel) {}
+        .background {
+            NavigationPopLock(isLocked: showLeaveConfirm)
         }
         .task { await setUpSessionIfNeeded() }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
@@ -80,6 +122,8 @@ struct MonologueSessionView: View {
             }
         }
         .onDisappear {
+            startTask?.cancel()
+            startTask = nil
             // Swipe-back still pops the screen even with the back button hidden.
             Task { await stopListen() }
         }
@@ -102,7 +146,9 @@ struct MonologueSessionView: View {
         case .planning, .between:
             planningCanvas(session)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    planningChrome(session)
+                    if !isFogged {
+                        planningChrome(session)
+                    }
                 }
         case .taking, .paused:
             liveCanvas(session)
@@ -182,7 +228,8 @@ struct MonologueSessionView: View {
             }
 
             Button("I’m ready") {
-                Task { await beginListen(session) }
+                startTask?.cancel()
+                startTask = Task { await beginListen(session) }
             }
             .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
             .disabled(isStartingListen)
@@ -222,7 +269,7 @@ struct MonologueSessionView: View {
     }
 
     private func liveChrome(_ session: MonologueSession) -> some View {
-        HStack(spacing: 16) {
+        HStack(spacing: VoiceOrb.controlSpacing) {
             Button {
                 if session.phase == .paused {
                     session.resume()
@@ -236,9 +283,9 @@ struct MonologueSessionView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(session.phase == .paused ? "Resume" : "Pause")
 
-            AuroraPill(
-                energy: speechEnergy,
-                mode: .listen,
+            VoiceOrb(
+                phase: session.phase == .taking ? .listening : .idle,
+                inputVolume: session.phase == .taking ? speechEnergy : 0,
                 animating: session.phase == .taking
             )
 
@@ -296,9 +343,8 @@ struct MonologueSessionView: View {
 
     // MARK: - Live capture
 
-    /// Permission-first on-device listen. Only calls `session.ready()` (starting the
-    /// 4:00 clock) once mic + speech authorization and the engine/source are up.
-    /// No 3-2-1, no PCM storage, no WebRTC — text/ranges are pumped straight into the session.
+    /// Permission-first on-device listen. A 3-2-1 plays after I’m ready, then
+    /// `session.ready()` starts the take clock. No PCM storage, no WebRTC.
     private func beginListen(_ session: MonologueSession) async {
         guard !isStartingListen else { return }
         isStartingListen = true
@@ -325,17 +371,39 @@ struct MonologueSessionView: View {
             return
         }
 
+        isPreparing = true
+        countdownRemaining = 3
+        defer {
+            isPreparing = false
+            countdownRemaining = nil
+        }
+
         let engine = LiveTranscriptionEngine()
         engine.setContextualPhrases([session.prompt])
+        let prepareTask = Task {
+            try await engine.prepareIfNeeded()
+        }
 
         var startedSource: MicAudioSource?
         do {
-            try await engine.prepareIfNeeded()
+            for n in [3, 2, 1] {
+                try Task.checkCancellation()
+                countdownRemaining = n
+                try await Task.sleep(for: .seconds(1))
+            }
+            countdownRemaining = nil
+            try await prepareTask.value
+            try Task.checkCancellation()
             let source = MicAudioSource()
             try await source.start()
             startedSource = source
             try await engine.start()
+        } catch is CancellationError {
+            prepareTask.cancel()
+            await startedSource?.stop()
+            return
         } catch {
+            prepareTask.cancel()
             await startedSource?.stop()
             listenError = error.localizedDescription
             return
@@ -378,7 +446,7 @@ struct MonologueSessionView: View {
         audioTask = Task {
             for await chunk in source.chunks {
                 engine.append(chunk)
-                speechEnergy = min(1, StallDetector.rms(chunk.samples) / 0.06)
+                speechEnergy = ListenDrive.normalized(rms: StallDetector.rms(chunk.samples))
             }
         }
 
@@ -475,6 +543,8 @@ struct MonologueSessionView: View {
     }
 
     private func handleBack() {
+        startTask?.cancel()
+        startTask = nil
         guard let session else {
             model.goHome()
             return

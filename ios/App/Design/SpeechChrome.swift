@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 /// Shared motion, materials, and chrome for Reading — Apple Design defaults.
 enum SpeechMotion {
@@ -116,16 +117,20 @@ struct ReadingCountdownOverlay: View {
     var instruction: String = SpeechCountdown.instruction
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var showsInstruction: Bool {
+        !instruction.isEmpty
+    }
+
     private var accessibilityText: String {
         if let remaining {
-            "\(remaining). \(instruction)"
+            showsInstruction ? "\(remaining). \(instruction)" : "\(remaining)"
         } else {
-            instruction
+            showsInstruction ? instruction : "Preparing"
         }
     }
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: showsInstruction ? 14 : 0) {
             if let remaining {
                 Text("\(remaining)")
                     .font(.system(size: SpeechCountdown.digitSize, weight: .semibold))
@@ -142,11 +147,13 @@ struct ReadingCountdownOverlay: View {
                     .tint(.primary)
             }
 
-            Text(instruction)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 260)
+            if showsInstruction {
+                Text(instruction)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 260)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .offset(y: -12)
@@ -154,6 +161,107 @@ struct ReadingCountdownOverlay: View {
         .accessibilityAddTraits(.updatesFrequently)
         .accessibilityLabel(accessibilityText)
         .allowsHitTesting(false)
+    }
+}
+
+/// [orb-ui](https://orb-ui.com) cloud theme, the orb on the homepage.
+/// Session chrome uses this instead of `AuroraPill`.
+struct VoiceOrb: View {
+    enum Phase: Equatable {
+        case idle
+        case connecting
+        case listening
+        case speaking
+    }
+
+    var phase: Phase
+    var inputVolume: Float = 0
+    var outputVolume: Float = 0
+    var animating: Bool = true
+
+    /// 25% larger than the original 120pt homepage orb.
+    static let box: CGFloat = 150
+    /// orb-ui cloud theme draws the sphere at this fraction of `box`.
+    private static let diameterRatio: CGFloat = 0.55
+    /// How far the glass buttons overlap the drawn sphere.
+    private static let controlOverlap: CGFloat = 14
+
+    /// Negative spacing that pulls pause and stop through the clear margin onto the cloud.
+    static var controlSpacing: CGFloat {
+        let halo = box * (1 - diameterRatio) / 2
+        return -(halo + controlOverlap)
+    }
+
+    /// Idle hides a non-interactive cloud. Pause keeps the sphere and desaturates it.
+    private var shownPhase: Phase { animating ? phase : .listening }
+
+    private var level: Double {
+        guard animating else { return 0 }
+        let raw = shownPhase == .speaking ? outputVolume : inputVolume
+        return min(1, max(0, Double(raw)))
+    }
+
+    var body: some View {
+        OrbWebView(
+            phase: shownPhase,
+            inputVolume: shownPhase == .listening ? level : 0,
+            outputVolume: shownPhase == .speaking ? level : 0,
+            paused: !animating
+        )
+        .frame(width: Self.box, height: Self.box)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+    }
+
+    private var label: String {
+        if !animating { return "Paused." }
+        switch shownPhase {
+        case .speaking: return "Speaking."
+        case .connecting: return "Connecting."
+        case .listening: return level > 0.28 ? "Hearing you." : "Listening."
+        case .idle: return "Listening."
+        }
+    }
+}
+
+private struct OrbWebView: UIViewRepresentable {
+    var phase: VoiceOrb.Phase
+    var inputVolume: Double
+    var outputVolume: Double
+    var paused: Bool
+
+    func makeUIView(context: Context) -> WKWebView {
+        let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.underPageBackgroundColor = .clear
+        webView.isUserInteractionEnabled = false
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.bounces = false
+        webView.scrollView.backgroundColor = .clear
+        if let url = Bundle.main.url(forResource: "voice-orb", withExtension: "html") {
+            webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        }
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        let state: String
+        switch phase {
+        case .idle: state = "idle"
+        case .connecting: state = "connecting"
+        case .listening: state = "listening"
+        case .speaking: state = "speaking"
+        }
+        let input = String(format: "%.3f", inputVolume)
+        let output = String(format: "%.3f", outputVolume)
+        let pausedFlag = paused ? "true" : "false"
+        let script = """
+        document.documentElement.classList.toggle('paused', \(pausedFlag));
+        window.orbSetSignal && window.orbSetSignal('\(state)', \(input), \(output));
+        """
+        webView.evaluateJavaScript(script)
     }
 }
 

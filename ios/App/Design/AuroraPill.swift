@@ -40,9 +40,12 @@ struct AuroraPill: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !shouldAnimate)) { timeline in
+        let _ = smoother.setListenTarget(Self.clampedListen(energy))
+        return TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !shouldAnimate)) { timeline in
             let wall = timeline.date.timeIntervalSinceReferenceDate
             let rawT = shouldAnimate ? wall : Self.frozenTime
+            // Listen target lives on the smoother so a tick never smooths toward a
+            // level captured when the timeline closure was built.
             let frameEnergy = smoother.advance(
                 wall: wall,
                 target: energyTarget(rawT: rawT),
@@ -65,11 +68,19 @@ struct AuroraPill: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityStatus)
         .onAppear {
+            smoother.setListenTarget(Self.clampedListen(energy))
             smoother.reset(to: initialEnergy())
         }
         .onChange(of: mode) { _, _ in
             smoother.resetClock()
         }
+        .onChange(of: energy) { _, newValue in
+            smoother.setListenTarget(Self.clampedListen(newValue))
+        }
+    }
+
+    private static func clampedListen(_ value: Float) -> Double {
+        max(0.1, min(1, Double(value)))
     }
 
     private func initialEnergy() -> Double {
@@ -87,7 +98,7 @@ struct AuroraPill: View {
         case .speak:
             AuroraPillMath.speakEnergyTarget(raw: rawT)
         case .listen:
-            max(0.1, min(1, Double(energy)))
+            Self.clampedListen(energy)
         }
     }
 }
@@ -97,7 +108,12 @@ struct AuroraPill: View {
 @MainActor
 private final class EnergySmoother {
     private(set) var energy: Double = 0.1
+    private var listenTarget: Double = 0.1
     private var lastTick: TimeInterval?
+
+    func setListenTarget(_ value: Double) {
+        listenTarget = value
+    }
 
     func reset(to value: Double) {
         energy = value
@@ -116,9 +132,10 @@ private final class EnergySmoother {
             dt = 1.0 / 60.0
         }
         lastTick = wall
+        let resolved = mode == .listen ? listenTarget : target
         energy = AuroraPillMath.smoothEnergy(
             current: energy,
-            target: target,
+            target: resolved,
             dt: dt,
             mode: mode
         )
@@ -242,16 +259,23 @@ private enum AuroraPillRenderer {
         mode: AuroraPill.Mode,
         scale: CGFloat
     ) {
-        guard mode == .listen else { return }
+        guard mode == .listen || mode == .speak else { return }
 
-        let k = AuroraPillMath.smoothstep(0.36, 0.78, e)
+        let talking = mode == .speak
+        let k = talking ? 0.85 : AuroraPillMath.smoothstep(0.36, 0.78, e)
         guard k > 0.02 else { return }
 
         for (index, peak) in peaks.enumerated() {
-            let tall = k * AuroraPillMath.smoothstep(0.62, 0.95, peak.amp)
+            let tall = k * AuroraPillMath.smoothstep(
+                talking ? 0.38 : 0.62,
+                talking ? 0.85 : 0.95,
+                peak.amp
+            )
             guard tall > 0.02 else { continue }
 
-            if index == peaks.count - 1 {
+            let magenta = talking ? index == 0 : index == peaks.count - 1
+            let green = talking ? index != 0 : true
+            if magenta {
                 paint(
                     into: &context,
                     size: size,
@@ -266,19 +290,21 @@ private enum AuroraPillRenderer {
                     scale: scale
                 )
             }
-            paint(
-                into: &context,
-                size: size,
-                t: tDraw,
-                energy: e,
-                peaks: [AuroraPillMath.Peak(x: peak.x, amp: peak.amp * 1.05)],
-                field: field,
-                blur: blur * 0.65,
-                yShift: -size.height * 0.03,
-                stops: AuroraPillMath.greenStops(tall: tall),
-                blend: .screen,
-                scale: scale
-            )
+            if green {
+                paint(
+                    into: &context,
+                    size: size,
+                    t: tDraw,
+                    energy: e,
+                    peaks: [AuroraPillMath.Peak(x: peak.x, amp: peak.amp * 1.05)],
+                    field: field,
+                    blur: blur * 0.65,
+                    yShift: -size.height * 0.03,
+                    stops: AuroraPillMath.greenStops(tall: tall),
+                    blend: .screen,
+                    scale: scale
+                )
+            }
         }
     }
 

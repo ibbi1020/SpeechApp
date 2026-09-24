@@ -43,7 +43,12 @@ targets:
         CFBundleDisplayName: SpeechApp
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "3"
-        CONVERSATION_API_BASE: ""
+        # Bonjour name of this Mac. Stays valid when the DHCP address changes.
+        # Phone and Mac have to be on the same Wi-Fi. Do not put a 192.168 address here.
+        CONVERSATION_API_BASE: "http://Ibraheens-MacBook-Air.local:8787"
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: SpeechApp connects to your Mac on the local network to start a live conversation.
         UIBackgroundModes:
           - audio
         UILaunchScreen: {}
@@ -51,3 +56,22 @@ targets:
           - UIInterfaceOrientationPortrait
         NSMicrophoneUsageDescription: SpeechApp uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Partner audio is streamed to OpenAI. Reading and topic talks are scored on this device. We do not keep the recording.
         NSSpeechRecognitionUsageDescription: SpeechApp uses on-device speech recognition to follow reading and to time topic talks. Recognition runs on your device.
+schemes:
+  SpeechApp:
+    build:
+      targets:
+        SpeechApp: all
+      preActions:
+        - name: Ensure conversation mint
+          script: /bin/bash "$SRCROOT/../server/ensure-mint.sh"
+          settingsTarget: SpeechApp
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

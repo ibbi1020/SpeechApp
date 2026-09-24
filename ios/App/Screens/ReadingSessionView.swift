@@ -144,7 +144,7 @@ struct ReadingSessionView: View {
     @ViewBuilder
     private var actionRow: some View {
         if isLive || isPaused || isFinishing {
-            HStack(spacing: 16) {
+            HStack(spacing: VoiceOrb.controlSpacing) {
                 Button {
                     if isPaused {
                         session?.resume()
@@ -159,9 +159,9 @@ struct ReadingSessionView: View {
                 .disabled(isFinishing)
                 .accessibilityLabel(isPaused ? "Resume" : "Pause")
 
-                AuroraPill(
-                    energy: isLive ? (session?.speechEnergy ?? 0) : 0,
-                    mode: .listen,
+                VoiceOrb(
+                    phase: isLive ? .listening : .idle,
+                    inputVolume: isLive ? (session?.speechEnergy ?? 0) : 0,
                     animating: isLive
                 )
 

@@ -53,7 +53,7 @@ enum AuroraPillMath {
 
     static func blurRadius(height: CGFloat, mode: AuroraPill.Mode) -> CGFloat {
         switch mode {
-        case .speak: max(8, height * 0.16)
+        case .speak: max(5, height * 0.09)
         case .listen: max(7, height * 0.13)
         case .connect: max(4, height * 0.05)
         }
@@ -62,11 +62,12 @@ enum AuroraPillMath {
     static func field(energy e: Double, mode: AuroraPill.Mode) -> Field {
         switch mode {
         case .speak:
-            // Broad overlapping hills — troughs stay blue, band fills lower half.
-            Field(mode: mode, width: 0.22, rest: 0.74, lift: 0.38 + e * 0.22)
+            // Three narrow crests. Rest sits near the floor so the gaps stay deep.
+            Field(mode: mode, width: 0.095, rest: 0.92, lift: 0.46 + e * 0.28)
         case .connect:
             Field(mode: mode, width: 0.2, rest: 0.62, lift: 0)
         case .listen:
+            // Lab listen field: two soft crests. Energy lifts them; it does not speed the clock.
             Field(mode: mode, width: 0.18, rest: 0.60, lift: 0.05 + e * 0.40)
         }
     }
@@ -126,8 +127,8 @@ enum AuroraPillMath {
         let wave: Double
         switch field.mode {
         case .speak:
-            // One shallow ripple. A second harmonic split the ice band into spikes.
-            wave = 0.02 * sin(xn * .pi * 2.2 + t * 1.4)
+            wave = 0.055 * sin(xn * .pi * 3.4 + t * 2.4)
+                + 0.032 * sin(xn * .pi * 6.1 - t * 3.3)
         case .listen:
             wave = (0.018 * sin(xn * .pi * 2.05 + t * 0.62)
                 + 0.010 * sin(xn * .pi * 4.6 - t * 1.05)) * (0.22 + e * 0.12)

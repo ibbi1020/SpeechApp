@@ -99,6 +99,41 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         teardown()
     }
 
+    func currentInputLevel() async -> Float {
+        let connection: RTCPeerConnection? = lock.withLock { closed ? nil : peer }
+        guard let connection else { return 0 }
+        return await withCheckedContinuation { continuation in
+            connection.statistics { report in
+                continuation.resume(returning: Self.microphoneLevel(in: report))
+            }
+        }
+    }
+
+    private static func microphoneLevel(in report: RTCStatisticsReport) -> Float {
+        var level: Float = 0
+        for stat in report.statistics.values {
+            let values = stat.values
+            switch stat.type {
+            case "media-source":
+                let kind = values["kind"] as? String
+                guard kind == nil || kind == "audio" else { continue }
+                level = max(level, floatValue(values["audioLevel"]))
+            case "track":
+                let kind = values["kind"] as? String
+                guard kind == nil || kind == "audio" else { continue }
+                if let remote = values["remoteSource"] as? NSNumber, remote.boolValue { continue }
+                level = max(level, floatValue(values["audioLevel"]))
+            default:
+                continue
+            }
+        }
+        return level
+    }
+
+    private static func floatValue(_ value: NSObject?) -> Float {
+        (value as? NSNumber)?.floatValue ?? 0
+    }
+
     private func throwIfClosed() throws {
         try lock.withLock {
             if closed { throw MouthError.connectFailed }
@@ -106,15 +141,49 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     }
 
     private func configureAudioSession() throws {
+        // WebRTC reapplies its own configuration when the audio unit starts.
+        // That default is voice-chat to the receiver and drops `.defaultToSpeaker`,
+        // so the partner plays from the earpiece.
+        let preferred = RTCAudioSessionConfiguration.webRTC()
+        preferred.categoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+        RTCAudioSessionConfiguration.setWebRTC(preferred)
+
         let rtc = RTCAudioSession.sharedInstance()
         rtc.useManualAudio = true
         rtc.ignoresPreferredAttributeConfigurationErrors = true
+        rtc.add(self)
         rtc.lockForConfiguration()
         defer { rtc.unlockForConfiguration() }
-        try rtc.setCategory(.playAndRecord, with: .defaultToSpeaker)
-        try rtc.setMode(.voiceChat)
+        try rtc.setCategory(
+            .playAndRecord,
+            mode: .voiceChat,
+            options: [.defaultToSpeaker, .allowBluetoothHFP]
+        )
         try rtc.setActive(true)
         rtc.isAudioEnabled = true
+        try? rtc.overrideOutputAudioPort(.speaker)
+    }
+
+    /// Loudspeaker when the route is the built-in receiver. Leaves headphones and Bluetooth alone.
+    private func preferLoudspeaker() {
+        let closedNow = lock.withLock { closed }
+        guard !closedNow else { return }
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        guard outputs.contains(where: { $0.portType == .builtInReceiver }) else { return }
+        guard !outputs.contains(where: Self.isExternalPlayback) else { return }
+        let rtc = RTCAudioSession.sharedInstance()
+        rtc.lockForConfiguration()
+        defer { rtc.unlockForConfiguration() }
+        try? rtc.overrideOutputAudioPort(.speaker)
+    }
+
+    private static func isExternalPlayback(_ port: AVAudioSessionPortDescription) -> Bool {
+        switch port.portType {
+        case .headphones, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .airPlay, .carAudio:
+            return true
+        default:
+            return false
+        }
     }
 
     private func makePeerConnection() throws -> RTCPeerConnection {
@@ -411,12 +480,33 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         localAudioTrack = nil
 
         let rtc = RTCAudioSession.sharedInstance()
+        rtc.remove(self)
         rtc.lockForConfiguration()
         try? rtc.setActive(false)
         rtc.unlockForConfiguration()
         rtc.isAudioEnabled = false
 
         continuation.finish()
+    }
+}
+
+extension LiveConversationMouth: RTCAudioSessionDelegate {
+    func audioSessionDidStartPlayOrRecord(_ session: RTCAudioSession) {
+        DispatchQueue.main.async { [weak self] in
+            self?.preferLoudspeaker()
+        }
+    }
+
+    func audioSessionDidChangeRoute(
+        _ session: RTCAudioSession,
+        reason: AVAudioSession.RouteChangeReason,
+        previousRoute: AVAudioSessionRouteDescription
+    ) {
+        // `.override` is the notification from our own speaker switch. Handling it would loop.
+        guard reason != .override else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.preferLoudspeaker()
+        }
     }
 }
 

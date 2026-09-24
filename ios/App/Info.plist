@@ -21,7 +21,14 @@
 	<key>CFBundleVersion</key>
 	<string>3</string>
 	<key>CONVERSATION_API_BASE</key>
-	<string></string>
+	<string>http://Ibraheens-MacBook-Air.local:8787</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>SpeechApp connects to your Mac on the local network to start a live conversation.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>SpeechApp uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Partner audio is streamed to OpenAI. Reading and topic talks are scored on this device. We do not keep the recording.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

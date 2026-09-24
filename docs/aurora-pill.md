@@ -5,7 +5,7 @@ The lab is approved. A Swift port matches these numbers. It does not reinterpret
 
 This replaces `ios/App/Design/AuroraPresenceView.swift` (teal/indigo stroked ribbons). That view is the rejected look. Do not extend it, and do not substitute `MeshGradient`. MeshGradient cannot reproduce a hard capsule clip, a traveling sine, or per-crest screen-blended color. Draw the heightfield.
 
-One component. Same drawing on Reading and Conversation. It lives in the bottom black chrome, between pause and stop, not as a band above the passage.
+One component. Same drawing on Reading, Conversation, and Monologue. It lives in the bottom black chrome, between Pause and Stop/Done, not as a band above the passage. Monologue uses **`listen` only** (no agent `connect` / `speak`).
 
 ## What it is
 
@@ -42,7 +42,7 @@ struct AuroraPill: View {
 
 Frame it at **132×52 pt** in the chrome (the lab slot). The drawing is resolution-independent: all ridge math is in 0…1 of that box, then multiplied by width and height. Blur radii below are in **points**, then scaled by the same factor as the canvas.
 
-Chrome, both formats: black bar, pause button, pill, stop button. Conversation status line:
+Chrome: black bar, pause button, pill, Stop (Reading / Conversation) or Done (Monologue). Conversation status line:
 
 - `speak` → “Speaking.”
 - `connect` → “Connecting.”

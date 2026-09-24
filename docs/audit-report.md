@@ -2,6 +2,8 @@
 
 **Names (2026-09-18):** this report still says Format 1/2/3. Canonical names are **Reading**, **Conversation**, **Monologue** — `docs/formats.md`. Historical quotes below were not rewritten.
 
+**Update (2026-09-24):** Monologue is no longer the 5–15 min one-shot this report reviewed. Locked v1 shape: `docs/superpowers/specs/2026-09-24-monologue-format-design.md`. Do not implement Format 3 from the product-spec version this audit saw.
+
 **What this is:** A 7-persona research audit of `docs/product-spec.md` against `research/literature-review.md`, `research/accessibility-neurodivergence-review.md`, and fresh 2024–2026 literature not yet incorporated into either. Each persona independently read all three source documents, checked specific spec decisions against real sources, and hunted for new literature the project hasn't found yet. This report is the Moderator synthesis of all seven.
 
 **Decision this informs:** whether the current spec is safe to carry into architecture/build as-is, or which specific decisions need revision first.
