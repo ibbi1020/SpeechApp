@@ -127,6 +127,52 @@ struct MonologueSessionTakeTests {
     }
 }
 
+@Suite("Monologue session crisis and leave")
+struct MonologueSessionCrisisTests {
+    @MainActor
+    @Test("keyword crisis skips the fluency report")
+    func crisis() {
+        let session = makeSession()
+        session.ready()
+        session.ingestText("I want to kill myself")
+        #expect(session.phase == .crisis)
+        #expect(session.report?.kind == .crisis)
+        #expect(session.report?.lines.isEmpty == true)
+    }
+
+    @MainActor
+    @Test("empty Apple text is not 988")
+    func emptyNotCrisis() {
+        let session = makeSession()
+        session.ready()
+        session.ingestText("   ")
+        #expect(session.phase == .taking)
+    }
+
+    @MainActor
+    @Test("Back after a counting take opens a report")
+    func leaveOpensReport() {
+        let time = ControllableTimeSource(now: 0)
+        let session = makeSession(time: time)
+        session.ready()
+        time.advance(40)
+        session.ingestRanges([ConversationSpeechInterval(start: 0, end: 30)])
+        session.confirmLeave()
+        #expect(session.phase == .report)
+        #expect(session.report?.kind == .thin)
+        #expect(session.report?.endReason == .leftEarly)
+    }
+
+    @MainActor
+    @Test("Back on planning with no take does not fabricate a report")
+    func leavePlanning() {
+        let session = makeSession()
+        session.confirmLeave()
+        #expect(session.phase == .planning)
+        #expect(session.report == nil)
+    }
+}
+
 @MainActor
 private func makeSession(
     time: ControllableTimeSource = ControllableTimeSource(now: 0),
