@@ -18,6 +18,14 @@ struct MonologueSessionView: View {
     @State private var transcriptTask: Task<Void, Never>?
     @State private var audioTask: Task<Void, Never>?
     @State private var speechEnergy: Float = 0
+    @State private var isStartingListen = false
+
+    // Current-take recognition accumulation. `LiveTranscriptionEngine` sometimes grows
+    // the same hypothesis and sometimes starts a fresh segment — these track that so we
+    // can assign the full take text/ranges to the session instead of dropping earlier speech.
+    @State private var hypothesis: String = ""
+    @State private var lastRaw: String = ""
+    @State private var committedRanges: [ConversationSpeechInterval] = []
 
     var body: some View {
         ZStack {
@@ -61,6 +69,10 @@ struct MonologueSessionView: View {
                 }
                 routeIfFinished()
             }
+        }
+        .onDisappear {
+            // Swipe-back still pops the screen even with the back button hidden.
+            Task { await stopListen() }
         }
     }
 
@@ -164,6 +176,7 @@ struct MonologueSessionView: View {
                 Task { await beginListen(session) }
             }
             .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
+            .disabled(isStartingListen)
         }
         .padding(.horizontal, SpeechSpacing.page)
         .padding(.top, 12)
@@ -278,7 +291,15 @@ struct MonologueSessionView: View {
     /// 4:00 clock) once mic + speech authorization and the engine/source are up.
     /// No 3-2-1, no PCM storage, no WebRTC — text/ranges are pumped straight into the session.
     private func beginListen(_ session: MonologueSession) async {
+        guard !isStartingListen else { return }
+        isStartingListen = true
+        defer { isStartingListen = false }
+
         listenError = nil
+        // New take — reset accumulation so take-1 speech never leaks into take 2/3.
+        hypothesis = ""
+        lastRaw = ""
+        committedRanges = []
         // Take 2/3 "I'm ready" must not retain take-1 audio.
         await stopListen()
 
@@ -319,12 +340,23 @@ struct MonologueSessionView: View {
 
         transcriptTask = Task {
             for await update in updates {
-                session.ingestText(update.rawText)
-                let ranges: [ConversationSpeechInterval] = update.tokens.compactMap { token in
+                absorbHypothesis(update.rawText)
+                session.ingestText(hypothesis)
+
+                let timedTokens: [(isFinal: Bool, interval: ConversationSpeechInterval)] = update.tokens.compactMap { token in
                     guard let start = token.startTime, let end = token.endTime else { return nil }
-                    return ConversationSpeechInterval(start: start, end: end)
+                    return (isFinal: token.isFinal, interval: ConversationSpeechInterval(start: start, end: end))
                 }
-                session.ingestRanges(ranges)
+                let finals = timedTokens.filter(\.isFinal).map(\.interval)
+                committedRanges.append(contentsOf: finals)
+                // Volatile intervals often repeat the whole current result, so they
+                // re-cover already-committed words. Only keep the part past the committed edge.
+                let committedEnd = committedRanges.last?.end ?? -1
+                let volatileTail = timedTokens
+                    .filter { !$0.isFinal && $0.interval.start >= committedEnd }
+                    .map(\.interval)
+                session.ingestRanges(committedRanges + volatileTail)
+
                 if session.phase == .crisis {
                     // Don't wait for the next timer tick — stop and route now.
                     await stopListen()
@@ -345,6 +377,38 @@ struct MonologueSessionView: View {
         #else
         listenError = "Live mic requires iOS."
         #endif
+    }
+
+    /// Absorbs a new recognizer `rawText` into the running take's `hypothesis`.
+    /// `LiveTranscriptionEngine` sometimes yields a growing full result (rawText extends
+    /// the previous one) and sometimes a fresh segment (`deltaFinals` treats non-prefix
+    /// text as new). This never shrinks the accumulated hypothesis.
+    private func absorbHypothesis(_ rawText: String) {
+        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+
+        let lowerHypothesis = hypothesis.lowercased()
+        let lowerText = text.lowercased()
+
+        if hypothesis.isEmpty || lowerHypothesis.hasPrefix(lowerText) || lowerText.hasPrefix(lowerHypothesis) {
+            // One is a case-insensitive prefix of the other — keep the longer one.
+            // If the new text is a prefix of the current hypothesis, keep the hypothesis.
+            if text.count > hypothesis.count {
+                hypothesis = text
+            }
+        } else if !lastRaw.isEmpty,
+                  hypothesis.count > lastRaw.count,
+                  lowerHypothesis.hasSuffix(lastRaw.lowercased()) {
+            // The latest segment grew — replace that trailing segment with the new text.
+            let keepCount = hypothesis.count - lastRaw.count
+            let keepEnd = hypothesis.index(hypothesis.startIndex, offsetBy: keepCount)
+            hypothesis = String(hypothesis[hypothesis.startIndex..<keepEnd]) + text
+        } else {
+            // Fresh segment.
+            hypothesis += " " + text
+        }
+
+        lastRaw = text
     }
 
     /// Cancels the pump Tasks and stops engine/source. Never stopped on user Pause —
