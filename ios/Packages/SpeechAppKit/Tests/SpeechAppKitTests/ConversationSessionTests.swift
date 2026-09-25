@@ -142,17 +142,49 @@ struct ConversationSessionTests {
         #expect(mouth.responseCreates.count == 2) // open + continue, never a code-switch aside
     }
 
-    @Test("ghost speech_started without stop gets no reply")
+    @Test("a turn longer than 8s still gets a reply when speech stops")
     @MainActor
-    func ghost() async throws {
+    func longTurnStillReplies() async throws {
         let (session, mouth, time) = makeSession()
         try await reachTalking(session)
         await session.handle(.speechStarted)
         session.ingestUserText("hi")
         time.advance(8)
         await session.tick()
-        await session.handle(.speechStopped)
         #expect(mouth.responseCreates.count == 1)
+        await session.handle(.speechStopped)
+        #expect(mouth.responseCreates.count == 2)
+        #expect(session.report == nil)
+    }
+
+    @Test("VAD turn with no transcript is counted and answered")
+    @MainActor
+    func vadTurnCountsWithoutTranscript() async throws {
+        let (session, mouth, time) = makeSession()
+        try await reachTalking(session)
+        let createsBefore = mouth.responseCreates.count
+        await speakTurn(session, time: time, duration: 2)
+        #expect(mouth.responseCreates.count == createsBefore + 1)
+        await session.confirmStop()
+        let report = try #require(session.report)
+        #expect(report.userTurns == 1)
+        #expect(report.userSpeechSeconds == 2)
+        #expect(report.lines.contains(where: { $0.label == "Time spoken" && $0.value == "0m 2s" }))
+        #expect(report.lines.contains(where: { $0.label == "Turns" && $0.value == "1" }))
+    }
+
+    @Test("a cough under 300ms with no transcript gets no reply and no turn")
+    @MainActor
+    func shortEmptyTurnIsIgnored() async throws {
+        let (session, mouth, time) = makeSession()
+        try await reachTalking(session)
+        let createsBefore = mouth.responseCreates.count
+        await speakTurn(session, time: time, duration: 0.1)
+        #expect(mouth.responseCreates.count == createsBefore)
+        await session.confirmStop()
+        let report = try #require(session.report)
+        #expect(report.userTurns == 0)
+        #expect(report.userSpeechSeconds == 0)
     }
 
     @Test("ghost turn still evaluates crisis keywords")
@@ -300,11 +332,91 @@ struct ConversationSessionTests {
         #expect(mouth.didClose)
     }
 
+    @Test("failed before first audio is not a presentable report")
+    @MainActor
+    func failedBeforeFirstAudioNotPresentable() async throws {
+        let (session, mouth, _) = makeSession()
+        session.beginCountdown()
+        try await session.countdownReachedZero(ephemeralKey: "ek")
+        await session.handle(.failed)
+        #expect(session.phase == .dropped)
+        #expect(session.countsAsBudgetStart == false)
+        #expect(session.report?.userTurns == 0)
+        #expect(session.shouldPresentReport == false)
+        #expect(mouth.didClose)
+    }
+
+    @Test("drop after partner audio with zero user turns is not presentable")
+    @MainActor
+    func dropAfterPartnerWithNoUserTurnsNotPresentable() async throws {
+        let (session, _, _) = makeSession()
+        try await reachTalking(session)
+        #expect(session.countsAsBudgetStart == true)
+        await session.handle(.failed)
+        #expect(session.phase == .dropped)
+        #expect(session.report?.userTurns == 0)
+        #expect(session.shouldPresentReport == false)
+    }
+
+    @Test("drop after a counted user turn is presentable")
+    @MainActor
+    func dropAfterUserTurnIsPresentable() async throws {
+        let (session, _, time) = makeSession()
+        try await reachTalking(session)
+        await speakTurn(session, time: time, duration: 2)
+        await session.handle(.failed)
+        #expect(session.phase == .dropped)
+        #expect(session.report?.userTurns == 1)
+        #expect(session.shouldPresentReport == true)
+    }
+
+    @Test("short empty speech during an open agent turn does not create a reply")
+    @MainActor
+    func shortEmptyDuringAgentTurnNoReply() async throws {
+        let (session, mouth, time) = makeSession()
+        try await reachTalking(session)
+        // Partner still "speaking" — session has not seen responseDone yet.
+        let createsBefore = mouth.responseCreates.count
+        await speakTurn(session, time: time, duration: 0.1)
+        #expect(mouth.responseCreates.count == createsBefore)
+        #expect(session.phase == .talking)
+        #expect(session.report == nil)
+    }
+
+    @Test("enterConnecting shows connecting before mouth.connect")
+    @MainActor
+    func enterConnectingBeforeConnect() async throws {
+        let mouth = FakeConversationMouth()
+        mouth.connectShouldFail = true
+        let (session, _, _) = makeSession(mouth: mouth)
+        session.beginCountdown()
+        #expect(session.phase == .countdown)
+        session.enterConnecting()
+        #expect(session.phase == .connecting)
+        do {
+            try await session.countdownReachedZero(ephemeralKey: "ek")
+            Issue.record("expected connect to fail")
+        } catch {
+            #expect(session.phase == .connecting || session.phase == .dropped)
+        }
+    }
+
     @MainActor
     private func reachTalking(_ session: ConversationSession) async throws {
         session.beginCountdown()
         try await session.countdownReachedZero(ephemeralKey: "ek")
         await session.handle(.sessionUpdated)
         await session.handle(.audioDelta)
+    }
+
+    @MainActor
+    private func speakTurn(
+        _ session: ConversationSession,
+        time: ControllableTimeSource,
+        duration: TimeInterval
+    ) async {
+        await session.handle(.speechStarted)
+        time.advance(duration)
+        await session.handle(.speechStopped)
     }
 }

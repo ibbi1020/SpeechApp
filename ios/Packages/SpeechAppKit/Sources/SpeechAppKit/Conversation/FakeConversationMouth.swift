@@ -4,6 +4,7 @@ public final class FakeConversationMouth: ConversationMouth, @unchecked Sendable
     public let events: AsyncStream<MouthEvent>
     private let continuation: AsyncStream<MouthEvent>.Continuation
     public private(set) var responseCreates: [String] = []
+    public private(set) var responseCancels = 0
     public private(set) var didClose = false
     public private(set) var turnDetectionNulled = false
     public var connectShouldFail = false
@@ -25,6 +26,10 @@ public final class FakeConversationMouth: ConversationMouth, @unchecked Sendable
 
     public func updateTurnDetectionNull() async throws {
         turnDetectionNulled = true
+    }
+
+    public func cancelResponse() async throws {
+        responseCancels += 1
     }
 
     public func close() async {

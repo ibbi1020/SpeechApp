@@ -15,6 +15,20 @@ public final class ConversationSession {
         return max(0, time.now - origin - pausedAccumulated - extra)
     }
 
+    /// Whether the live screen should open the metrics report for this hang-up.
+    /// Pre-talk drops and zero-turn connection losses stay on an error screen.
+    public var shouldPresentReport: Bool {
+        guard let report else { return false }
+        switch report.endReason {
+        case .drop, .configDrift:
+            return report.userTurns > 0
+        case .crisisReferral:
+            return false
+        case .userStop, .wrap, .pauseTTL:
+            return true
+        }
+    }
+
     private let time: any ConversationTimeSource
     private let mouth: any ConversationMouth
     private let cap: TimeInterval
@@ -35,7 +49,6 @@ public final class ConversationSession {
     private var userSpeechSeconds: TimeInterval = 0
     private var userTurns = 0
     private var speechStartedAt: TimeInterval?
-    private var ghostTurn = false
     private var openSent = false
     private var openAudioRetries = 0
     private var awaitingFirstAudio = false
@@ -65,6 +78,12 @@ public final class ConversationSession {
     }
 
     public func beginCountdown() { phase = .countdown }
+
+    /// Show connecting chrome before mint / WebRTC. Does not open the mouth.
+    public func enterConnecting() {
+        guard phase == .countdown || phase == .idle else { return }
+        phase = .connecting
+    }
 
     public func countdownReachedZero(ephemeralKey: String) async throws {
         phase = .connecting
@@ -120,10 +139,8 @@ public final class ConversationSession {
                 }
             }
         case .talking:
-            if let started = speechStartedAt, time.now - started >= 8 {
-                ghostTurn = true
-                speechStartedAt = nil
-            }
+            // A long utterance keeps speech_started open until they pause.
+            // That is a turn, not a stuck VAD. Do not drop it at 8s.
             if userHasSpoken, let last = lastUserSpeechAt, time.now - last >= 90 {
                 pause()
                 return
@@ -174,7 +191,6 @@ public final class ConversationSession {
             }
         case .speechStarted:
             guard phase == .talking else { return }
-            ghostTurn = false
             speechStartedAt = time.now
             waitingForUser = false
             userSpeechThisTurn = 0
@@ -211,24 +227,26 @@ public final class ConversationSession {
         case .allow:
             break
         }
-        if ghostTurn {
-            ghostTurn = false
-            return
-        }
+        let vadSeconds = started.map { max(0, stoppedAt - $0) } ?? 0
+        let spokenSeconds = userSpeechThisTurn > 0 ? userSpeechThisTurn : vadSeconds
+        let transcript = lastUserText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Cough: no transcript and under ~300 ms. A live turn has no Apple transcript yet,
+        // so the VAD interval is the speech we can count.
+        if transcript.isEmpty && spokenSeconds < 0.3 { return }
         lastUserSpeechAt = time.now
-        let empty = lastUserText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if empty && userSpeechThisTurn < 0.3 { return }
+        if userSpeechThisTurn == 0 {
+            userSpeechSeconds += spokenSeconds
+        }
         userHasSpoken = true
         userTurns += 1
         if let started, stoppedAt > started {
             speechRanges.append(ConversationSpeechInterval(start: started, end: stoppedAt))
         }
-        if !empty {
-            let piece = lastUserText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !transcript.isEmpty {
             if userTranscript.isEmpty {
-                userTranscript = piece
+                userTranscript = transcript
             } else {
-                userTranscript += " " + piece
+                userTranscript += " " + transcript
             }
         }
         if let pending = pendingCue, ConversationCueAssembler.v1MaySend(pending) {

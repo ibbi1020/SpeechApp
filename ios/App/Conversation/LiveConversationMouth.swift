@@ -37,6 +37,8 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     private var iceWasConnected = false
     private var responseTranscript = ""
     private var pendingNullTurnDetection = false
+    private var bargeIn = BargeInGate()
+    private var bargeInPollTask: Task<Void, Never>?
 
     override init() {
         let pair = AsyncStream<MouthEvent>.makeStream(bufferingPolicy: .unbounded)
@@ -93,6 +95,11 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
                 ],
             ],
         ])
+    }
+
+    func cancelResponse() async throws {
+        try await waitForDataChannel()
+        try sendEvent(["type": "response.cancel"])
     }
 
     func close() async {
@@ -349,7 +356,9 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
                             "type": "semantic_vad",
                             "eagerness": "low",
                             "create_response": false,
-                            "interrupt_response": true,
+                            // Client owns barge-in via BargeInGate + response.cancel.
+                            // Server interrupt cancels on echo / cough before any filter runs.
+                            "interrupt_response": false,
                         ],
                         "noise_reduction": [
                             "type": "near_field",
@@ -379,23 +388,76 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             }
             continuation.yield(.sessionUpdated)
         case "input_audio_buffer.speech_started":
-            continuation.yield(.speechStarted)
+            handleSpeechStarted()
         case "input_audio_buffer.speech_stopped":
-            continuation.yield(.speechStopped)
+            handleSpeechStopped()
         case "response.created":
             responseTranscript = ""
         case "response.audio.delta", "response.output_audio.delta", "conversation.output_audio.delta":
+            mutateBargeIn { $0.noteAgentAudio() }
             continuation.yield(.audioDelta)
         case "response.audio_transcript.delta", "response.output_audio_transcript.delta":
             if let delta = json["delta"] as? String {
                 responseTranscript += delta
             }
         case "response.done":
+            stopBargeInPoll()
+            let release = mutateBargeIn { $0.noteResponseDone() }
             continuation.yield(.responseDone(transcript: outputTranscript(from: json)))
             responseTranscript = ""
+            if release == .passThrough {
+                continuation.yield(.speechStarted)
+            }
         default:
             break
         }
+    }
+
+    private func handleSpeechStarted() {
+        switch mutateBargeIn({ $0.onSpeechStarted() }) {
+        case .passThrough:
+            continuation.yield(.speechStarted)
+        case .hold:
+            startBargeInPoll()
+        case .commitCancel, .swallow:
+            break
+        }
+    }
+
+    private func handleSpeechStopped() {
+        stopBargeInPoll()
+        if mutateBargeIn({ $0.onSpeechStopped() }) == .passThrough {
+            continuation.yield(.speechStopped)
+        }
+    }
+
+    private func startBargeInPoll() {
+        stopBargeInPoll()
+        bargeInPollTask = Task { [weak self] in
+            guard let self else { return }
+            var now = Date().timeIntervalSince1970
+            while !Task.isCancelled {
+                let level = await self.currentInputLevel()
+                if Task.isCancelled { return }
+                let action = self.mutateBargeIn { $0.tick(now: now, level: level) }
+                if action == .commitCancel {
+                    try? await self.cancelResponse()
+                    self.continuation.yield(.speechStarted)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+                now = Date().timeIntervalSince1970
+            }
+        }
+    }
+
+    private func stopBargeInPoll() {
+        bargeInPollTask?.cancel()
+        bargeInPollTask = nil
+    }
+
+    private func mutateBargeIn<T>(_ body: (inout BargeInGate) -> T) -> T {
+        lock.withLock { body(&bargeIn) }
     }
 
     private static func modelIsPinned(_ model: String) -> Bool {
@@ -461,6 +523,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         }
         if alreadyClosed { return }
 
+        stopBargeInPoll()
         disconnectGraceTask?.cancel()
         disconnectGraceTask = nil
         finishICEWait()

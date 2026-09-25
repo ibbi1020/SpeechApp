@@ -55,9 +55,7 @@ struct ReadingSessionView: View {
                         .allowsHitTesting(false)
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if !isFogged {
-                        bottomChrome
-                    }
+                    bottomChrome
                 }
                 .accessibilityHidden(isFogged)
                 .allowsHitTesting(!isFogged)
@@ -70,6 +68,7 @@ struct ReadingSessionView: View {
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
+            VoiceOrbPreloader.warmup()
             if session == nil {
                 session = ReadingSession(
                     passage: passage,
@@ -143,40 +142,11 @@ struct ReadingSessionView: View {
 
     @ViewBuilder
     private var actionRow: some View {
-        if isLive || isPaused || isFinishing {
-            HStack(spacing: VoiceOrb.controlSpacing) {
-                Button {
-                    if isPaused {
-                        session?.resume()
-                    } else {
-                        session?.pause()
-                    }
-                } label: {
-                    Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                        .speechGlassCircle()
-                }
-                .buttonStyle(.plain)
-                .disabled(isFinishing)
-                .accessibilityLabel(isPaused ? "Resume" : "Pause")
-
-                VoiceOrb(
-                    phase: isLive ? .listening : .idle,
-                    inputVolume: isLive ? (session?.speechEnergy ?? 0) : 0,
-                    animating: isLive
-                )
-
-                Button {
-                    Task { await stopSession() }
-                } label: {
-                    Image(systemName: "stop.fill")
-                        .speechGlassCircle(tint: .red)
-                }
-                .buttonStyle(.plain)
-                .disabled(isFinishing)
-                .accessibilityLabel("Stop")
-            }
-            .frame(maxWidth: .infinity)
-            .opacity(isFinishing ? 0.7 : 1)
+        if isLive || isPaused || isFinishing || isFogged {
+            liveControlRow
+                .opacity(isLive || isPaused || isFinishing ? 1 : 0)
+                .allowsHitTesting(isLive || isPaused || isFinishing)
+                .accessibilityHidden(!(isLive || isPaused || isFinishing))
         } else {
             Button("Start") {
                 startPulse.toggle()
@@ -186,6 +156,42 @@ struct ReadingSessionView: View {
             .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
             .sensoryFeedback(.impact(flexibility: .soft), trigger: startPulse)
         }
+    }
+
+    private var liveControlRow: some View {
+        HStack(spacing: VoiceOrb.controlSpacing) {
+            Button {
+                if isPaused {
+                    session?.resume()
+                } else {
+                    session?.pause()
+                }
+            } label: {
+                Image(systemName: isPaused ? "play.fill" : "pause.fill")
+                    .speechGlassCircle()
+            }
+            .buttonStyle(.plain)
+            .disabled(isFinishing)
+            .accessibilityLabel(isPaused ? "Resume" : "Pause")
+
+            VoiceOrb(
+                phase: isLive ? .listening : .idle,
+                inputVolume: isLive ? (session?.speechEnergy ?? 0) : 0,
+                animating: isLive
+            )
+
+            Button {
+                Task { await stopSession() }
+            } label: {
+                Image(systemName: "stop.fill")
+                    .speechGlassCircle(tint: .red)
+            }
+            .buttonStyle(.plain)
+            .disabled(isFinishing)
+            .accessibilityLabel("Stop")
+        }
+        .frame(maxWidth: .infinity)
+        .opacity(isFinishing ? 0.7 : 1)
     }
 
     private func beginStart() async {
@@ -206,6 +212,7 @@ struct ReadingSessionView: View {
 
         isPreparing = true
         countdownRemaining = 3
+        VoiceOrbPreloader.warmup()
         defer {
             isPreparing = false
             countdownRemaining = nil

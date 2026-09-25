@@ -25,6 +25,20 @@ struct MonologueSessionClockTests {
     }
 
     @MainActor
+    @Test("tick samples the clock while time remains so the countdown can move")
+    func tickSamplesClockBeforeZero() async {
+        let time = ControllableTimeSource(now: 0)
+        let session = makeSession(time: time)
+        session.ready()
+        #expect(session.clockSample == 0)
+        time.advance(3)
+        await session.tick()
+        #expect(session.phase == .taking)
+        #expect(session.clockSample == 3)
+        #expect(session.remaining == 237)
+    }
+
+    @MainActor
     @Test("pause freezes the take clock")
     func pauseFreezes() {
         let time = ControllableTimeSource(now: 0)

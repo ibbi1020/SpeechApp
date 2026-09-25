@@ -11,6 +11,10 @@ public final class MonologueSession {
     public private(set) var possibleMinorFlag = false
     public var notes: String = ""
     public var reuseLine: String = ""
+    /// Last clock reading from `tick()` while a take is running.
+    /// `remaining` reads the time source directly, which Observation does not track,
+    /// so the countdown stays on screen until something else redraws.
+    public private(set) var clockSample: TimeInterval = 0
     public let store: any MonologuePromptStore
 
     public var prompt: String { cursor.current }
@@ -80,7 +84,9 @@ public final class MonologueSession {
     }
 
     public func tick() async {
-        guard phase == .taking, remaining <= 0 else { return }
+        guard phase == .taking else { return }
+        clockSample = time.now
+        guard remaining <= 0 else { return }
         finishTake()
     }
 

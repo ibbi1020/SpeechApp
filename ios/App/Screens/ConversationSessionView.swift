@@ -1,9 +1,12 @@
 import AVFoundation
 import Combine
+import os
 import SwiftUI
 import SpeechAppKit
 
 struct ConversationSessionView: View {
+    private static let log = Logger(subsystem: "com.speechapp", category: "ConversationSessionView")
+
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -94,9 +97,7 @@ struct ConversationSessionView: View {
                         .allowsHitTesting(false)
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if !isFogged {
-                        bottomChrome
-                    }
+                    bottomChrome
                 }
                 .accessibilityHidden(isFogged || showStopConfirm)
                 .allowsHitTesting(!isFogged && !showStopConfirm)
@@ -132,7 +133,10 @@ struct ConversationSessionView: View {
         .background {
             NavigationPopLock(isLocked: showStopConfirm)
         }
-        .task { await beginSession() }
+        .task {
+            VoiceOrbPreloader.warmup()
+            await beginSession()
+        }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             Task { await onWallClockTick() }
         }
@@ -190,41 +194,48 @@ struct ConversationSessionView: View {
 
     @ViewBuilder
     private var actionRow: some View {
-        if showsControls {
-            HStack(spacing: VoiceOrb.controlSpacing) {
-                Button {
-                    if isPaused {
-                        session?.resume()
-                    } else {
-                        session?.pause()
-                    }
-                } label: {
-                    Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                        .speechGlassCircle()
-                }
-                .buttonStyle(.plain)
-                .disabled(phase != .talking && !isPaused)
-                .accessibilityLabel(isPaused ? "Resume" : "Pause")
-
-                VoiceOrb(
-                    phase: orbPhase,
-                    inputVolume: orbPhase == .listening ? speechEnergy : 0,
-                    outputVolume: orbPhase == .speaking ? 0.7 : 0,
-                    animating: !isPaused
-                )
-
-                Button {
-                    session?.requestStop()
-                    showStopConfirm = true
-                } label: {
-                    Image(systemName: "stop.fill")
-                        .speechGlassCircle(tint: .red)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Stop")
-            }
-            .frame(maxWidth: .infinity)
+        if showsControls || isFogged {
+            liveControlRow
+                .opacity(showsControls ? 1 : 0)
+                .allowsHitTesting(showsControls)
+                .accessibilityHidden(!showsControls)
         }
+    }
+
+    private var liveControlRow: some View {
+        HStack(spacing: VoiceOrb.controlSpacing) {
+            Button {
+                if isPaused {
+                    session?.resume()
+                } else {
+                    session?.pause()
+                }
+            } label: {
+                Image(systemName: isPaused ? "play.fill" : "pause.fill")
+                    .speechGlassCircle()
+            }
+            .buttonStyle(.plain)
+            .disabled(phase != .talking && !isPaused)
+            .accessibilityLabel(isPaused ? "Resume" : "Pause")
+
+            VoiceOrb(
+                phase: orbPhase,
+                inputVolume: orbPhase == .listening ? speechEnergy : 0,
+                outputVolume: orbPhase == .speaking ? 0.7 : 0,
+                animating: !isPaused
+            )
+
+            Button {
+                session?.requestStop()
+                showStopConfirm = true
+            } label: {
+                Image(systemName: "stop.fill")
+                    .speechGlassCircle(tint: .red)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Stop")
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func beginSession() async {
@@ -253,9 +264,10 @@ struct ConversationSessionView: View {
                 countdownRemaining = n
                 try await Task.sleep(for: .seconds(1))
             }
-            countdownRemaining = nil
-
             try Task.checkCancellation()
+            // Keep the orb mounted: connecting chrome before the overlay lifts.
+            built.session.enterConnecting()
+            countdownRemaining = nil
             if let mint = built.mint {
                 let minted = try await mint.mint()
                 didMint = true
@@ -300,9 +312,13 @@ struct ConversationSessionView: View {
                 if orbPhase == .listening {
                     let level = await mouth?.currentInputLevel() ?? 0
                     if Task.isCancelled { return }
-                    speechEnergy = ListenDrive.normalized(rms: level)
+                    let next = ListenDrive.normalized(rms: level)
+                    // ~10 Hz UI updates; skip tiny changes so SwiftUI / WK do not thrash.
+                    if abs(next - speechEnergy) >= 0.008 {
+                        speechEnergy = next
+                    }
                 }
-                try? await Task.sleep(for: .milliseconds(40))
+                try? await Task.sleep(for: .milliseconds(100))
             }
         }
     }
@@ -329,11 +345,7 @@ struct ConversationSessionView: View {
             fake = prototype
         }
 
-        #if DEBUG
-        let cap: TimeInterval = 300
-        #else
         let cap: TimeInterval = 15 * 60
-        #endif
 
         let session = ConversationSession(
             time: SystemTimeSource(),
@@ -462,13 +474,21 @@ struct ConversationSessionView: View {
         guard !didRouteFinish, let session else { return }
         switch session.phase {
         case .crisis:
-            didRouteFinish = true
-            Task { await postEndedIfNeeded() }
+            markRoutedAndPostEnded()
             model.presentCrisis(possibleMinorFlag: session.possibleMinorFlag)
         case .report, .dropped:
             guard let report = session.report else { return }
-            didRouteFinish = true
-            Task { await postEndedIfNeeded() }
+            Self.log.info(
+                "conversation end reason=\(String(describing: report.endReason), privacy: .public) turns=\(report.userTurns) present=\(session.shouldPresentReport)"
+            )
+            if !session.shouldPresentReport {
+                if errorMessage == nil {
+                    errorMessage = "Connection lost. Try again."
+                }
+                markRoutedAndPostEnded()
+                return
+            }
+            markRoutedAndPostEnded()
             model.finishConversation(
                 report: report,
                 possibleMinorFlag: session.possibleMinorFlag
@@ -476,6 +496,11 @@ struct ConversationSessionView: View {
         default:
             break
         }
+    }
+
+    private func markRoutedAndPostEnded() {
+        didRouteFinish = true
+        Task { await postEndedIfNeeded() }
     }
 
     private func tearDownIfLeaving() {

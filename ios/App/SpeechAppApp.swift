@@ -9,6 +9,7 @@ struct SpeechAppApp: App {
         WindowGroup {
             RootView()
                 .environment(appModel)
+                .onAppear { VoiceOrbPreloader.warmup() }
         }
     }
 }
