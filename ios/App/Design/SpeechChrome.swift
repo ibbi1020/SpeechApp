@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import WebKit
+import SpeechAppKit
 
 /// Shared motion, materials, and chrome for Reading — Apple Design defaults.
 enum SpeechMotion {
@@ -173,12 +174,8 @@ struct ReadingCountdownOverlay: View {
 /// [orb-ui](https://orb-ui.com) cloud theme, the orb on the homepage.
 /// Session chrome uses this instead of `AuroraPill`.
 struct VoiceOrb: View {
-    enum Phase: Equatable {
-        case idle
-        case connecting
-        case listening
-        case speaking
-    }
+    /// Same three looks as `OrbVisualPhase`: connecting / listening / speaking.
+    typealias Phase = OrbVisualPhase
 
     var phase: Phase
     var inputVolume: Float = 0
@@ -223,7 +220,6 @@ struct VoiceOrb: View {
         case .speaking: return "Speaking."
         case .connecting: return "Connecting."
         case .listening: return level > 0.28 ? "Hearing you." : "Listening."
-        case .idle: return "Listening."
         }
     }
 }
@@ -242,6 +238,11 @@ enum VoiceOrbPreloader {
 
     fileprivate static func park(_ webView: WKWebView) {
         Host.shared.park(webView)
+    }
+
+    fileprivate static func loadOrbHTML(into webView: WKWebView) {
+        guard let url = Bundle.main.url(forResource: "voice-orb", withExtension: "html") else { return }
+        webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
     }
 
     @MainActor
@@ -282,9 +283,7 @@ enum VoiceOrbPreloader {
             parkView.addSubview(webView)
             webView.frame = parkView.bounds
             webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            if let url = Bundle.main.url(forResource: "voice-orb", withExtension: "html") {
-                webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-            }
+            VoiceOrbPreloader.loadOrbHTML(into: webView)
             return webView
         }
 
@@ -296,7 +295,8 @@ enum VoiceOrbPreloader {
                 width: VoiceOrb.box,
                 height: VoiceOrb.box
             )
-            parkView.alpha = 0
+            // Keep alpha at 1 off-screen. Alpha 0 can drop the WebGL context while parked.
+            parkView.alpha = 1
             parkView.isUserInteractionEnabled = false
             window.insertSubview(parkView, at: 0)
         }
@@ -367,9 +367,11 @@ private struct OrbWebView: UIViewRepresentable {
         var paused = false
         private var pageReady = false
         private var lastScript: String?
+        private var isReloading = false
 
         func markReady() {
             pageReady = true
+            isReloading = false
             lastScript = nil
         }
 
@@ -378,14 +380,37 @@ private struct OrbWebView: UIViewRepresentable {
             push(to: webView)
         }
 
-        /// Pushes the latest signal. Held until `didFinish` so `orbSetSignal` exists.
-        /// Identical scripts are skipped so SwiftUI refreshes do not thrash the web view.
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            reloadOrb(in: webView)
+        }
+
+        /// Pushes the latest signal once the page is ready.
+        /// Skips identical scripts; reloads if WebGL reports a lost context.
         func push(to webView: WKWebView) {
-            guard pageReady else { return }
+            guard pageReady, !isReloading else { return }
+            webView.evaluateJavaScript("!!window.orbContextLost") { [weak self] result, _ in
+                guard let self else { return }
+                if result as? Bool == true {
+                    self.reloadOrb(in: webView)
+                } else {
+                    self.applySignal(to: webView)
+                }
+            }
+        }
+
+        private func applySignal(to webView: WKWebView) {
             let script = makeScript()
             guard script != lastScript else { return }
             lastScript = script
             webView.evaluateJavaScript(script)
+        }
+
+        private func reloadOrb(in webView: WKWebView) {
+            guard !isReloading else { return }
+            isReloading = true
+            pageReady = false
+            lastScript = nil
+            VoiceOrbPreloader.loadOrbHTML(into: webView)
         }
 
         private func makeScript() -> String {
@@ -393,24 +418,24 @@ private struct OrbWebView: UIViewRepresentable {
                 // Leave the last frame in place. A new signal would move the cloud when it resumes.
                 return "window.orbFrozen=true;document.documentElement.classList.add('paused');"
             }
-            let state = Self.webState(phase)
             let input = String(format: "%.3f", inputVolume)
             let output = String(format: "%.3f", outputVolume)
             return """
             window.orbFrozen=false;\
             document.documentElement.classList.remove('paused');\
-            window.orbSetSignal&&window.orbSetSignal('\(state)',\(input),\(output));
+            window.orbSetSignal&&window.orbSetSignal('\(phase.webState)',\(input),\(output));
             """
         }
+    }
+}
 
-        /// Connecting hides the non-interactive cloud and leaves only a tiny spinner.
-        private static func webState(_ phase: VoiceOrb.Phase) -> String {
-            switch phase {
-            case .idle: "idle"
-            case .connecting: "connecting"
-            case .listening: "listening"
-            case .speaking: "speaking"
-            }
+private extension OrbVisualPhase {
+    /// Connecting keeps the cloud and fades the spinner on top.
+    var webState: String {
+        switch self {
+        case .connecting: "connecting"
+        case .listening: "listening"
+        case .speaking: "speaking"
         }
     }
 }

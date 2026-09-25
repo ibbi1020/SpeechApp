@@ -20,6 +20,7 @@ struct ConversationSessionView: View {
     @State private var didPostStarted = false
     @State private var didPostEnded = false
     @State private var errorMessage: String?
+    @State private var canRetry = true
     @State private var countdownRemaining: Int?
     @State private var showStopConfirm = false
     @State private var didRouteFinish = false
@@ -28,18 +29,14 @@ struct ConversationSessionView: View {
     @State private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     /// Agent audio in flight (`audioDelta` until `responseDone`).
     @State private var agentSpeaking = false
-    /// User has the floor (`speechStarted` until `speechStopped`). Wins over agent audio.
-    @State private var userSpeaking = false
+    @State private var floor = ConversationFloor()
     @State private var mouth: (any ConversationMouth)?
     @State private var speechEnergy: Float = 0
+    @State private var partnerEnergy: Float = 0
     @State private var levelTask: Task<Void, Never>?
 
     private var phase: ConversationPhase {
         session?.phase ?? .idle
-    }
-
-    private var isLive: Bool {
-        phase == .talking || phase == .wrapping || phase == .connecting
     }
 
     private var isPaused: Bool {
@@ -50,29 +47,31 @@ struct ConversationSessionView: View {
         countdownRemaining != nil
     }
 
+    private var showsFailure: Bool {
+        errorMessage != nil
+    }
+
     private var showsControls: Bool {
+        guard !showsFailure else { return false }
         switch phase {
-        case .connecting, .talking, .paused, .wrapping: true
-        default: false
+        case .connecting, .talking, .paused, .wrapping:
+            return true
+        default:
+            return false
         }
     }
 
+    private var showPauseControl: Bool {
+        phase.showsPauseButton
+    }
+
     private var orbPhase: VoiceOrb.Phase {
-        if isPaused { return .idle }
-        switch phase {
-        case .connecting:
-            return .connecting
-        case .wrapping where !userSpeaking:
-            return .speaking
-        default:
-            if userSpeaking {
-                return .listening
-            } else if agentSpeaking {
-                return .speaking
-            } else {
-                return .listening
-            }
-        }
+        .conversation(
+            phase: phase,
+            isCountdown: isFogged,
+            floor: floor.owner,
+            agentSpeaking: agentSpeaking
+        )
     }
 
     private var fogBlurRadius: CGFloat {
@@ -90,17 +89,21 @@ struct ConversationSessionView: View {
         ZStack {
             SpeechScreenBackground()
 
-            liveCanvas
-                .blur(radius: fogBlurRadius)
-                .overlay {
-                    Color.black.opacity(fogWashOpacity)
-                        .allowsHitTesting(false)
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    bottomChrome
-                }
-                .accessibilityHidden(isFogged || showStopConfirm)
-                .allowsHitTesting(!isFogged && !showStopConfirm)
+            if showsFailure {
+                failureView
+            } else {
+                liveCanvas
+                    .blur(radius: fogBlurRadius)
+                    .overlay {
+                        Color.black.opacity(fogWashOpacity)
+                            .allowsHitTesting(false)
+                    }
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        bottomChrome
+                    }
+                    .accessibilityHidden(isFogged || showStopConfirm)
+                    .allowsHitTesting(!isFogged && !showStopConfirm)
+            }
 
             if isFogged {
                 ReadingCountdownOverlay(
@@ -129,7 +132,7 @@ struct ConversationSessionView: View {
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationTitle("Conversation")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(showStopConfirm ? .hidden : .automatic, for: .navigationBar)
+        .toolbar(showStopConfirm || showsFailure ? .hidden : .automatic, for: .navigationBar)
         .background {
             NavigationPopLock(isLocked: showStopConfirm)
         }
@@ -155,50 +158,72 @@ struct ConversationSessionView: View {
     }
 
     private var liveCanvas: some View {
-        VStack(alignment: .leading, spacing: SpeechSpacing.related) {
-            Text("AI partner")
-                .font(.footnote)
-                .foregroundStyle(isFogged ? .tertiary : .secondary)
-
-            Spacer(minLength: 0)
+        let line = session?.stageLine ?? ""
+        return ZStack {
+            if !line.isEmpty {
+                Text(line)
+                    .font(.system(.title3, design: .serif))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                    .foregroundStyle(isFogged ? .tertiary : .primary)
+                    .lineLimit(4)
+                    .truncationMode(.head)
+                    .frame(maxWidth: 320)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 28)
+                    .accessibilityLabel(line)
+                    .accessibilityAddTraits(.updatesFrequently)
+            }
 
             if isPaused {
                 Text("Paused — still here.")
-                    .font(.system(.title2, design: .serif).weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
             }
-
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, SpeechSpacing.page)
-        .padding(.top, 20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var failureView: some View {
+        VStack(spacing: SpeechSpacing.related) {
+            Text(errorMessage ?? "Connection lost.")
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if canRetry {
+                Button("Try again") {
+                    Task { await retrySession() }
+                }
+                .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
+            }
+
+            Button("Back to home") {
+                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
+                    model.goHome()
+                }
+            }
+            .buttonStyle(SpeechSecondaryButtonStyle())
+        }
+        .padding(SpeechSpacing.page)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var bottomChrome: some View {
-        VStack(alignment: .leading, spacing: SpeechSpacing.related) {
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            actionRow
-        }
-        .padding(.horizontal, SpeechSpacing.page)
-        .padding(.top, 12)
-        .padding(.bottom, 16)
+        actionRow
+            .padding(.horizontal, SpeechSpacing.page)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
     }
 
     @ViewBuilder
     private var actionRow: some View {
-        if showsControls || isFogged {
+        if showsControls {
             liveControlRow
-                .opacity(showsControls ? 1 : 0)
-                .allowsHitTesting(showsControls)
-                .accessibilityHidden(!showsControls)
         }
     }
 
@@ -215,13 +240,15 @@ struct ConversationSessionView: View {
                     .speechGlassCircle()
             }
             .buttonStyle(.plain)
-            .disabled(phase != .talking && !isPaused)
+            .opacity(showPauseControl ? 1 : 0)
+            .allowsHitTesting(showPauseControl)
+            .accessibilityHidden(!showPauseControl)
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
 
             VoiceOrb(
                 phase: orbPhase,
                 inputVolume: orbPhase == .listening ? speechEnergy : 0,
-                outputVolume: orbPhase == .speaking ? 0.7 : 0,
+                outputVolume: orbPhase == .speaking ? partnerEnergy : 0,
                 animating: !isPaused
             )
 
@@ -241,13 +268,16 @@ struct ConversationSessionView: View {
     private func beginSession() async {
         guard session == nil else { return }
         errorMessage = nil
+        canRetry = true
         didRouteFinish = false
         conversationID = UUID()
         didMint = false
         didPostStarted = false
         didPostEnded = false
         agentSpeaking = false
-        userSpeaking = false
+        floor = ConversationFloor()
+        speechEnergy = 0
+        partnerEnergy = 0
 
         do {
             let built = try makeSession()
@@ -265,9 +295,9 @@ struct ConversationSessionView: View {
                 try await Task.sleep(for: .seconds(1))
             }
             try Task.checkCancellation()
-            // Keep the orb mounted: connecting chrome before the overlay lifts.
-            built.session.enterConnecting()
+            // Fog and chrome update together: lift overlay, then mount orb + controls.
             countdownRemaining = nil
+            built.session.enterConnecting()
             if let mint = built.mint {
                 let minted = try await mint.mint()
                 didMint = true
@@ -295,28 +325,62 @@ struct ConversationSessionView: View {
             await postEndedIfNeeded()
             if error == .budget {
                 model.budget.used = model.budget.limit
+                canRetry = false
             }
             errorMessage = error.localizedDescription
+            clearLiveSession()
         } catch {
             countdownRemaining = nil
             await postEndedIfNeeded()
             errorMessage = error.localizedDescription
+            clearLiveSession()
         }
     }
 
-    /// WebRTC owns the mic, so the listening orb reads the local audio level from stats.
+    private func retrySession() async {
+        await postEndedIfNeeded()
+        clearLiveSession()
+        errorMessage = nil
+        canRetry = true
+        await beginSession()
+    }
+
+    private func clearLiveSession() {
+        eventPump?.cancel()
+        eventPump = nil
+        levelTask?.cancel()
+        levelTask = nil
+        debugLoop?.cancel()
+        debugLoop = nil
+        session = nil
+        mouth = nil
+        fakeMouth = nil
+        mint = nil
+        countdownRemaining = nil
+    }
+
+    /// WebRTC owns the mic and partner audio; the orb reads both from stats.
     private func startLevelPump() {
         levelTask?.cancel()
         levelTask = Task { @MainActor in
             while !Task.isCancelled {
-                if orbPhase == .listening {
+                switch orbPhase {
+                case .listening:
                     let level = await mouth?.currentInputLevel() ?? 0
                     if Task.isCancelled { return }
                     let next = ListenDrive.normalized(rms: level)
-                    // ~10 Hz UI updates; skip tiny changes so SwiftUI / WK do not thrash.
                     if abs(next - speechEnergy) >= 0.008 {
                         speechEnergy = next
                     }
+                case .speaking:
+                    let level = await mouth?.currentOutputLevel() ?? 0
+                    if Task.isCancelled { return }
+                    let next = ListenDrive.normalized(rms: level)
+                    if abs(next - partnerEnergy) >= 0.008 {
+                        partnerEnergy = next
+                    }
+                default:
+                    break
                 }
                 try? await Task.sleep(for: .milliseconds(100))
             }
@@ -362,14 +426,12 @@ struct ConversationSessionView: View {
         eventPump?.cancel()
         eventPump = Task { @MainActor in
             for await event in mouth.events {
-                // User speech owns the listen pill. Agent audio owns the speak pill only when the user does not have the floor.
                 switch event {
                 case .audioDelta: agentSpeaking = true
-                case .speechStarted: userSpeaking = true
-                case .speechStopped: userSpeaking = false
                 case .responseDone: agentSpeaking = false
                 default: break
                 }
+                floor.apply(event)
                 await session.handle(event)
                 await postStartedIfNeeded(session)
                 routeIfFinished()
@@ -437,8 +499,6 @@ struct ConversationSessionView: View {
     private func handleScenePhase(_ phase: ScenePhase) {
         switch phase {
         case .background:
-            // Keep tick() alive for the 90s silence auto-pause. Do not hang up at 30s.
-            // Live Activity is deferred; audio background mode is the keep-alive.
             beginConversationBackgroundTask()
         case .active:
             endConversationBackgroundTask()
@@ -483,7 +543,8 @@ struct ConversationSessionView: View {
             )
             if !session.shouldPresentReport {
                 if errorMessage == nil {
-                    errorMessage = "Connection lost. Try again."
+                    errorMessage = "Connection lost."
+                    canRetry = true
                 }
                 markRoutedAndPostEnded()
                 return

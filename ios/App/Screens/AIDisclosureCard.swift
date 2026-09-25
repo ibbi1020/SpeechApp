@@ -26,16 +26,10 @@ struct AIDisclosureCard: View {
 
     private var card: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: SpeechSpacing.cluster) {
-                Text("AI partner")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                Text(CounselCopy.disclosure)
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(CounselCopy.disclosure)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Button("Start a conversation") {
                 withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {

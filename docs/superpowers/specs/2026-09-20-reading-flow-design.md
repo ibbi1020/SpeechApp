@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-20  
 **Status:** Draft for review. Aurora is explicitly out of this pass.  
-**App:** SpeechApp, Reading (Format 1) prototype.
+**App:** Orator, Reading (Format 1) prototype.
 
 This spec captures the flow and chrome we locked in the companion. It is a presentable prototype, not a finished product. Implement with system text styles and native iOS controls so it can be shown to people without looking like a Settings menu or a letterpress costume.
 

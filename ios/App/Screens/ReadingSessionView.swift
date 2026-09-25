@@ -175,7 +175,7 @@ struct ReadingSessionView: View {
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
 
             VoiceOrb(
-                phase: isLive ? .listening : .idle,
+                phase: .listening,
                 inputVolume: isLive ? (session?.speechEnergy ?? 0) : 0,
                 animating: isLive
             )
@@ -206,7 +206,7 @@ struct ReadingSessionView: View {
         do {
             try await LiveTranscriptionEngine.requestSpeechAuthorization()
         } catch {
-            errorMessage = "Speech recognition permission is required (Settings → SpeechApp)."
+            errorMessage = "Speech recognition permission is required (Settings → Orator)."
             return
         }
 

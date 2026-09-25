@@ -107,34 +107,36 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     }
 
     func currentInputLevel() async -> Float {
+        await audioLevel(ConversationAudioLevels.input)
+    }
+
+    func currentOutputLevel() async -> Float {
+        await audioLevel(ConversationAudioLevels.output)
+    }
+
+    private func audioLevel(
+        _ extract: @escaping @Sendable ([ConversationAudioStat]) -> Float
+    ) async -> Float {
         let connection: RTCPeerConnection? = lock.withLock { closed ? nil : peer }
         guard let connection else { return 0 }
         return await withCheckedContinuation { continuation in
             connection.statistics { report in
-                continuation.resume(returning: Self.microphoneLevel(in: report))
+                continuation.resume(returning: extract(Self.samples(from: report)))
             }
         }
     }
 
-    private static func microphoneLevel(in report: RTCStatisticsReport) -> Float {
-        var level: Float = 0
-        for stat in report.statistics.values {
+    private static func samples(from report: RTCStatisticsReport) -> [ConversationAudioStat] {
+        report.statistics.values.map { stat in
             let values = stat.values
-            switch stat.type {
-            case "media-source":
-                let kind = values["kind"] as? String
-                guard kind == nil || kind == "audio" else { continue }
-                level = max(level, floatValue(values["audioLevel"]))
-            case "track":
-                let kind = values["kind"] as? String
-                guard kind == nil || kind == "audio" else { continue }
-                if let remote = values["remoteSource"] as? NSNumber, remote.boolValue { continue }
-                level = max(level, floatValue(values["audioLevel"]))
-            default:
-                continue
-            }
+            let remote: Bool? = (values["remoteSource"] as? NSNumber).map(\.boolValue)
+            return ConversationAudioStat(
+                type: stat.type,
+                kind: values["kind"] as? String,
+                remoteSource: remote,
+                audioLevel: floatValue(values["audioLevel"])
+            )
         }
-        return level
     }
 
     private static func floatValue(_ value: NSObject?) -> Float {
@@ -399,6 +401,10 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         case "response.audio_transcript.delta", "response.output_audio_transcript.delta":
             if let delta = json["delta"] as? String {
                 responseTranscript += delta
+                let trimmed = responseTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    continuation.yield(.partnerCaption(trimmed))
+                }
             }
         case "response.done":
             stopBargeInPoll()
@@ -418,6 +424,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         case .passThrough:
             continuation.yield(.speechStarted)
         case .hold:
+            continuation.yield(.interruptHeard)
             startBargeInPoll()
         case .commitCancel, .swallow:
             break
@@ -426,8 +433,13 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
 
     private func handleSpeechStopped() {
         stopBargeInPoll()
-        if mutateBargeIn({ $0.onSpeechStopped() }) == .passThrough {
+        switch mutateBargeIn({ $0.onSpeechStopped() }) {
+        case .passThrough:
             continuation.yield(.speechStopped)
+        case .swallow:
+            continuation.yield(.interruptDropped)
+        case .hold, .commitCancel:
+            break
         }
     }
 

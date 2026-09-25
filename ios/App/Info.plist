@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>SpeechApp</string>
+	<string>Orator</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -28,11 +28,11 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>SpeechApp connects to your Mac on the local network to start a live conversation.</string>
+	<string>Orator connects to your Mac on the local network to start a live conversation.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>SpeechApp uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Partner audio is streamed to OpenAI. Reading and topic talks are scored on this device. We do not keep the recording.</string>
+	<string>Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Partner audio is streamed to OpenAI. Reading and topic talks are scored on this device. We do not keep the recording.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>SpeechApp uses on-device speech recognition to follow reading and to time topic talks. Recognition runs on your device.</string>
+	<string>Orator uses on-device speech recognition to follow reading and to time topic talks. Recognition runs on your device.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

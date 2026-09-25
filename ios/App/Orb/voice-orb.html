@@ -23,6 +23,14 @@
 </head>
 <body>
   <div id="root"></div>
+  <script>
+    // Swift polls this flag and reloads the page when WebGL dies.
+    window.orbContextLost = false;
+    window.addEventListener('webglcontextlost', function (e) {
+      e.preventDefault(); // Keep the canvas until Swift reloads.
+      window.orbContextLost = true;
+    }, true);
+  </script>
   <script src="voice-orb.js"></script>
 </body>
 </html>

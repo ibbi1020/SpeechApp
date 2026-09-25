@@ -27,13 +27,9 @@ struct ConversationReportView: View {
                             .padding(.top, SpeechSpacing.related)
                     }
 
-                    Button("Done", action: goHome)
+                    Button("Back to home", action: goHome)
                         .buttonStyle(SpeechPrimaryButtonStyle())
                         .padding(.top, SpeechSpacing.section)
-
-                    Button("Back to home", action: goHome)
-                        .buttonStyle(SpeechSecondaryButtonStyle())
-                        .padding(.top, 10)
                         .padding(.bottom, 32)
                 }
                 .padding(.horizontal, SpeechSpacing.page)

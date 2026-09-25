@@ -16,7 +16,7 @@
 - **Feasibility:** 🟡 — science exists; **this repo still has no audio buffer for scoring and no real sound scorer** (`NotAssessedGOPScorer`; empty PCM at stop).
 - **Scope:** **M** — post-Stop scoring of **high-importance sound contrasts** on known passages + ranked report + next-passage picks. Cut: accent meters, full ELSA parity, custom foundation model, live red “poor sound” until calibrated.
 - **Product-fit:** 🟢 — Format 1’s job is private diagnosis of sounds that matter for being understood; Slice A alone is not that job.
-- **Market-fit:** 🟡 — ELSA/BoldVoice win paid phoneme feedback with cloud CAPT; SpeechApp should not pretend to beat them — keep Format 1 as honest calibration while Format 2 carries the product.
+- **Market-fit:** 🟡 — ELSA/BoldVoice win paid phoneme feedback with cloud CAPT; Orator should not pretend to beat them — keep Format 1 as honest calibration while Format 2 carries the product.
 - **Recommended next step:** **2-week spike** — keep audio slices on device → run a small open phoneme model + published scoring math → plant ship/sheep-style errors → measure false “you said it wrong.” Only then wire the UI. Do **not** train a model from scratch. Do **not** send user audio to Azure/ELSA/Speechace while Consent still says “stays on this phone.”
 
 ---
@@ -95,7 +95,7 @@ You do **not** need to invent “phoneme detection” from zero. The plan was: u
 ## Market-fit
 
 - Paid adult apps sell phoneme feedback via **cloud CAPT** (ELSA, BoldVoice, Speechace, Azure PA) ([GTM](15953f43-ae95-45c9-afd2-e41ad9a078c2)).
-- Light on-device GOP will **not** beat that category on raw accuracy; it can still fulfill SpeechApp’s job if positioned as **private, scoped diagnosis**, not “ELSA killer.”
+- Light on-device GOP will **not** beat that category on raw accuracy; it can still fulfill Orator’s job if positioned as **private, scoped diagnosis**, not “ELSA killer.”
 - Shipping Slice A as if it were phoneme diagnosis is a **trust collapse** risk (critical).
 
 ---

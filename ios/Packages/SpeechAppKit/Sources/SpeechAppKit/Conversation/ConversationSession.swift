@@ -8,6 +8,14 @@ public final class ConversationSession {
     public private(set) var countsAsBudgetStart = false
     public private(set) var report: ConversationReport?
     public private(set) var possibleMinorFlag = false
+    /// Partner words for the live stage. Empty until the first non-empty caption.
+    public private(set) var partnerLine = ""
+
+    /// Opening question until the partner speaks, then the newest partner words.
+    public var stageLine: String {
+        let source = partnerLine.isEmpty ? openQuestion : partnerLine
+        return Self.captionTail(source)
+    }
 
     public var elapsed: TimeInterval {
         guard let origin = clockOrigin else { return 0 }
@@ -189,6 +197,10 @@ public final class ConversationSession {
                 awaitingFirstAudio = false
                 if phase == .connecting { phase = .talking }
             }
+        case .partnerCaption(let text):
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            partnerLine = trimmed
         case .speechStarted:
             guard phase == .talking else { return }
             speechStartedAt = time.now
@@ -198,6 +210,8 @@ public final class ConversationSession {
             await onSpeechStopped()
         case .responseDone(let transcript):
             await onResponseDone(transcript)
+        case .interruptHeard, .interruptDropped:
+            break
         case .disconnected:
             break
         case .failed:
@@ -356,5 +370,15 @@ public final class ConversationSession {
             ))
         }
         return lines
+    }
+
+    /// Newest words of a long caption, capped on a word boundary.
+    static func captionTail(_ text: String, limit: Int = 110) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > limit else { return trimmed }
+        let start = trimmed.index(trimmed.endIndex, offsetBy: -limit)
+        let tail = trimmed[start...]
+        guard let space = tail.firstIndex(of: " ") else { return String(tail) }
+        return String(tail[tail.index(after: space)...])
     }
 }

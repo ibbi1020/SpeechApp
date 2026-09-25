@@ -164,11 +164,8 @@ struct MonologueSessionView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if live || isFogged {
+            if live {
                 liveChrome(session)
-                    .opacity(live ? 1 : 0)
-                    .allowsHitTesting(live)
-                    .accessibilityHidden(!live)
             } else if session.phase == .planning || session.phase == .between {
                 planningChrome(session)
             }
@@ -397,7 +394,7 @@ struct MonologueSessionView: View {
             .accessibilityLabel(session.phase == .paused ? "Resume" : "Pause")
 
             VoiceOrb(
-                phase: session.phase == .taking ? .listening : .idle,
+                phase: .monologue(isPreparing: false, phase: session.phase),
                 inputVolume: session.phase == .taking ? speechEnergy : 0,
                 animating: session.phase == .taking
             )
@@ -501,7 +498,7 @@ struct MonologueSessionView: View {
         do {
             try await LiveTranscriptionEngine.requestSpeechAuthorization()
         } catch {
-            listenError = "Speech recognition permission is required (Settings → SpeechApp)."
+            listenError = "Speech recognition permission is required (Settings → Orator)."
             return
         }
 

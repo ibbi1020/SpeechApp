@@ -1,4 +1,4 @@
-# SpeechApp — Reading iOS Prototype (Slice A)
+# Orator — Reading iOS Prototype (Slice A)
 
 **Reading** (alias Format 1) — see `docs/formats.md`.
 

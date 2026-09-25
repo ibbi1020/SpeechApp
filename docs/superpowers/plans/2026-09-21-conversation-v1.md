@@ -1814,7 +1814,7 @@ Do not start this until Slice A tests are green and Slice C navigates on the fak
 ```yaml
 UIBackgroundModes:
   - audio
-NSMicrophoneUsageDescription: SpeechApp talks with a live AI partner. Your voice is streamed to OpenAI for the conversation. Scoring stays on this device. We do not keep the recording.
+NSMicrophoneUsageDescription: Orator talks with a live AI partner. Your voice is streamed to OpenAI for the conversation. Scoring stays on this device. We do not keep the recording.
 ```
 
 Remove the Reading-only mic sentence from Conversation launches; Reading can keep a second sentence in its own start consent if needed. v1: one rewritten string covering both is OK.

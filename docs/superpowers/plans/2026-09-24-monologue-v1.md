@@ -1557,7 +1557,7 @@ Add `monologuePresented` analog to `conversationPresented` for `.monologue` and 
     }
 ```
 
-Age gate for Talk still uses `conversationPresented` (`.ageGate`). Change `AgeAttestationView` `.navigationTitle("Conversation")` to `.navigationTitle("")` or `"SpeechApp"` so the first-run Talk path is not labeled Conversation.
+Age gate for Talk still uses `conversationPresented` (`.ageGate`). Change `AgeAttestationView` `.navigationTitle("Conversation")` to `.navigationTitle("")` or `"Orator"` so the first-run Talk path is not labeled Conversation.
 
 - [ ] **Step 3: Stub views so the project compiles**
 
@@ -1749,13 +1749,13 @@ If I’m ready is tapped for take 2/3, start a **new** engine for that take (do 
 `NSMicrophoneUsageDescription`:
 
 ```
-SpeechApp uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Partner audio is streamed to OpenAI. Reading and topic talks are scored on this device. We do not keep the recording.
+Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Partner audio is streamed to OpenAI. Reading and topic talks are scored on this device. We do not keep the recording.
 ```
 
 `NSSpeechRecognitionUsageDescription`:
 
 ```
-SpeechApp uses on-device speech recognition to follow reading and to time topic talks. Recognition runs on your device.
+Orator uses on-device speech recognition to follow reading and to time topic talks. Recognition runs on your device.
 ```
 
 Run: `cd ios && xcodegen generate`

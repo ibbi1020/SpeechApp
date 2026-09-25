@@ -401,6 +401,61 @@ struct ConversationSessionTests {
         }
     }
 
+    @Test("stageLine is the open question until the partner speaks")
+    @MainActor
+    func stageLineStartsAsOpenQuestion() async throws {
+        let (session, _, _) = makeSession()
+        #expect(session.stageLine == "What did you have for breakfast?")
+        try await reachTalking(session)
+        #expect(session.stageLine == "What did you have for breakfast?")
+    }
+
+    @Test("partnerCaption replaces the open question on the stage")
+    @MainActor
+    func stageLineFollowsPartnerCaption() async throws {
+        let (session, _, _) = makeSession()
+        try await reachTalking(session)
+        await session.handle(.partnerCaption("Eggs sound good. What else?"))
+        #expect(session.stageLine == "Eggs sound good. What else?")
+    }
+
+    @Test("a long partnerCaption keeps the newest words")
+    @MainActor
+    func stageLineKeepsNewestWords() async throws {
+        let (session, _, _) = makeSession()
+        try await reachTalking(session)
+        let words = (1...40).map { "w\($0)" }.joined(separator: " ")
+        await session.handle(.partnerCaption(words))
+        let line = session.stageLine
+        #expect(line.count <= 110)
+        #expect(line.hasSuffix("w40"))
+        #expect(line.hasPrefix("w1 ") == false)
+        #expect(words.hasSuffix(line))
+    }
+
+    @Test("empty partnerCaption leaves the open question on stage")
+    @MainActor
+    func emptyPartnerCaptionKeepsQuestion() async throws {
+        let (session, _, _) = makeSession()
+        try await reachTalking(session)
+        await session.handle(.partnerCaption("Hello there."))
+        await session.handle(.partnerCaption(""))
+        #expect(session.stageLine == "Hello there.")
+    }
+
+    @Test("interruptHeard does not count a user turn")
+    @MainActor
+    func interruptHeardIsNotATurn() async throws {
+        let (session, _, _) = makeSession()
+        try await reachTalking(session)
+        await session.handle(.interruptHeard)
+        await session.handle(.interruptDropped)
+        #expect(session.phase == .talking)
+        #expect(session.report == nil)
+        await session.confirmStop()
+        #expect(session.report?.userTurns == 0)
+    }
+
     @MainActor
     private func reachTalking(_ session: ConversationSession) async throws {
         session.beginCountdown()

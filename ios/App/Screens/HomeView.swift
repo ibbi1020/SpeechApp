@@ -30,7 +30,7 @@ struct HomeView: View {
                 .padding(.bottom, 40)
             }
         }
-        .navigationTitle("SpeechApp")
+        .navigationTitle("Orator")
         .navigationBarTitleDisplayMode(.large)
     }
 
