@@ -59,13 +59,6 @@ struct MonologueSessionView: View {
         ZStack {
             SpeechScreenBackground()
             content
-                .blur(radius: fogBlurRadius)
-                .overlay {
-                    Color.black.opacity(fogWashOpacity)
-                        .allowsHitTesting(false)
-                }
-                .accessibilityHidden(isFogged || showLeaveConfirm)
-                .allowsHitTesting(!isFogged && !showLeaveConfirm)
 
             if isFogged {
                 ReadingCountdownOverlay(remaining: countdownRemaining, instruction: "")
@@ -150,25 +143,47 @@ struct MonologueSessionView: View {
         }
     }
 
+    /// Fog only the page. The orb is a WebGL view and stays blank inside `.blur`,
+    /// so live chrome is attached after the filter — same as Reading and Conversation.
     @ViewBuilder
     private func sessionContent(_ session: MonologueSession) -> some View {
         let live = session.phase == .taking || session.phase == .paused
-        Group {
-            switch session.phase {
-            case .planning, .between:
-                planningCanvas(session)
-            case .taking, .paused:
-                liveCanvas(session)
-            case .report, .crisis:
-                Color.clear
+        sessionCanvas(session)
+            .blur(radius: fogBlurRadius)
+            .overlay {
+                Color.black.opacity(fogWashOpacity)
+                    .allowsHitTesting(false)
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                sessionChrome(session, live: live)
+            }
+            .accessibilityHidden(isFogged || showLeaveConfirm)
+            .allowsHitTesting(!isFogged && !showLeaveConfirm)
+    }
+
+    @ViewBuilder
+    private func sessionCanvas(_ session: MonologueSession) -> some View {
+        switch session.phase {
+        case .planning, .between:
+            planningCanvas(session)
+        case .taking, .paused:
+            liveCanvas(session)
+        case .report, .crisis:
+            Color.clear
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if live {
-                liveChrome(session)
-            } else if session.phase == .planning || session.phase == .between {
-                planningChrome(session)
-            }
+    }
+
+    @ViewBuilder
+    private func sessionChrome(_ session: MonologueSession, live: Bool) -> some View {
+        if live {
+            liveChrome(session)
+        } else if session.phase == .planning || session.phase == .between {
+            planningChrome(session)
+                .blur(radius: fogBlurRadius)
+                .overlay {
+                    Color.black.opacity(fogWashOpacity)
+                        .allowsHitTesting(false)
+                }
         }
     }
 
@@ -379,7 +394,11 @@ struct MonologueSessionView: View {
     }
 
     private func liveChrome(_ session: MonologueSession) -> some View {
-        HStack(spacing: VoiceOrb.controlSpacing) {
+        SessionOrbBar(
+            phase: .monologue(isPreparing: false, phase: session.phase),
+            inputVolume: session.phase == .taking ? speechEnergy : 0,
+            animating: session.phase == .taking
+        ) {
             Button {
                 if session.phase == .paused {
                     session.resume()
@@ -392,13 +411,7 @@ struct MonologueSessionView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(session.phase == .paused ? "Resume" : "Pause")
-
-            VoiceOrb(
-                phase: .monologue(isPreparing: false, phase: session.phase),
-                inputVolume: session.phase == .taking ? speechEnergy : 0,
-                animating: session.phase == .taking
-            )
-
+        } trailing: {
             Button {
                 Task {
                     await stopListen()
@@ -409,9 +422,9 @@ struct MonologueSessionView: View {
                 Image(systemName: "checkmark")
                     .speechGlassCircle(tint: .accentColor)
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("Done")
         }
-        .frame(maxWidth: .infinity)
         .padding(.horizontal, SpeechSpacing.page)
         .padding(.top, 12)
         .padding(.bottom, 16)
@@ -649,7 +662,7 @@ struct MonologueSessionView: View {
     private func setUpSessionIfNeeded() async {
         guard session == nil, errorMessage == nil else { return }
         do {
-            let bank = try OpenPromptBank.loadBundled()
+            let bank = try MonologuePromptBank.loadBundled()
             session = MonologueSession(
                 prompts: bank.prompts,
                 store: UserDefaultsMonologuePromptStore(),

@@ -30,12 +30,26 @@ struct ConversationSessionTests {
         try await session.countdownReachedZero(ephemeralKey: "ek")
         #expect(session.phase == .connecting)
         #expect(session.countsAsBudgetStart == false)
-        await session.handle(.sessionUpdated)
+        await session.handle(.ready)
+        #expect(session.phase == .talking)
+        #expect(session.countsAsBudgetStart == false)
         #expect(mouth.responseCreates.count == 1)
         #expect(mouth.responseCreates[0].contains("breakfast"))
         await session.handle(.audioDelta)
         #expect(session.phase == .talking)
         #expect(session.countsAsBudgetStart == true)
+        #expect(session.elapsed == 0)
+    }
+
+    @Test("ready leaves connecting without starting the budget clock")
+    @MainActor
+    func readyDoesNotStartBudget() async throws {
+        let (session, _, _) = makeSession()
+        session.beginCountdown()
+        try await session.countdownReachedZero(ephemeralKey: "ek")
+        await session.handle(.ready)
+        #expect(session.phase == .talking)
+        #expect(session.countsAsBudgetStart == false)
         #expect(session.elapsed == 0)
     }
 
@@ -162,6 +176,7 @@ struct ConversationSessionTests {
     func vadTurnCountsWithoutTranscript() async throws {
         let (session, mouth, time) = makeSession()
         try await reachTalking(session)
+        time.advance(1.0) // past post-partner echo settle
         let createsBefore = mouth.responseCreates.count
         await speakTurn(session, time: time, duration: 2)
         #expect(mouth.responseCreates.count == createsBefore + 1)
@@ -231,7 +246,8 @@ struct ConversationSessionTests {
         let (session, mouth, time) = makeSession()
         session.beginCountdown()
         try await session.countdownReachedZero(ephemeralKey: "ek")
-        await session.handle(.sessionUpdated)
+        await session.handle(.ready)
+        #expect(session.phase == .talking)
         #expect(mouth.responseCreates.count == 1)
         time.advance(8)
         await session.tick()
@@ -275,6 +291,7 @@ struct ConversationSessionTests {
     func fullReportExtraLines() async throws {
         let (session, mouth, time) = makeSession()
         try await reachTalking(session)
+        time.advance(1.0)
         let createsBefore = mouth.responseCreates.count
         for _ in 0..<3 {
             await session.handle(.speechStarted)
@@ -282,6 +299,8 @@ struct ConversationSessionTests {
             session.noteUserSpeech(seconds: 20)
             session.ingestUserText("hello")
             await session.handle(.speechStopped)
+            await session.handle(.responseStarted)
+            await session.handle(.responseDone(transcript: "Got it — tell me more?"))
             time.advance(0.5)
         }
         #expect(mouth.responseCreates.count == createsBefore + 3)
@@ -304,13 +323,16 @@ struct ConversationSessionTests {
     func uncertainOmitsExtraLines() async throws {
         let (session, _, time) = makeSession()
         try await reachTalking(session)
+        time.advance(1.0)
         for _ in 0..<3 {
             await session.handle(.speechStarted)
             time.advance(2)
             session.noteUserSpeech(seconds: 20)
             session.ingestUserText("hello")
             await session.handle(.speechStopped)
-            time.advance(0.5)
+            await session.handle(.responseStarted)
+            await session.handle(.responseDone(transcript: "Got it — tell me more?"))
+            time.advance(1.0)
         }
         await session.confirmStop()
         let report = try #require(session.report)
@@ -374,13 +396,51 @@ struct ConversationSessionTests {
     @MainActor
     func shortEmptyDuringAgentTurnNoReply() async throws {
         let (session, mouth, time) = makeSession()
-        try await reachTalking(session)
+        try await reachTalking(session, partnerFinishedOpen: false)
+        await session.handle(.responseStarted)
         // Partner still "speaking" — session has not seen responseDone yet.
         let createsBefore = mouth.responseCreates.count
         await speakTurn(session, time: time, duration: 0.1)
         #expect(mouth.responseCreates.count == createsBefore)
         #expect(session.phase == .talking)
         #expect(session.report == nil)
+    }
+
+    @Test("long empty speech while the partner reply is in flight does not create a continue")
+    @MainActor
+    func noContinueWhilePartnerOutstanding() async throws {
+        let (session, mouth, time) = makeSession()
+        try await reachTalking(session, partnerFinishedOpen: false)
+        await session.handle(.responseStarted)
+        let createsBefore = mouth.responseCreates.count
+        await speakTurn(session, time: time, duration: 2)
+        #expect(mouth.responseCreates.count == createsBefore)
+        await session.handle(.responseDone(transcript: "Coffee — do you defend that?"))
+        #expect(mouth.responseCreates.count == createsBefore)
+    }
+
+    @Test("empty echo right after the partner finishes does not create a continue")
+    @MainActor
+    func noContinueOnPostPartnerEcho() async throws {
+        let (session, mouth, time) = makeSession()
+        try await reachTalking(session)
+        let createsBefore = mouth.responseCreates.count
+        // Loudspeaker bleed after partner audio — empty VAD longer than the cough floor.
+        await speakTurn(session, time: time, duration: 0.5)
+        #expect(mouth.responseCreates.count == createsBefore)
+    }
+
+    @Test("a real user turn after the partner finishes still gets a continue")
+    @MainActor
+    func continueAfterPartnerAndUserSpeak() async throws {
+        let (session, mouth, time) = makeSession()
+        try await reachTalking(session)
+        // Past the echo settle window.
+        time.advance(1.0)
+        let createsBefore = mouth.responseCreates.count
+        session.ingestUserText("I drink tea.")
+        await speakTurn(session, time: time, duration: 1.2)
+        #expect(mouth.responseCreates.count == createsBefore + 1)
     }
 
     @Test("enterConnecting shows connecting before mouth.connect")
@@ -457,11 +517,18 @@ struct ConversationSessionTests {
     }
 
     @MainActor
-    private func reachTalking(_ session: ConversationSession) async throws {
+    private func reachTalking(
+        _ session: ConversationSession,
+        partnerFinishedOpen: Bool = true
+    ) async throws {
         session.beginCountdown()
         try await session.countdownReachedZero(ephemeralKey: "ek")
-        await session.handle(.sessionUpdated)
+        await session.handle(.ready)
+        await session.handle(.responseStarted)
         await session.handle(.audioDelta)
+        if partnerFinishedOpen {
+            await session.handle(.responseDone(transcript: "What did you have for breakfast?"))
+        }
     }
 
     @MainActor

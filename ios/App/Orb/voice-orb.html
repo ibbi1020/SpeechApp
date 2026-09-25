@@ -19,16 +19,23 @@
     html.paused #root {
       filter: grayscale(1);
     }
+    /* Bundled orb-ui only eases spinner opacity; snap it off when not connecting. */
+    html:not([data-orb-state="connecting"]) [data-orb-ui-slot="spinner"] {
+      opacity: 0 !important;
+      animation: none !important;
+    }
   </style>
 </head>
 <body>
   <div id="root"></div>
   <script>
-    // Swift polls this flag and reloads the page when WebGL dies.
+    // Swift polls this flag. Do not preventDefault — WebKit can restore the canvas.
     window.orbContextLost = false;
-    window.addEventListener('webglcontextlost', function (e) {
-      e.preventDefault(); // Keep the canvas until Swift reloads.
+    window.addEventListener('webglcontextlost', function () {
       window.orbContextLost = true;
+    }, true);
+    window.addEventListener('webglcontextrestored', function () {
+      window.orbContextLost = false;
     }, true);
   </script>
   <script src="voice-orb.js"></script>

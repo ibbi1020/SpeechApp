@@ -224,6 +224,31 @@ struct VoiceOrb: View {
     }
 }
 
+/// Live session bar: leading control, the shared orb, trailing control.
+/// Reading, Conversation, and Monologue all mount this. The orb is one WebGL view.
+struct SessionOrbBar<Leading: View, Trailing: View>: View {
+    var phase: VoiceOrb.Phase
+    var inputVolume: Float = 0
+    var outputVolume: Float = 0
+    var animating: Bool = true
+    @ViewBuilder var leading: () -> Leading
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(spacing: VoiceOrb.controlSpacing) {
+            leading()
+            VoiceOrb(
+                phase: phase,
+                inputVolume: inputVolume,
+                outputVolume: outputVolume,
+                animating: animating
+            )
+            trailing()
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
 /// Starts loading the orb HTML as soon as a window exists so the first
 /// session chrome does not wait on WebKit + WebGL.
 @MainActor
@@ -368,6 +393,8 @@ private struct OrbWebView: UIViewRepresentable {
         private var pageReady = false
         private var lastScript: String?
         private var isReloading = false
+        /// One HTML reload after WebGL dies (often when the WebRTC audio unit starts).
+        private var didReloadForContextLoss = false
 
         func markReady() {
             pageReady = true
@@ -381,17 +408,18 @@ private struct OrbWebView: UIViewRepresentable {
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-            reloadOrb(in: webView)
+            reloadOrb(in: webView, force: true)
         }
 
         /// Pushes the latest signal once the page is ready.
-        /// Skips identical scripts; reloads if WebGL reports a lost context.
+        /// Skips identical scripts; reloads at most once if WebGL reports a lost context.
         func push(to webView: WKWebView) {
             guard pageReady, !isReloading else { return }
             webView.evaluateJavaScript("!!window.orbContextLost") { [weak self] result, _ in
                 guard let self else { return }
-                if result as? Bool == true {
-                    self.reloadOrb(in: webView)
+                let contextLost = result as? Bool == true
+                if contextLost, !self.didReloadForContextLoss {
+                    self.reloadOrb(in: webView, force: false)
                 } else {
                     self.applySignal(to: webView)
                 }
@@ -405,11 +433,13 @@ private struct OrbWebView: UIViewRepresentable {
             webView.evaluateJavaScript(script)
         }
 
-        private func reloadOrb(in webView: WKWebView) {
+        private func reloadOrb(in webView: WKWebView, force: Bool) {
             guard !isReloading else { return }
+            guard force || !didReloadForContextLoss else { return }
             isReloading = true
             pageReady = false
             lastScript = nil
+            if !force { didReloadForContextLoss = true }
             VoiceOrbPreloader.loadOrbHTML(into: webView)
         }
 
@@ -420,10 +450,12 @@ private struct OrbWebView: UIViewRepresentable {
             }
             let input = String(format: "%.3f", inputVolume)
             let output = String(format: "%.3f", outputVolume)
+            let state = phase.webState
             return """
             window.orbFrozen=false;\
             document.documentElement.classList.remove('paused');\
-            window.orbSetSignal&&window.orbSetSignal('\(phase.webState)',\(input),\(output));
+            document.documentElement.dataset.orbState='\(state)';\
+            window.orbSetSignal&&window.orbSetSignal('\(state)',\(input),\(output));
             """
         }
     }

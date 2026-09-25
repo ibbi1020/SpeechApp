@@ -1,9 +1,13 @@
 import Foundation
 
 public enum MouthEvent: Equatable, Sendable {
+    /// Data channel is open and the opening cue may be sent. Clock stays off.
+    case ready
     case sessionUpdated
     case speechStarted
     case speechStopped
+    /// Partner has started a response (data-channel `response.created`).
+    case responseStarted
     case audioDelta
     /// Accumulated partner transcript for the live stage. Empty strings are ignored.
     case partnerCaption(String)
@@ -19,6 +23,8 @@ public enum MouthEvent: Equatable, Sendable {
 
 public protocol ConversationMouth: AnyObject, Sendable {
     var events: AsyncStream<MouthEvent> { get }
+    /// Warm audio session, peer connection, and ICE during the countdown. No-op by default.
+    func prepare() async throws
     func connect(ephemeralKey: String) async throws
     func sendResponseCreate(instructions: String) async throws
     func updateTurnDetectionNull() async throws
@@ -32,6 +38,7 @@ public protocol ConversationMouth: AnyObject, Sendable {
 }
 
 extension ConversationMouth {
+    public func prepare() async throws {}
     public func currentInputLevel() async -> Float { 0 }
     public func currentOutputLevel() async -> Float { 0 }
     public func cancelResponse() async throws {}

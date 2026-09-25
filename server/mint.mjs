@@ -100,7 +100,18 @@ export async function handleRequest(req, res, now = Date.now(), openaiFetch = fe
             model: "gpt-realtime-2.1-mini",
             tools: [],
             tracing: null,
-            audio: { input: { transcription: null } },
+            audio: {
+              input: {
+                transcription: null,
+                turn_detection: {
+                  type: "semantic_vad",
+                  eagerness: "low",
+                  create_response: false,
+                  interrupt_response: false,
+                },
+                noise_reduction: { type: "near_field" },
+              },
+            },
           },
           expires_after: { anchor: "created_at", seconds: 120 },
         }),

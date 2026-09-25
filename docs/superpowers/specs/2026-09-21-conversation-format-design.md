@@ -28,7 +28,7 @@ A private rehearsal, not a lesson and not a replacement for humans. They talk. T
 
 - **Length:** **15 minutes** hard cap. Dev/test may use 5 minutes (same wrap, shorter number). “10–15” is how we talk about it, not a second SKU.
 - **No slider.** Hang up anytime. User Stop is a confirmation, then the report — **no** spoken wrap if they tapped Stop.
-- **Start:** the partner opens with a real question. No blank first move. Wall clock starts when first partner audio plays.
+- **Start:** the partner opens with a real everyday preference/habit question (question-only; no opinion). Opens are taste and daily logistics — not news, politics, trauma, or identity fights. Wall clock starts when first partner audio plays.
 - **Shape:** free-flowing, no assigned scene. No topic picker, no Change Topic, no visible stance card.
 - **Pause:** pause button. **1.5 minutes of silence auto-pauses** (foreground or background — same rule) and freezes the clock. Resume is the same conversation. **Unplug headphones / drop Bluetooth → pause.** Volume 0 is not pause. Copy: **Paused — still here.** Never “you went quiet.” Abandoned pause: **10 minutes**, then hang up to report, no spoken close (not an idle scold — a forgotten-mic cap).
 - **End:** ~2 minutes left, the partner says so. Then they close in character. Then the report. If they never speak after the cap, skip the spoken close and go to the report.
@@ -38,7 +38,7 @@ A private rehearsal, not a lesson and not a replacement for humans. They talk. T
 
 ## Partner
 
-Holds views, disagrees when it is real, asks things it does not know. Curious is not enough; agreeable is out.
+English-only rehearsal partner (not tutor/therapist). Short turns; disagree on the point when the stance fits; never a preference monologue. Mid-talk `continue` and `wrap_warn` hand the floor once; `open` is question-only; `wrap_close` never asks. Cue priority: wrap_close > wrap_warn > open > continue. Stance card samples **1–2** daily-life views.
 
 v1 enforcement is a sampled **stance card** plus a quality spike (does mini still disagree when the user opposes). That is a ship gate for the mouth, not a runtime guarantee. Sycophancy is unsolved industry-wide; do not treat the prompt as Long’s Interaction Hypothesis.
 

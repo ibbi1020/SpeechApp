@@ -228,7 +228,12 @@ struct ConversationSessionView: View {
     }
 
     private var liveControlRow: some View {
-        HStack(spacing: VoiceOrb.controlSpacing) {
+        SessionOrbBar(
+            phase: orbPhase,
+            inputVolume: orbPhase == .listening ? speechEnergy : 0,
+            outputVolume: orbPhase == .speaking ? partnerEnergy : 0,
+            animating: !isPaused
+        ) {
             Button {
                 if isPaused {
                     session?.resume()
@@ -244,14 +249,7 @@ struct ConversationSessionView: View {
             .allowsHitTesting(showPauseControl)
             .accessibilityHidden(!showPauseControl)
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
-
-            VoiceOrb(
-                phase: orbPhase,
-                inputVolume: orbPhase == .listening ? speechEnergy : 0,
-                outputVolume: orbPhase == .speaking ? partnerEnergy : 0,
-                animating: !isPaused
-            )
-
+        } trailing: {
             Button {
                 session?.requestStop()
                 showStopConfirm = true
@@ -262,7 +260,6 @@ struct ConversationSessionView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Stop")
         }
-        .frame(maxWidth: .infinity)
     }
 
     private func beginSession() async {
@@ -289,6 +286,14 @@ struct ConversationSessionView: View {
             startLevelPump()
 
             built.session.beginCountdown()
+
+            let mintTask: Task<MintResponse, Error>? = built.mint.map { client in
+                Task { try await client.mint() }
+            }
+            let prepareTask = Task {
+                try await built.mouth.prepare()
+            }
+
             for n in [3, 2, 1] {
                 try Task.checkCancellation()
                 countdownRemaining = n
@@ -298,8 +303,22 @@ struct ConversationSessionView: View {
             // Fog and chrome update together: lift overlay, then mount orb + controls.
             countdownRemaining = nil
             built.session.enterConnecting()
-            if let mint = built.mint {
-                let minted = try await mint.mint()
+
+            do {
+                try await prepareTask.value
+            } catch {
+                if !(error is CancellationError) { mintTask?.cancel() }
+                throw error
+            }
+
+            if let mintTask {
+                let minted: MintResponse
+                do {
+                    minted = try await mintTask.value
+                } catch {
+                    if !(error is CancellationError) { await built.mouth.close() }
+                    throw error
+                }
                 didMint = true
                 do {
                     try await built.session.countdownReachedZero(ephemeralKey: minted.clientSecret)
@@ -311,7 +330,8 @@ struct ConversationSessionView: View {
                 try await built.session.countdownReachedZero(ephemeralKey: "debug")
                 try await Task.sleep(for: .milliseconds(300))
                 try Task.checkCancellation()
-                fake.emit(.sessionUpdated)
+                fake.emit(.ready)
+                fake.emit(.responseStarted)
                 fake.emit(.audioDelta)
                 #if DEBUG
                 startDebugUserLoop(session: built.session, mouth: fake)
@@ -319,19 +339,16 @@ struct ConversationSessionView: View {
             }
         } catch is CancellationError {
             countdownRemaining = nil
+            await mouth?.close()
             await postEndedIfNeeded()
-        } catch let error as MintError {
+        } catch {
             countdownRemaining = nil
+            await mouth?.close()
             await postEndedIfNeeded()
-            if error == .budget {
+            if let mintError = error as? MintError, mintError == .budget {
                 model.budget.used = model.budget.limit
                 canRetry = false
             }
-            errorMessage = error.localizedDescription
-            clearLiveSession()
-        } catch {
-            countdownRemaining = nil
-            await postEndedIfNeeded()
             errorMessage = error.localizedDescription
             clearLiveSession()
         }
@@ -427,9 +444,12 @@ struct ConversationSessionView: View {
         eventPump = Task { @MainActor in
             for await event in mouth.events {
                 switch event {
-                case .audioDelta: agentSpeaking = true
-                case .responseDone: agentSpeaking = false
-                default: break
+                case .responseStarted, .audioDelta:
+                    agentSpeaking = true
+                case .responseDone:
+                    agentSpeaking = false
+                default:
+                    break
                 }
                 floor.apply(event)
                 await session.handle(event)

@@ -68,6 +68,10 @@ public final class ConversationSession {
     private var closed = false
     private var speechRanges: [ConversationSpeechInterval] = []
     private var userTranscript = ""
+    /// True from `response.create` until `response.done`. Blocks continue on echo / cough while the partner owns the floor.
+    private var partnerOutstanding = false
+    /// After the partner finishes, ignore empty VAD until this time (loudspeaker bleed).
+    private var ignoreEmptySpeechUntil: TimeInterval = 0
 
     public init(
         time: any ConversationTimeSource,
@@ -135,17 +139,17 @@ public final class ConversationSession {
     }
 
     public func tick() async {
-        switch phase {
-        case .connecting:
-            if awaitingFirstAudio, let deadline = firstAudioDeadline, time.now >= deadline {
-                if openAudioRetries < 1 {
-                    openAudioRetries += 1
-                    firstAudioDeadline = time.now + 8
-                    try? await sendCue(.open(question: openQuestion))
-                } else {
-                    await finish(reason: .drop)
-                }
+        if awaitingFirstAudio, let deadline = firstAudioDeadline, time.now >= deadline {
+            if openAudioRetries < 1 {
+                openAudioRetries += 1
+                firstAudioDeadline = time.now + 8
+                try? await sendCue(.open(question: openQuestion))
+            } else {
+                await finish(reason: .drop)
             }
+            return
+        }
+        switch phase {
         case .talking:
             // A long utterance keeps speech_started open until they pause.
             // That is a turn, not a stuck VAD. Do not drop it at 8s.
@@ -177,25 +181,25 @@ public final class ConversationSession {
     public func handle(_ event: MouthEvent) async {
         if phase == .paused, event == .speechStopped { return }
         switch event {
+        case .ready:
+            guard phase == .connecting, !openSent else { return }
+            openSent = true
+            awaitingFirstAudio = true
+            firstAudioDeadline = time.now + 8
+            phase = .talking
+            try? await sendCue(.open(question: openQuestion))
         case .sessionUpdated:
             if wrappingWaitingUpdated {
                 wrappingWaitingUpdated = false
                 guard !closed else { return }
                 try? await sendCue(.wrapClose)
-                return
-            }
-            if phase == .connecting, !openSent {
-                openSent = true
-                awaitingFirstAudio = true
-                firstAudioDeadline = time.now + 8
-                try? await sendCue(.open(question: openQuestion))
             }
         case .audioDelta:
+            // Budget clock starts on first playback sample, not on .ready / .responseStarted.
             if clockOrigin == nil {
                 clockOrigin = time.now
                 countsAsBudgetStart = true
                 awaitingFirstAudio = false
-                if phase == .connecting { phase = .talking }
             }
         case .partnerCaption(let text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -203,16 +207,20 @@ public final class ConversationSession {
             partnerLine = trimmed
         case .speechStarted:
             guard phase == .talking else { return }
+            guard !partnerOutstanding else { return }
             speechStartedAt = time.now
             waitingForUser = false
             userSpeechThisTurn = 0
         case .speechStopped:
             await onSpeechStopped()
         case .responseDone(let transcript):
+            partnerOutstanding = false
+            // Empty post-partner VAD is almost always loudspeaker / AEC bleed.
+            ignoreEmptySpeechUntil = time.now + 0.8
             await onResponseDone(transcript)
-        case .interruptHeard, .interruptDropped:
-            break
-        case .disconnected:
+        case .responseStarted:
+            partnerOutstanding = true
+        case .interruptHeard, .interruptDropped, .disconnected:
             break
         case .failed:
             await finish(reason: .drop)
@@ -227,6 +235,10 @@ public final class ConversationSession {
         let stoppedAt = time.now
         speechStartedAt = nil
         waitingForUser = true
+        // Partner still talking (or we have not seen response.done): never inject a continue.
+        if partnerOutstanding {
+            return
+        }
         switch CrisisGate.evaluate(lastUserText) {
         case .crisis:
             await finish(reason: .crisisReferral)
@@ -247,6 +259,8 @@ public final class ConversationSession {
         // Cough: no transcript and under ~300 ms. A live turn has no Apple transcript yet,
         // so the VAD interval is the speech we can count.
         if transcript.isEmpty && spokenSeconds < 0.3 { return }
+        // Loudspeaker echo after the partner stops — empty VAD in the settle window.
+        if transcript.isEmpty && stoppedAt < ignoreEmptySpeechUntil { return }
         lastUserSpeechAt = time.now
         if userSpeechThisTurn == 0 {
             userSpeechSeconds += spokenSeconds
@@ -303,6 +317,7 @@ public final class ConversationSession {
         guard !closed else { return }
         guard ConversationCueAssembler.v1MaySend(cue) else { return }
         lastSentCue = cue
+        partnerOutstanding = true
         try await mouth.sendResponseCreate(
             instructions: ConversationCueAssembler.instructions(
                 prefix: prefix, stance: stance, cue: cue
@@ -312,11 +327,12 @@ public final class ConversationSession {
 
     private func sendContinue() async throws {
         lastSentCue = nil
-        try await mouth.sendResponseCreate(instructions: """
-        \(prefix)
-        \(stance)
-        Answer them as you were going to. Stay on the topic. \(ConversationCueAssembler.doNotAnnounceTimer)
-        """)
+        partnerOutstanding = true
+        try await mouth.sendResponseCreate(
+            instructions: ConversationCueAssembler.continueInstructions(
+                prefix: prefix, stance: stance
+            )
+        )
     }
 
     private func finish(reason: ConversationEndReason) async {

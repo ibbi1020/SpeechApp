@@ -83,13 +83,16 @@ Prompt shape (one pending cue at a time):
 
 > {frozen_persona_prefix}
 > {stance_card}
-> Answer them as you were going to. In the same turn, one short aside: {cue}. Stay on the topic. Do not announce a timer or a system message.
+> {cue aside — see table}. Do not announce a timer or a system message.
+
+Cue priority when instructions conflict: **wrap_close > wrap_warn > open > continue**. Floor-hand rules live on continue / wrap_warn only (never on the frozen prefix), so wrap_close’s “No new question” cannot fight an always-ask rule.
 
 | Cue | When we set the flag | What they should hear |
 |---|---|---|
-| `open` | Session start (no user turn yet) | A real question. Forced first `response.create`. |
-| `wrap_warn` | Clock hits T–2 min | In-character: about two minutes left. Then the talk continues. |
-| `wrap_close` | Clock hits cap **and they did not tap Stop** | In-character close, then we hang up. User Stop never gets a spoken close. |
+| `open` | Session start (no user turn yet) | Question only — one short everyday preference/habit ask, then stop. |
+| `continue` | Mid-talk (no lifecycle cue) | ≤3 short sentences; hand the floor once; no self-preference monologue. |
+| `wrap_warn` | Clock hits T–2 min | Brief answer + in-character two-minutes-left aside; hand the floor at most once. |
+| `wrap_close` | Clock hits cap **and they did not tap Stop** | In-character close, **no new question**, then we hang up. User Stop never gets a spoken close. |
 | `code_switch` | On-device language-id says this turn was not English | Try that last bit in English; messy is ok. |
 | `filler_ok` | Repeated filler *pattern* (not a single “uh”) | Take your time; silence is fine. Do **not** name or count “uh”. |
 | `crisis` | On-device crisis gate flags self-harm / intent | **Not** a persona cue. Stop the partner. Play a canned 988 referral. End session. |

@@ -17,11 +17,13 @@ public struct StanceDeck: Sendable {
         return StanceDeck(views: views)
     }
 
+    /// One view by default; ~10% of the time two. More views fuel preference monologues.
     public func sample(rng: inout SplitMix64) -> StanceCard {
         var pool = views
         var picked: [String] = []
-        let n = 3 + Int(rng.next() % 3) // 3...5
-        for _ in 0..<min(n, pool.count) {
+        let wantTwo = rng.next() % 10 == 0
+        let count = min(wantTwo ? 2 : 1, pool.count)
+        for _ in 0..<count {
             let i = Int(rng.next() % UInt64(pool.count))
             picked.append(pool.remove(at: i))
         }

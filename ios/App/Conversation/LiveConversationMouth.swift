@@ -11,12 +11,10 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     private static let stun = "stun:stun.l.google.com:19302"
     private static let log = Logger(subsystem: "com.speechapp", category: "LiveConversationMouth")
 
+    /// Audio-only factory. Video codecs would hit the GPU next to the orb WebGL canvas.
     private static let factory: RTCPeerConnectionFactory = {
         RTCInitializeSSL()
-        return RTCPeerConnectionFactory(
-            encoderFactory: RTCDefaultVideoEncoderFactory(),
-            decoderFactory: RTCDefaultVideoDecoderFactory()
-        )
+        return RTCPeerConnectionFactory()
     }()
 
     let events: AsyncStream<MouthEvent>
@@ -28,15 +26,18 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     private var localAudioTrack: RTCAudioTrack?
     private var closed = false
     private var emittedFailed = false
-    private var ready = false
+    private var iceReady = false
     private var dataChannelIsOpen = false
     private var dataChannelOpened: CheckedContinuation<Void, Never>?
-    private var iceCompleteWaiter: CheckedContinuation<Void, Never>?
+    private var iceReadyWaiter: CheckedContinuation<Void, Never>?
     private var iceWaitID = 0
+    private var prepareTask: Task<Void, Error>?
+    private var preparedOfferSDP: String?
     private var disconnectGraceTask: Task<Void, Never>?
     private var iceWasConnected = false
     private var responseTranscript = ""
     private var pendingNullTurnDetection = false
+    private var emittedPlaybackStart = false
     private var bargeIn = BargeInGate()
     private var bargeInPollTask: Task<Void, Never>?
 
@@ -47,28 +48,59 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         super.init()
     }
 
-    func connect(ephemeralKey: String) async throws {
-        try lock.withLock {
-            if closed { throw MouthError.connectFailed }
+    /// Audio session, peer, offer, and ICE during the countdown. Local mic stays muted.
+    func prepare() async throws {
+        try throwIfClosed()
+        if let prepareTask {
+            try await prepareTask.value
+            return
         }
+        let task = Task { try await self.runPrepare() }
+        lock.withLock { prepareTask = task }
         do {
-            try configureAudioSession()
-            let peer = try makePeerConnection()
-            self.peer = peer
-            let offer = try await createOffer(peer: peer)
-            try await setLocalDescription(offer, peer: peer)
-            await waitForICEComplete(peer: peer)
+            try await task.value
+        } catch {
+            lock.withLock { prepareTask = nil }
+            throw error
+        }
+    }
+
+    func connect(ephemeralKey: String) async throws {
+        try throwIfClosed()
+        do {
+            try await prepare()
             try throwIfClosed()
-            let answerSDP = try await postSDP(offer.sdp, ephemeralKey: ephemeralKey)
+            guard let peer, let offerSDP = preparedOfferSDP else {
+                throw MouthError.connectFailed
+            }
+            localAudioTrack?.isEnabled = true
+            let answerSDP = try await postSDP(offerSDP, ephemeralKey: ephemeralKey)
             try throwIfClosed()
             try await setRemoteDescription(
                 RTCSessionDescription(type: .answer, sdp: answerSDP),
                 peer: peer
             )
-            lock.withLock { ready = true }
+            lock.withLock { iceReady = true }
         } catch {
             teardown()
             throw MouthError.connectFailed
+        }
+    }
+
+    private func runPrepare() async throws {
+        try configureAudioSession()
+        let peer = try makePeerConnection()
+        self.peer = peer
+        let offer = try await createOffer(peer: peer)
+        try await setLocalDescription(offer, peer: peer)
+        // Countdown must stay send-muted until connect posts the SDP.
+        localAudioTrack?.isEnabled = false
+        preparedOfferSDP = offer.sdp
+        await waitForICEReady(peer: peer)
+        try throwIfClosed()
+        // Prefer post-gather SDP when candidates were appended.
+        if let local = peer.localDescription?.sdp, !local.isEmpty {
+            preparedOfferSDP = local
         }
     }
 
@@ -265,14 +297,19 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         }
     }
 
-    private func waitForICEComplete(peer: RTCPeerConnection) async {
-        if peer.iceGatheringState == .complete { return }
+    /// Proceed once we have a server-reflexive candidate, or after 1s / gather-complete.
+    private func waitForICEReady(peer: RTCPeerConnection) async {
+        if Self.isICEOfferReady(peer) { return }
         iceWaitID += 1
         let id = iceWaitID
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            iceCompleteWaiter = cont
+            iceReadyWaiter = cont
+            if Self.isICEOfferReady(peer) {
+                finishICEWait(expectedID: id)
+                return
+            }
             Task { [weak self] in
-                try? await Task.sleep(for: .seconds(10))
+                try? await Task.sleep(for: .seconds(1))
                 self?.finishICEWait(expectedID: id)
             }
         }
@@ -280,9 +317,18 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
 
     private func finishICEWait(expectedID: Int? = nil) {
         if let expectedID, expectedID != iceWaitID { return }
-        iceCompleteWaiter?.resume()
-        iceCompleteWaiter = nil
+        iceReadyWaiter?.resume()
+        iceReadyWaiter = nil
         iceWaitID += 1
+    }
+
+    private static func isICEOfferReady(_ peer: RTCPeerConnection) -> Bool {
+        offerHasSrflx(peer.localDescription?.sdp) || peer.iceGatheringState == .complete
+    }
+
+    private static func offerHasSrflx(_ sdp: String?) -> Bool {
+        guard let sdp else { return false }
+        return sdp.contains(" typ srflx ")
     }
 
     private func postSDP(_ sdp: String, ephemeralKey: String) async throws -> String {
@@ -383,6 +429,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
                 return
             }
             sendInitialSessionUpdate()
+            continuation.yield(.ready)
         case "session.updated":
             if pendingNullTurnDetection {
                 pendingNullTurnDetection = false
@@ -395,9 +442,17 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             handleSpeechStopped()
         case "response.created":
             responseTranscript = ""
-        case "response.audio.delta", "response.output_audio.delta", "conversation.output_audio.delta":
+            emittedPlaybackStart = false
+            // Arm barge-in before first audio frame — closes the race where mic
+            // echo of the open is treated as a user turn before noteAgentAudio.
             mutateBargeIn { $0.noteAgentAudio() }
-            continuation.yield(.audioDelta)
+            continuation.yield(.responseStarted)
+        case "response.audio.delta", "response.output_audio.delta", "conversation.output_audio.delta",
+             "output_audio_buffer.started":
+            notePartnerPlaybackStarted()
+            mutateBargeIn { $0.noteAgentAudio() }
+        case "output_audio_buffer.stopped":
+            break
         case "response.audio_transcript.delta", "response.output_audio_transcript.delta":
             if let delta = json["delta"] as? String {
                 responseTranscript += delta
@@ -417,6 +472,12 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         default:
             break
         }
+    }
+
+    private func notePartnerPlaybackStarted() {
+        guard !emittedPlaybackStart else { return }
+        emittedPlaybackStart = true
+        continuation.yield(.audioDelta)
     }
 
     private func handleSpeechStarted() {
@@ -493,7 +554,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     }
 
     private func handleICEConnection(_ state: RTCIceConnectionState) {
-        let isReady = lock.withLock { ready && !closed }
+        let isReady = lock.withLock { iceReady && !closed }
         guard isReady else { return }
         switch state {
         case .connected, .completed:
@@ -538,6 +599,9 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         stopBargeInPoll()
         disconnectGraceTask?.cancel()
         disconnectGraceTask = nil
+        prepareTask?.cancel()
+        prepareTask = nil
+        preparedOfferSDP = nil
         finishICEWait()
         let waiter = lock.withLock { () -> CheckedContinuation<Void, Never>? in
             let waiter = dataChannelOpened
@@ -604,7 +668,11 @@ extension LiveConversationMouth: RTCPeerConnectionDelegate {
         }
     }
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {}
+    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
+        if Self.isICEOfferReady(peerConnection) {
+            finishICEWait()
+        }
+    }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
 

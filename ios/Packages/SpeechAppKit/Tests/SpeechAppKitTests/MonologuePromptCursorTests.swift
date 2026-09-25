@@ -25,11 +25,18 @@ struct MonologuePromptCursorTests {
         #expect(cursor.current == "alpha")
     }
 
-    @Test("bundled opens are a valid familiar bank")
+    @Test("bundled monologue bank is experiential with Talk about / Describe stems")
     func bundled() throws {
-        let bank = try OpenPromptBank.loadBundled()
+        let bank = try MonologuePromptBank.loadBundled()
+        #expect(bank.prompts.count >= 20)
         let cursor = MonologuePromptCursor(prompts: bank.prompts, lastPrompt: nil)
         #expect(!cursor.current.isEmpty)
-        #expect(!cursor.current.lowercased().contains("suicide"))
+        #expect(bank.prompts.allSatisfy { prompt in
+            prompt.hasPrefix("Talk about") || prompt.hasPrefix("Describe")
+        })
+        expectNoBannedThemes(
+            bank.prompts,
+            ["suicide", "politic", "news", "trauma", "surveillance", "cancel culture"]
+        )
     }
 }

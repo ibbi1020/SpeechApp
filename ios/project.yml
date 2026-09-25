@@ -29,6 +29,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.speechapp.prototype.format1
         PRODUCT_NAME: SpeechApp
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: App/Info.plist
         CODE_SIGN_STYLE: Automatic
         # Personal Team (free provisioning) — Ibraheem Farooq

@@ -200,7 +200,7 @@ Phrase as “Take 3 vs take 1: more talking time, fewer long gaps” — never a
 | Identity | **No speaker embeddings.** Take comparison is token overlap on text, not a voiceprint (BIPA). |
 | Crisis | Same on-device keyword list as Conversation, on volatile ∪ final, every take. |
 | Backend | Anonymous `crisis_referral_events` only. No Realtime mint. Monologue does not consume the 20 Conversation starts / month. |
-| Prompt bank | Familiar-topic strings, bundled. Conversation’s `OpenPromptBank` / `opens.json` is an acceptable starting bank (already screened). No user composer. Persist **last prompt id** locally for silent return. Notes are session-ephemeral. |
+| Prompt bank | Familiar-experiential `Talk about…` / `Describe…` prompts in `MonologuePromptBank` / `monologue-prompts.json` (Nation-familiar, 4-minute fuel). **Not** Conversation’s preference-dispute `opens.json`. No user composer. Persist **last prompt id** locally for silent return. Notes are session-ephemeral. |
 
 `idle (planning) → take ⇄ paused → between → take → … → report | crisis`
 

@@ -159,7 +159,11 @@ struct ReadingSessionView: View {
     }
 
     private var liveControlRow: some View {
-        HStack(spacing: VoiceOrb.controlSpacing) {
+        SessionOrbBar(
+            phase: .listening,
+            inputVolume: isLive ? (session?.speechEnergy ?? 0) : 0,
+            animating: isLive
+        ) {
             Button {
                 if isPaused {
                     session?.resume()
@@ -173,13 +177,7 @@ struct ReadingSessionView: View {
             .buttonStyle(.plain)
             .disabled(isFinishing)
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
-
-            VoiceOrb(
-                phase: .listening,
-                inputVolume: isLive ? (session?.speechEnergy ?? 0) : 0,
-                animating: isLive
-            )
-
+        } trailing: {
             Button {
                 Task { await stopSession() }
             } label: {
@@ -190,7 +188,6 @@ struct ReadingSessionView: View {
             .disabled(isFinishing)
             .accessibilityLabel("Stop")
         }
-        .frame(maxWidth: .infinity)
         .opacity(isFinishing ? 0.7 : 1)
     }
 
