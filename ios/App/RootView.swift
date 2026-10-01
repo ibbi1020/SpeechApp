@@ -84,7 +84,7 @@ struct RootView: View {
         switch model.route {
         case .conversation, .conversationReport:
             true
-        case .ageGate, .crisis:
+        case .crisis:
             model.hostedFormat == .conversation
         default:
             false
@@ -95,7 +95,7 @@ struct RootView: View {
         switch model.route {
         case .monologue, .monologueReport:
             true
-        case .ageGate, .crisis:
+        case .crisis:
             model.hostedFormat == .monologue
         default:
             false
@@ -105,8 +105,6 @@ struct RootView: View {
     @ViewBuilder
     private var monologueDestination: some View {
         switch model.route {
-        case .ageGate where model.hostedFormat == .monologue:
-            AgeAttestationView()
         case .crisis where model.hostedFormat == .monologue:
             CrisisReferralView()
         case .monologueReport(let report):
@@ -119,8 +117,6 @@ struct RootView: View {
     @ViewBuilder
     private var conversationDestination: some View {
         switch model.route {
-        case .ageGate where model.hostedFormat == .conversation:
-            AgeAttestationView()
         case .conversationReport(let report):
             ConversationReportView(report: report)
         case .crisis where model.hostedFormat == .conversation:

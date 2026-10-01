@@ -15,10 +15,9 @@ final class AppModel {
         case monologue
         case monologueReport(MonologueReport)
         case crisis
-        case ageGate
     }
 
-    /// Which format owns age gate / crisis, and which to start after attestation.
+    /// Which format owns the crisis screen.
     enum HostedFormat: Equatable {
         case conversation, monologue
     }
@@ -89,20 +88,12 @@ final class AppModel {
     func requestStartConversation() {
         guard budget.startEnabled else { return }
         hostedFormat = .conversation
-        if !account.attested18 {
-            route = .ageGate
-            return
-        }
-        continueAfterAgeGate()
+        startConversation()
     }
 
     func requestStartMonologue() {
         hostedFormat = .monologue
-        if !account.attested18 {
-            route = .ageGate
-            return
-        }
-        continueAfterAgeGate()
+        startMonologue()
     }
 
     func startMonologue() {
@@ -118,11 +109,6 @@ final class AppModel {
         route = .monologueReport(report)
     }
 
-    func confirmAgeAttestation() {
-        account.attested18 = true
-        continueAfterAgeGate()
-    }
-
     func startConversation() {
         guard budget.startEnabled else { return }
         route = .conversation
@@ -134,15 +120,6 @@ final class AppModel {
         guard let client = MintClient.makeIfConfigured(uuid: account.accountUUID) else { return }
         Task {
             await client.possibleMinor()
-        }
-    }
-
-    private func continueAfterAgeGate() {
-        switch hostedFormat {
-        case .conversation:
-            startConversation()
-        case .monologue:
-            startMonologue()
         }
     }
 

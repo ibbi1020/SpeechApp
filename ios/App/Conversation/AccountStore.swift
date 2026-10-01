@@ -4,7 +4,6 @@ import Security
 /// Prototype account flags. UUID prefers Keychain; UserDefaults if Keychain write fails.
 final class AccountStore {
     private enum Keys {
-        static let attested18 = "account.attested18"
         static let possibleMinorFlag = "account.possibleMinorFlag"
         static let uuidFallback = "account.uuid"
     }
@@ -15,9 +14,6 @@ final class AccountStore {
     private let defaults: UserDefaults
 
     var accountUUID: UUID
-    var attested18: Bool {
-        didSet { defaults.set(attested18, forKey: Keys.attested18) }
-    }
     var possibleMinorFlag: Bool {
         didSet { defaults.set(possibleMinorFlag, forKey: Keys.possibleMinorFlag) }
     }
@@ -27,7 +23,6 @@ final class AccountStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        attested18 = defaults.bool(forKey: Keys.attested18)
         possibleMinorFlag = defaults.bool(forKey: Keys.possibleMinorFlag)
         let resolved = Self.loadOrCreateUUID(defaults: defaults)
         accountUUID = resolved.uuid

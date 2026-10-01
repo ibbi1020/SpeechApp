@@ -187,7 +187,7 @@ Session instructions, stable for the whole call (so prompt cache holds):
 - Educational rehearsal, not therapy, counseling, or a mental-health companion.
 - Do **not** infer stuckness, hesitation, or fillers from how they sound — those live in on-device detectors, not this prompt.
 
-The voice does not claim to be human. Minimum age: **18+** attestation at account create. Architecture is locked; **ship is blocked** on website protocol + counsel 988/22604 copy. FTC / EU AI Act / relationship-rupture / telemetry-disclosure remain open (not v1 engineering).
+The voice does not claim to be human. Minimum age: **18+** attestation belongs on later onboarding, not on the way into a format. Architecture is locked; **ship is blocked** on website protocol + counsel 988/22604 copy. FTC / EU AI Act / relationship-rupture / telemetry-disclosure remain open (not v1 engineering).
 
 ---
 
@@ -259,7 +259,7 @@ noise_reduction: near_field
 - **Background while active:** orange + Live Activity stay. Silence in background uses the **same 1.5 min auto-pause** as foreground — **no 30 s forgotten-mic hang-up** (that fought the pause design). Background while paused: deactivate the audio session; Realtime may drop — if it does, resume = new connection is **not** v1; show connection-lost → report / try-again without a second budget slot if they never saw a report. Prefer keeping the Realtime session alive while paused in-app; background-paused teardown is a residual to spike.
 - **Wall clock: 15 min.** `wrap_warn` at T–2 (minute 13). Dev/test 5 min is a flag, not a second product SKU.
 - **Budget:** **20 started sessions / calendar month.** A start = countdown reached 0 **and** first partner audio played. Pause/resume/auto-pause/drop-retry-before-report do not add a start. Unused do not roll. Home shows `n of 20`. At 0, Start disabled. **Never paywall a live talk.**
-- **First session:** no topic picker, no visible stance card. One primary **Start a conversation**. Curated `open` bank (everyday adult life, not news, not trauma) — **write 20 before build**. Account create: 18+ attestation + `§ 22604` minor-unsuitability sentence. **AI partner card at the start of each Conversation, at most once per calendar day** (NY GBS § 1702). Persistent **AI partner** label every session including Live Activity.
+- **First session:** no topic picker, no visible stance card. One primary **Start a conversation**. Curated `open` bank (everyday adult life, not news, not trauma) — **write 20 before build**. 18+ attestation + `§ 22604` minor-unsuitability sentence wait for later onboarding. They are not a step before Start. Persistent **AI partner** label every session including Live Activity.
 - **Partner does not change topic** unless the user does. No Change Topic control.
 
 ### Report floor

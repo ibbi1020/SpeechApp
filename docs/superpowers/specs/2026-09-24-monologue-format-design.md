@@ -207,7 +207,7 @@ Phrase as “Take 3 vs take 1: more talking time, fewer long gaps” — never a
 
 ANE: at most one live SpeechAnalyzer. No S2S contention.
 
-SB 243 companion-chatbot duties (per-start AI disclosure, stance card) **do not apply** — there is no chatbot. Account-level 18+ attestation still does.
+SB 243 companion-chatbot duties (per-start AI disclosure, stance card) **do not apply** — there is no chatbot. 18+ attestation is later onboarding, not a step before Talk.
 
 ---
 
