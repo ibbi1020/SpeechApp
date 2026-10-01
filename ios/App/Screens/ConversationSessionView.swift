@@ -131,6 +131,7 @@ struct ConversationSessionView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationTitle("Conversation")
+        .navigationSubtitle("\(model.budget.label) used this month")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(showStopConfirm || showsFailure ? .hidden : .automatic, for: .navigationBar)
         .background {

@@ -142,11 +142,6 @@ struct SessionReportView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(report.gopNote)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
                 if !report.contrastFocus.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("This passage practiced")

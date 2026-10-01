@@ -14,6 +14,7 @@ struct ReadingSessionView: View {
     @State private var isPreparing = false
     @State private var startTask: Task<Void, Never>?
     @State private var startPulse = false
+    @State private var showStopConfirm = false
 
     private var isLive: Bool {
         session?.phase == .running || session?.phase == .stalled
@@ -57,16 +58,35 @@ struct ReadingSessionView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     bottomChrome
                 }
-                .accessibilityHidden(isFogged)
-                .allowsHitTesting(!isFogged)
+                .accessibilityHidden(isFogged || showStopConfirm)
+                .allowsHitTesting(!isFogged && !showStopConfirm)
 
             if isFogged {
                 ReadingCountdownOverlay(remaining: countdownRemaining)
             }
+
+            if showStopConfirm {
+                SessionStopModal(
+                    title: "Stop this reading?",
+                    confirmTitle: "Stop",
+                    dismissTitle: "Keep reading",
+                    onConfirm: {
+                        showStopConfirm = false
+                        Task { await stopSession() }
+                    },
+                    onDismiss: { showStopConfirm = false }
+                )
+                .transition(.opacity)
+            }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
+        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(showStopConfirm ? .hidden : .automatic, for: .navigationBar)
+        .background {
+            NavigationPopLock(isLocked: showStopConfirm)
+        }
         .onAppear {
             VoiceOrbPreloader.warmup()
             if session == nil {
@@ -179,7 +199,7 @@ struct ReadingSessionView: View {
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
         } trailing: {
             Button {
-                Task { await stopSession() }
+                showStopConfirm = true
             } label: {
                 Image(systemName: "stop.fill")
                     .speechGlassCircle(tint: .red)

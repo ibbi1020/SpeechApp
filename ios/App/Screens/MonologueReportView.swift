@@ -12,11 +12,6 @@ struct MonologueReportView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Your talk")
-                        .font(.system(.title2, design: .serif).weight(.semibold))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.bottom, SpeechSpacing.section)
-
                     linesCard
 
                     if report.kind == .thin {

@@ -16,14 +16,14 @@ final class AppModel {
         case monologueReport(MonologueReport)
         case crisis
         case ageGate
-        case aiDisclosure
     }
 
-    enum PendingStart: Equatable {
+    /// Which format owns age gate / crisis, and which to start after attestation.
+    enum HostedFormat: Equatable {
         case conversation, monologue
     }
 
-    var pendingStart: PendingStart = .conversation
+    var hostedFormat: HostedFormat = .conversation
 
     var route: Route = .home
     var catalog = PassageCatalog.loadBundled()
@@ -88,7 +88,7 @@ final class AppModel {
 
     func requestStartConversation() {
         guard budget.startEnabled else { return }
-        pendingStart = .conversation
+        hostedFormat = .conversation
         if !account.attested18 {
             route = .ageGate
             return
@@ -97,12 +97,12 @@ final class AppModel {
     }
 
     func requestStartMonologue() {
+        hostedFormat = .monologue
         if !account.attested18 {
-            pendingStart = .monologue
             route = .ageGate
             return
         }
-        startMonologue()
+        continueAfterAgeGate()
     }
 
     func startMonologue() {
@@ -123,11 +123,6 @@ final class AppModel {
         continueAfterAgeGate()
     }
 
-    func confirmAIDisclosure() {
-        account.lastDisclosureDay = AccountStore.todayString()
-        startConversation()
-    }
-
     func startConversation() {
         guard budget.startEnabled else { return }
         route = .conversation
@@ -143,7 +138,7 @@ final class AppModel {
     }
 
     private func continueAfterAgeGate() {
-        switch pendingStart {
+        switch hostedFormat {
         case .conversation:
             startConversation()
         case .monologue:

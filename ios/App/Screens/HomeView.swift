@@ -16,7 +16,6 @@ struct HomeView: View {
                     }
                     formatRow(
                         title: "Start a conversation",
-                        footnote: model.budget.label,
                         disabled: !model.budget.startEnabled
                     ) {
                         model.requestStartConversation()
@@ -36,7 +35,6 @@ struct HomeView: View {
 
     private func formatRow(
         title: String,
-        footnote: String? = nil,
         disabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
@@ -45,22 +43,15 @@ struct HomeView: View {
                 action()
             }
         } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let footnote {
-                    Text(footnote)
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+            Text(title)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(disabled)

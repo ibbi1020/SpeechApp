@@ -38,10 +38,10 @@ It is not:
 | Same talk, three times | Topic does not change. After take 1: “Three minutes.” After take 2: “Two minutes.” Never “same talk,” “repeat,” or “tell it again.” | The repetition is the topic still sitting there. Branding the drill teaches the test. |
 | Shrinking time 4 → 3 → 2 | Digital countdown in chrome. **Done** always available; leftover unused. At 0:00, same as Done if they are still talking. | Ceiling, not a quota. Nation: leftover time stays unused, not stuffed with new content. Thai & Boers: shrinking time is load-bearing for the fluency gain. User overrode stepped remaining-time (“about a minute”) in favor of a digital countdown. |
 | New silent listener each take | No named listener. No “hasn’t heard this.” Presence = aurora `listen`, same as Reading. | De Jong’s computer 4/3/2 had no partner. Nation’s audience copy would reintroduce “same talk.” |
-| Familiar topic | App assigns a prompt from a familiar-topic bank. **Another topic** skips to the next. No composer. | Nation: known language and ideas. Conversation already has no topic picker. |
+| Familiar topic | App assigns a prompt from a familiar-topic bank. **Change topic** skips to the next. No composer. | Nation: known language and ideas. Conversation already has no topic picker. |
 | Pre-task planning | Optional notes. **I’m ready** (same control as Start). No planning countdown. Empty notes OK. During the take: topic line only. Notes return between takes. | Yuan & Ellis (2003) is **10 min** planning → complexity/fluency, not accuracy. Mehnert (1998) is the 1-minute paper. A forced exam clock before take 1 is not those studies. Full notes on-mic would turn take 1 into Reading. |
 | Accuracy enhancement | After take 1: optional **one-line reuse note they write**. App generates no form feedback in v1. | Tran & Saito (2024): delayed metalinguistic CF on one form, human-coded, between day-1 and day-2. Not an LLM grammar dump on Apple text. Regular past did not even move in that study. |
-| Across sessions | Tapping Talk silently opens the last prompt if there is one. **Another topic** leaves it. No “same talk again” CTA. | De Jong & Perfetti: lasting fluency needed same-topic return. |
+| Across sessions | Tapping Talk silently opens the last prompt if there is one. **Change topic** leaves it. No “same talk again” CTA. | De Jong & Perfetti: lasting fluency needed same-topic return. |
 
 **Do not mash 4/3/2 and Yuan & Ellis into one 5–15 min talk.** That was the pre-lock one-liner. It is not either exercise.
 
@@ -55,7 +55,7 @@ No hero. Three equal glass rows, same treatment as today’s Reading row (not a 
 2. **Start a conversation**
 3. **Talk about something**
 
-Drop “More to read.” Conversation’s monthly start budget, if shown, is tertiary copy on the Conversation row only.
+Drop “More to read.” Conversation’s monthly start budget is not on Home; it lives inside the Conversation format.
 
 This equal-row home is a **prototype lock**. It overrides Conversation-as-the-only-block. Conversation remains the product’s target behavior; the rows are equal so the prototype can be used, not so Monologue replaces Conversation.
 
@@ -66,8 +66,9 @@ This equal-row home is a **prototype lock**. It overrides Conversation-as-the-on
 ```
 home
   → planning (assigned or last prompt)
-      ⇄ Another topic (next bank item; does not start a take)
+      ⇄ Change topic (next bank item; does not start a take)
       → I’m ready
+          → 3-2-1 (same as Reading / Conversation)
           → take 1 live (4:00 ceiling)
           → between (notes + reuse line + “Three minutes.” + I’m ready)
           → take 2 live (3:00)
@@ -76,7 +77,7 @@ home
           → report
 ```
 
-- **I’m ready** starts take *n* with **no 3-2-1**. Aurora goes to `listen`, the take clock starts, they talk.
+- **I’m ready** runs the same **3-2-1** as Reading / Conversation, then Aurora goes to `listen`, the take clock starts, they talk.
 - **Done** (or 0:00) ends **this take** only.
 - **Back** + confirm leaves the **whole regimen** and opens the report (one take is allowed; that report may be thin).
 - Take 3 Done (or 0:00) goes **straight to the report**. No fourth interstitial.
@@ -91,7 +92,7 @@ home
 
 Reading-idle, not a card: `SpeechScreenBackground`, serif prompt as the passage, notes field, chrome **I’m ready**.
 
-- **Skip:** text **Another topic** on this page only. Cycles the bank. Does not live in the take chrome.
+- **Skip:** text **Change topic** on this page only. Cycles the bank. Does not live in the take chrome.
 - After take 1, the optional reuse line sits with the notes. It stays visible (editable) on the take-2 interstitial so they can use it for takes 2 and 3.
 - On-page duration copy is only **“Three minutes.”** / **“Two minutes.”** after the matching take. Do not explain the method.
 - Notes are hidden during the take (topic line only) and restored here.
@@ -133,7 +134,7 @@ Monologue is not a companion chatbot (no partner). It still runs the keyword gat
 |---|---|
 | “Three minutes.” / “Two minutes.” | “Same talk,” “repeat,” “tell it again,” “new listener” |
 | “Talk about something” (home) | “4/3/2,” “Monologue,” “fluency drill” as a label they have to learn |
-| “Another topic” | “Skip this story” / “new prompt” as a test-branded control |
+| “Change topic” | “Skip this story” / “new prompt” as a test-branded control |
 | “I’m ready” / “Done” / “Paused.” | A second Stop next to Done |
 | Named indices (PTR, pause time, pause count) | “Fluency 78,” “Accuracy 61,” “Grade B,” CEFR |
 

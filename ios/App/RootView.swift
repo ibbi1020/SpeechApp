@@ -68,49 +68,47 @@ struct RootView: View {
 
     private var conversationPresented: Binding<Bool> {
         Binding(
-            get: {
-                switch model.route {
-                case .ageGate, .aiDisclosure, .conversation, .conversationReport, .crisis: true
-                default: false
-                }
-            },
-            set: { presented in
-                if !presented {
-                    switch model.route {
-                    case .ageGate, .aiDisclosure, .conversation, .conversationReport, .crisis:
-                        model.goHome()
-                    default:
-                        break
-                    }
-                }
-            }
+            get: { isOnConversationStack },
+            set: { if !$0, isOnConversationStack { model.goHome() } }
         )
     }
 
     private var monologuePresented: Binding<Bool> {
         Binding(
-            get: {
-                switch model.route {
-                case .monologue, .monologueReport: true
-                default: false
-                }
-            },
-            set: { presented in
-                if !presented {
-                    switch model.route {
-                    case .monologue, .monologueReport:
-                        model.goHome()
-                    default:
-                        break
-                    }
-                }
-            }
+            get: { isOnMonologueStack },
+            set: { if !$0, isOnMonologueStack { model.goHome() } }
         )
+    }
+
+    private var isOnConversationStack: Bool {
+        switch model.route {
+        case .conversation, .conversationReport:
+            true
+        case .ageGate, .crisis:
+            model.hostedFormat == .conversation
+        default:
+            false
+        }
+    }
+
+    private var isOnMonologueStack: Bool {
+        switch model.route {
+        case .monologue, .monologueReport:
+            true
+        case .ageGate, .crisis:
+            model.hostedFormat == .monologue
+        default:
+            false
+        }
     }
 
     @ViewBuilder
     private var monologueDestination: some View {
         switch model.route {
+        case .ageGate where model.hostedFormat == .monologue:
+            AgeAttestationView()
+        case .crisis where model.hostedFormat == .monologue:
+            CrisisReferralView()
         case .monologueReport(let report):
             MonologueReportView(report: report)
         default:
@@ -121,11 +119,11 @@ struct RootView: View {
     @ViewBuilder
     private var conversationDestination: some View {
         switch model.route {
-        case .ageGate:
+        case .ageGate where model.hostedFormat == .conversation:
             AgeAttestationView()
         case .conversationReport(let report):
             ConversationReportView(report: report)
-        case .crisis:
+        case .crisis where model.hostedFormat == .conversation:
             CrisisReferralView()
         default:
             ConversationSessionView()

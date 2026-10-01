@@ -187,7 +187,7 @@ Session instructions, stable for the whole call (so prompt cache holds):
 - Educational rehearsal, not therapy, counseling, or a mental-health companion.
 - Do **not** infer stuckness, hesitation, or fillers from how they sound — those live in on-device detectors, not this prompt.
 
-AI disclosure is **on-screen at each Conversation start** (at most once per calendar day) and a persistent “AI partner” label. The voice does not claim to be human. Minimum age: **18+** attestation at account create. Architecture is locked; **ship is blocked** on website protocol + counsel 988/22604 copy. FTC / EU AI Act / relationship-rupture / telemetry-disclosure remain open (not v1 engineering).
+The voice does not claim to be human. Minimum age: **18+** attestation at account create. Architecture is locked; **ship is blocked** on website protocol + counsel 988/22604 copy. FTC / EU AI Act / relationship-rupture / telemetry-disclosure remain open (not v1 engineering).
 
 ---
 

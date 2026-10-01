@@ -34,10 +34,6 @@ struct CrisisReferralView: View {
                     .buttonStyle(SpeechPrimaryButtonStyle())
                     .padding(.top, 22)
 
-                Button("Back to home", action: goHome)
-                    .buttonStyle(SpeechSecondaryButtonStyle())
-                    .padding(.top, 10)
-
                 Spacer()
             }
             .padding(.horizontal, SpeechSpacing.page)

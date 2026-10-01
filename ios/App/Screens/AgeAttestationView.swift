@@ -17,11 +17,6 @@ struct AgeAttestationView: View {
         }
         .navigationTitle("Orator")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { goHome() }
-            }
-        }
     }
 
     private var card: some View {

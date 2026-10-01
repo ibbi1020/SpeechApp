@@ -5,7 +5,6 @@ import Security
 final class AccountStore {
     private enum Keys {
         static let attested18 = "account.attested18"
-        static let lastDisclosureDay = "account.lastDisclosureDay"
         static let possibleMinorFlag = "account.possibleMinorFlag"
         static let uuidFallback = "account.uuid"
     }
@@ -19,15 +18,6 @@ final class AccountStore {
     var attested18: Bool {
         didSet { defaults.set(attested18, forKey: Keys.attested18) }
     }
-    var lastDisclosureDay: String? {
-        didSet {
-            if let lastDisclosureDay {
-                defaults.set(lastDisclosureDay, forKey: Keys.lastDisclosureDay)
-            } else {
-                defaults.removeObject(forKey: Keys.lastDisclosureDay)
-            }
-        }
-    }
     var possibleMinorFlag: Bool {
         didSet { defaults.set(possibleMinorFlag, forKey: Keys.possibleMinorFlag) }
     }
@@ -38,16 +28,10 @@ final class AccountStore {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         attested18 = defaults.bool(forKey: Keys.attested18)
-        lastDisclosureDay = defaults.string(forKey: Keys.lastDisclosureDay)
         possibleMinorFlag = defaults.bool(forKey: Keys.possibleMinorFlag)
         let resolved = Self.loadOrCreateUUID(defaults: defaults)
         accountUUID = resolved.uuid
         uuidInKeychain = resolved.inKeychain
-    }
-
-    static func todayString(now: Date = .now, calendar: Calendar = .current) -> String {
-        let parts = calendar.dateComponents([.year, .month, .day], from: now)
-        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 
     private static func loadOrCreateUUID(defaults: UserDefaults) -> (uuid: UUID, inKeychain: Bool) {

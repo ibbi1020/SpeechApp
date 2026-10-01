@@ -4,5 +4,4 @@ import Foundation
 enum CounselCopy {
     static let attestationButton = "I confirm I am 18 or older"
     static let attestation = "COUNSEL_COPY: § 22604 minor-unsuitability sentence placeholder."
-    static let disclosure = "This partner is AI, not a person."
 }
