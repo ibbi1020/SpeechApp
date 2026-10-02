@@ -236,8 +236,8 @@ struct ReadingSessionView: View {
             errorMessage = "Microphone permission is required."
             return
         }
-        guard let relay = MintClient.makeIfConfigured(uuid: model.account.accountUUID) else {
-            errorMessage = "Reading transcription needs the local server."
+        guard let xaiKey = ProviderKeys.xai else {
+            errorMessage = "Reading transcription isn’t set up in this build."
             return
         }
 
@@ -249,10 +249,7 @@ struct ReadingSessionView: View {
             countdownRemaining = nil
         }
 
-        let engine = GrokTranscriptionEngine(
-            relayBase: relay.base,
-            bearerToken: relay.uuid.uuidString
-        )
+        let engine = GrokTranscriptionEngine(xaiAPIKey: xaiKey)
         model.speechEngineKind = .grokVoiceTranscribe
         engine.setContextualPhrases(ReadingSession.contextualPhrases(for: passage, fromIndex: 0))
         let prepareTask = Task {

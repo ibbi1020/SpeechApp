@@ -20,17 +20,8 @@
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
 	<string>4</string>
-	<key>CONVERSATION_API_BASE</key>
-	<string>http://Ibraheens-MacBook-Air.local:8787</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Orator connects to your Mac on the local network to transcribe reading and topic talks, and to start a live conversation.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Reading and topic-talk audio is sent to xAI for transcription. Partner audio is streamed to OpenAI. We do not keep the recording.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

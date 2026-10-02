@@ -8,20 +8,28 @@ public enum GrokTranscriptionError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .relayNotConfigured:
-            "Reading transcription needs the local server."
+            "Transcription isn’t configured in this build (missing xAI key)."
         case .failed(let message):
             message
         case .timedOut:
-            "Grok transcription didn’t answer in time. Check the local server is running and XAI_API_KEY is set."
+            "Grok transcription didn’t answer in time. Check your connection and try again."
         }
     }
 }
 
-/// Streaming Grok speech-to-text. The xAI key stays on the relay; this client only sends PCM.
+/// Streaming Grok speech-to-text.
+///
+/// Two modes:
+/// - direct (`init(xaiAPIKey:)`): connects straight to `wss://api.x.ai/v1/stt` with the same
+///   query the old `server/stt-relay.mjs` built (model, 16 kHz PCM, interim results, smart turn).
+/// - relay (`init(relayBase:bearerToken:)`): connects to a relay's `/v1/stt`, which adds the key.
 public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Sendable {
     public private(set) var engineKind: LiveTranscriptionEngine.EngineKind = .grokVoiceTranscribe
 
-    private let relayBase: URL
+    public static let xaiSTTModel = "grok-voice-transcribe-2.0"
+    public static let xaiSTTEndpoint = URL(string: "wss://api.x.ai/v1/stt")!
+
+    private let relayBase: URL?
     private let bearerToken: String
     private let lock = NSLock()
     private var contextualPhrases: [String] = []
@@ -41,6 +49,42 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
     public init(relayBase: URL, bearerToken: String) {
         self.relayBase = relayBase
         self.bearerToken = bearerToken
+    }
+
+    /// Talks to xAI directly. `xaiAPIKey` is sent as `Authorization: Bearer …`.
+    public init(xaiAPIKey: String) {
+        self.relayBase = nil
+        self.bearerToken = xaiAPIKey
+    }
+
+    /// Upstream xAI URL, mirroring `buildSttUpstreamURL` in `server/stt-relay.mjs`.
+    /// `keyterm` values are capped at 100 terms of 50 characters.
+    public static func xaiWebSocketURL(keyterms: [String]) -> URL? {
+        guard var parts = URLComponents(url: xaiSTTEndpoint, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        var items = [
+            URLQueryItem(name: "model", value: xaiSTTModel),
+            URLQueryItem(name: "sample_rate", value: "16000"),
+            URLQueryItem(name: "encoding", value: "pcm"),
+            URLQueryItem(name: "interim_results", value: "true"),
+            URLQueryItem(name: "smart_turn", value: "0.7"),
+            URLQueryItem(name: "smart_turn_timeout", value: "3000"),
+        ]
+        items += cappedKeyterms(keyterms).map { URLQueryItem(name: "keyterm", value: $0) }
+        parts.queryItems = items
+        return parts.url
+    }
+
+    static func cappedKeyterms(_ keyterms: [String]) -> [String] {
+        Array(
+            keyterms.compactMap { phrase -> String? in
+                let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                return String(trimmed.prefix(50))
+            }
+            .prefix(100)
+        )
     }
 
     public func setContextualPhrases(_ phrases: [String]) {
@@ -117,11 +161,7 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
             return nil
         }
         parts.path = "/v1/stt"
-        let terms = keyterms.prefix(100).compactMap { phrase -> String? in
-            let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
-            return String(trimmed.prefix(50))
-        }
+        let terms = cappedKeyterms(keyterms)
         parts.queryItems = terms.isEmpty ? nil : terms.map { URLQueryItem(name: "keyterm", value: $0) }
         return parts.url
     }
@@ -143,7 +183,12 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
 
     private func openAndWait() async throws {
         let phrases = lock.withLock { contextualPhrases }
-        guard let url = Self.webSocketURL(httpBase: relayBase, keyterms: phrases) else {
+        let target: URL? = if let relayBase {
+            Self.webSocketURL(httpBase: relayBase, keyterms: phrases)
+        } else {
+            Self.xaiWebSocketURL(keyterms: phrases)
+        }
+        guard let url = target, !bearerToken.isEmpty else {
             throw GrokTranscriptionError.relayNotConfigured
         }
         var request = URLRequest(url: url)

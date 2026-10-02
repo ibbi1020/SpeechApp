@@ -27,3 +27,5 @@ ios/fastlane/report.xml
 ios/fastlane/README.md
 ios/fastlane/test_output/
 ios/vendor/
+# CI-generated provider keys (XOR-masked). Never commit.
+ios/App/Generated/

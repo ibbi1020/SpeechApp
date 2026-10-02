@@ -502,8 +502,8 @@ struct MonologueSessionView: View {
             listenError = "Microphone permission is required."
             return
         }
-        guard let relay = MintClient.makeIfConfigured(uuid: model.account.accountUUID) else {
-            listenError = "Topic-talk transcription needs the local server."
+        guard let xaiKey = ProviderKeys.xai else {
+            listenError = "Topic-talk transcription isn’t set up in this build."
             return
         }
 
@@ -515,10 +515,7 @@ struct MonologueSessionView: View {
             countdownRemaining = nil
         }
 
-        let engine = GrokTranscriptionEngine(
-            relayBase: relay.base,
-            bearerToken: relay.uuid.uuidString
-        )
+        let engine = GrokTranscriptionEngine(xaiAPIKey: xaiKey)
         engine.setContextualPhrases(Self.keyterms(prompt: session.prompt, reuseLine: session.reuseLine))
         // Subscribe before prepare. A later read of `updates` would replace the stream and drop words.
         let updates = engine.updates

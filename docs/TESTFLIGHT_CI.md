@@ -40,8 +40,15 @@ If no App Store Connect app record exists for the bundle id yet, the lane still 
 
 Optional env overrides: `IOS_APP_IDENTIFIER`, `IOS_APPSTORE_PROVISIONING_PROFILE_SPECIFIER`.
 
-## Known TestFlight limitation
+## Provider keys (no server)
 
-`CONVERSATION_API_BASE` points at a Mac on the local network (`http://Ibraheens-MacBook-Air.local:8787`, `server/mint.mjs`). Since the Grok transcription change, **Reading and Monologue also stream audio through that server** (`ws://…/v1/stt`, relayed by `server/stt-relay.mjs` to `wss://api.x.ai/v1/stt` with the server-side `XAI_API_KEY`). On a TestFlight install away from that Mac and Wi-Fi, all three formats fail until the server is hosted at a public `https://` URL and `CONVERSATION_API_BASE` is set to it.
+On this branch the app calls the providers directly; `server/` is not used.
+
+- Reading / Monologue: `wss://api.x.ai/v1/stt` (model `grok-voice-transcribe-2.0`, 16 kHz PCM, interim results, smart turn), `Authorization: Bearer <XAI_API_KEY>`. Same query `server/stt-relay.mjs` built.
+- Conversation: the app mints its own Realtime client secret at `https://api.openai.com/v1/realtime/client_secrets` with `OPENAI_API_KEY` (same session body `server/mint.mjs` used), then connects over WebRTC as before. The mint server's budget rules (20 counted starts per month, 1 live session, 3 mints per 10 min) are kept on the device.
+
+Keys come from the repo secrets `XAI_API_KEY` and `OPENAI_API_KEY`. CI runs `ios/scripts/generate_provider_secrets.py`, which writes `ios/App/Generated/ProviderSecrets.generated.swift` (gitignored) with each key XOR-masked by a random per-build mask; `ProviderKeys` decodes them at runtime. This is light obfuscation only: the keys can be recovered from the IPA, so use keys with spend limits and rotate them if the build leaks. The IPA is not uploaded as a workflow artifact.
+
+A local Xcode run without the generated file builds fine; Reading/Monologue then show "isn't set up in this build" and Conversation uses the fake partner.
 
 Add `[skip upload]` to a commit message pushed to `ci/testflight` to build and sign without uploading.

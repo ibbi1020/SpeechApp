@@ -79,6 +79,13 @@ jobs:
       - name: Install XcodeGen
         run: command -v xcodegen || brew install xcodegen
 
+      - name: Generate provider key file (XOR-masked, not committed)
+        working-directory: ios
+        env:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python3 scripts/generate_provider_secrets.py xai openai
+
       - name: Generate Xcode project
         working-directory: ios
         run: xcodegen generate
@@ -104,13 +111,12 @@ jobs:
         working-directory: ios
         run: bundle exec fastlane testflight_release
 
-      - name: Upload IPA artifact
+      # Build logs only. The IPA carries the (masked) provider keys, so it is not uploaded as an artifact.
+      - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Orator-ipa-${{ env.BUILD_NUMBER }}
-          path: |
-            ios/build/*.ipa
-            ~/Library/Logs/gym/*.log
+          name: Orator-build-logs-${{ env.BUILD_NUMBER }}
+          path: ~/Library/Logs/gym/*.log
           if-no-files-found: ignore
           retention-days: 7
