@@ -54,6 +54,22 @@ targets:
         NSCameraUsageDescription: Orator does not use the camera. Conversations are audio only.
         NSMicrophoneUsageDescription: Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Reading and topic-talk audio is sent to xAI for transcription. Conversation audio is streamed to xAI for the AI partner. We do not keep the recording.
         NSSpeechRecognitionUsageDescription: Orator uses on-device speech recognition while scoring a conversation. Recognition runs on your device.
+  SpeechAppUITests:
+    # QA branch only: button-level XCUITest walk (see .github/workflows/ios-ui-qa.yml).
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: SpeechApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.speechapp.prototype.uiqa
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        TEST_TARGET_NAME: SpeechApp
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
 schemes:
   SpeechApp:
     build:
@@ -63,6 +79,8 @@ schemes:
       config: Debug
     test:
       config: Debug
+      targets:
+        - SpeechAppUITests
     profile:
       config: Release
     analyze:

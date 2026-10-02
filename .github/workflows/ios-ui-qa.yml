@@ -1,0 +1,137 @@
+# Button-level UI QA for Orator on an iOS simulator. QA branch only (ci/ui-qa).
+# Never uploads to TestFlight: this workflow only builds for the simulator and runs XCUITests.
+#
+# Matrix:
+#   keys=none -> no provider key baked in: Conversation uses the built-in fake partner (DEBUG),
+#                Reading / Topic talk show their "not set up" error on Start.
+#   keys=xai  -> XAI_API_KEY baked in: Reading / Topic talk / Conversation try the real xAI paths
+#                (audio in the simulator is best-effort; the point is that buttons respond).
+#
+# Artifacts per leg: QA.xcresult, screenshots (qa-out/screens), taps.jsonl, sim video (sim.mp4).
+
+name: iOS UI QA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ci/ui-qa
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-ui-qa.yml"
+
+concurrency:
+  group: ui-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-qa:
+    name: UI QA (${{ matrix.keys }})
+    runs-on: macos-26
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        keys: [none, xai]
+    env:
+      QA_OUT: ${{ github.workspace }}/qa-out
+      DD: ${{ github.workspace }}/DD
+      APP_BUNDLE_ID: com.speechapp.prototype.format1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+
+      - name: Generate provider key file (xai leg only)
+        if: matrix.keys == 'xai'
+        working-directory: ios
+        env:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+        run: python3 scripts/generate_provider_secrets.py xai
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Pick and boot simulator
+        run: |
+          xcodebuild -version
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          best = None
+          for runtime, items in devices.items():
+              if ".iOS-" not in runtime:
+                  continue
+              version = tuple(int(x) for x in runtime.split(".iOS-")[1].split("-"))
+              for d in items:
+                  name = d["name"]
+                  if not name.startswith("iPhone"):
+                      continue
+                  score = (version, name == "iPhone 17 Pro", "Pro" in name and "Max" not in name, name)
+                  if best is None or score > best[0]:
+                      best = (score, d["udid"], name, runtime)
+          print(best[1])
+          print("Simulator:", best[2], best[3], file=sys.stderr)
+          ')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 || true
+          mkdir -p "$QA_OUT"
+          xcrun simctl list devices | grep "$UDID" | tee "$QA_OUT/simulator.txt"
+
+      - name: Build for testing
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project SpeechApp.xcodeproj -scheme SpeechApp -configuration Debug \
+            -destination "id=$UDID" -derivedDataPath "$DD" \
+            CODE_SIGNING_ALLOWED=NO | tee "$QA_OUT/build.log" | grep -E "error:|warning: .*UITests|BUILD|Test build" || true
+          test -f "$(ls "$DD"/Build/Products/*.xctestrun | head -1)"
+
+      - name: Install app and pre-grant permissions
+        run: |
+          xcrun simctl install "$UDID" "$DD/Build/Products/Debug-iphonesimulator/SpeechApp.app"
+          xcrun simctl privacy "$UDID" grant microphone "$APP_BUNDLE_ID"
+          xcrun simctl privacy "$UDID" grant speech-recognition "$APP_BUNDLE_ID" 2>/dev/null \
+            || echo "speech-recognition is not a simctl privacy service on this Xcode; the test handles the alert"
+
+      - name: Run UI QA (with screen recording)
+        run: |
+          xcrun simctl io "$UDID" recordVideo --codec=h264 --force "$QA_OUT/sim.mp4" > "$QA_OUT/recordVideo.log" 2>&1 &
+          echo $! > /tmp/rec.pid
+          sleep 3
+          set +e
+          TEST_RUNNER_QA_OUT="$QA_OUT" xcodebuild test-without-building \
+            -xctestrun "$(ls "$DD"/Build/Products/*.xctestrun | head -1)" \
+            -destination "id=$UDID" \
+            -resultBundlePath "$QA_OUT/QA.xcresult" > "$QA_OUT/test.log" 2>&1
+          echo "xcodebuild test exit: $?" | tee -a "$QA_OUT/test.log"
+          kill -INT "$(cat /tmp/rec.pid)" || true
+          sleep 5
+          grep -E "QA_TAP|Test Case|error|failed" "$QA_OUT/test.log" | tee "$QA_OUT/qa_taps.log" || true
+          ls -la "$QA_OUT" "$QA_OUT/screens" | head -20
+
+      - name: Export xcresult attachments
+        if: always()
+        run: |
+          xcrun xcresulttool export attachments --path "$QA_OUT/QA.xcresult" --output-path "$QA_OUT/attachments" \
+            > "$QA_OUT/export.log" 2>&1 || cat "$QA_OUT/export.log"
+          ls "$QA_OUT/attachments" | wc -l || true
+
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orator-ui-qa-${{ matrix.keys }}
+          path: qa-out
+          retention-days: 14
