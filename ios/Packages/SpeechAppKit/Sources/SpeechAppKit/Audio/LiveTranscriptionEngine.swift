@@ -29,6 +29,8 @@ public final class LiveTranscriptionEngine: @unchecked Sendable {
         case speechTranscriber
         case dictationTranscriber
         case sfSpeechRecognizerOnDevice
+        /// Cloud streaming STT (`grok-voice-transcribe-2.0`) through the local relay.
+        case grokVoiceTranscribe
         case unavailable
         case unknown
     }
