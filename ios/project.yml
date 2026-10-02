@@ -35,6 +35,9 @@ targets:
         # Personal Team (free provisioning) — Ibraheem Farooq
         DEVELOPMENT_TEAM: 45SVH8S72R
         SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+        # iPhone only. XcodeGen's iOS app preset is "1,2"; a universal build with portrait-only
+        # orientations is rejected on upload (ITMS-90474, iPad multitasking).
+        TARGETED_DEVICE_FAMILY: "1"
     dependencies:
       - package: SpeechAppKit
       - package: WebRTC
@@ -49,7 +52,7 @@ targets:
         CONVERSATION_API_BASE: "http://Ibraheens-MacBook-Air.local:8787"
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        NSLocalNetworkUsageDescription: Orator connects to your Mac on the local network to start a live conversation.
+        NSLocalNetworkUsageDescription: Orator connects to your Mac on the local network to transcribe reading and topic talks, and to start a live conversation.
         # Standard HTTPS/WebRTC encryption only (exempt). Skips the TestFlight export-compliance prompt.
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes:
@@ -57,8 +60,8 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        NSMicrophoneUsageDescription: Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Partner audio is streamed to OpenAI. Reading and topic talks are scored on this device. We do not keep the recording.
-        NSSpeechRecognitionUsageDescription: Orator uses on-device speech recognition to follow reading and to time topic talks. Recognition runs on your device.
+        NSMicrophoneUsageDescription: Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Reading and topic-talk audio is sent to xAI for transcription. Partner audio is streamed to OpenAI. We do not keep the recording.
+        NSSpeechRecognitionUsageDescription: Orator uses on-device speech recognition while scoring a conversation. Recognition runs on your device.
 schemes:
   SpeechApp:
     build:

@@ -42,4 +42,6 @@ Optional env overrides: `IOS_APP_IDENTIFIER`, `IOS_APPSTORE_PROVISIONING_PROFILE
 
 ## Known TestFlight limitation
 
-`CONVERSATION_API_BASE` points at a Mac on the local network (`server/mint.mjs`). The Conversation format will not work on a TestFlight install unless the mint server is hosted somewhere reachable and that URL is set. Reading and Monologue run on device.
+`CONVERSATION_API_BASE` points at a Mac on the local network (`http://Ibraheens-MacBook-Air.local:8787`, `server/mint.mjs`). Since the Grok transcription change, **Reading and Monologue also stream audio through that server** (`ws://…/v1/stt`, relayed by `server/stt-relay.mjs` to `wss://api.x.ai/v1/stt` with the server-side `XAI_API_KEY`). On a TestFlight install away from that Mac and Wi-Fi, all three formats fail until the server is hosted at a public `https://` URL and `CONVERSATION_API_BASE` is set to it.
+
+Add `[skip upload]` to a commit message pushed to `ci/testflight` to build and sign without uploading.
