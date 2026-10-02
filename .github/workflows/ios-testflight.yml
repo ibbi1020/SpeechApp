@@ -83,8 +83,7 @@ jobs:
         working-directory: ios
         env:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: python3 scripts/generate_provider_secrets.py xai openai
+        run: python3 scripts/generate_provider_secrets.py xai
 
       - name: Generate Xcode project
         working-directory: ios

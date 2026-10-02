@@ -377,7 +377,7 @@ struct ConversationSessionView: View {
         countdownRemaining = nil
     }
 
-    /// WebRTC owns the mic and partner audio; the orb reads both from stats.
+    /// The live mouth owns the mic and partner audio; the orb reads both levels from it.
     private func startLevelPump() {
         levelTask?.cancel()
         levelTask = Task { @MainActor in
@@ -418,8 +418,8 @@ struct ConversationSessionView: View {
         let mint = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
         let mouth: any ConversationMouth
         let fake: FakeConversationMouth?
-        if mint != nil {
-            mouth = LiveConversationMouth()
+        if let mint {
+            mouth = LiveConversationMouth(apiKey: mint.apiKey)
             fake = nil
         } else {
             let prototype = FakeConversationMouth()

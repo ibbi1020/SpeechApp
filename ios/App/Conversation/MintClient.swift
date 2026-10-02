@@ -40,12 +40,13 @@ extension MintError: LocalizedError {
     }
 }
 
-/// Conversation mint, done on the device (no mint server).
+/// Conversation start gate, done on the device (no mint server, no network).
 ///
-/// `mint()` asks OpenAI for a short-lived Realtime client secret with the build's OpenAI key,
-/// using the same session config `server/mint.mjs` used. The budget rules the server kept
-/// (20 counted starts per calendar month, 1 live session, 3 mints per 10 minutes) are kept
-/// locally: the month count in UserDefaults, the rest in memory.
+/// Conversation talks to xAI's realtime voice API directly with the build's xAI key, so there is
+/// no short-lived secret to mint: an xAI ephemeral token would add a round trip (~200 ms) before
+/// every session for no gain, since the key already ships in the app. `mint()` only applies the
+/// budget rules the server kept (20 counted starts per calendar month, 1 live session, 3 starts
+/// per 10 minutes): the month count in UserDefaults, the rest in memory.
 ///
 /// Wiring (unchanged):
 /// - countdown 0 → `mint()` → `countdownReachedZero(ephemeralKey:)`
@@ -54,49 +55,26 @@ extension MintError: LocalizedError {
 /// - drop before report: `ended()` and do **not** call `started` (session never counted)
 final class MintClient: Sendable {
     static let monthlyStarts = 20
-    private static let clientSecretsURL = URL(string: "https://api.openai.com/v1/realtime/client_secrets")!
     private static let budget = LocalBudget()
 
     let uuid: UUID
-    private let apiKey: String
+    let apiKey: String
 
     init(apiKey: String, uuid: UUID) {
         self.apiKey = apiKey
         self.uuid = uuid
     }
 
-    /// `nil` when this build has no OpenAI key.
+    /// `nil` when this build has no xAI key.
     static func makeIfConfigured(uuid: UUID) -> MintClient? {
-        guard let key = ProviderKeys.openAI else { return nil }
+        guard let key = ProviderKeys.xai else { return nil }
         return MintClient(apiKey: key, uuid: uuid)
     }
 
     func mint() async throws -> MintResponse {
         try Self.budget.reserveMint(now: .now)
-        var req = URLRequest(url: Self.clientSecretsURL)
-        req.httpMethod = "POST"
-        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = Self.sessionBody
-
-        let data: Data
-        let code: Int
-        do {
-            let (d, resp) = try await URLSession.shared.data(for: req)
-            data = d
-            code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        } catch {
-            throw MintError.unavailable
-        }
-        if code == 401 || code == 403 { throw MintError.auth }
-        guard (200...299).contains(code),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let secret = Self.secretValue(in: object)
-        else {
-            throw MintError.unavailable
-        }
         Self.budget.mintSucceeded()
-        return MintResponse(clientSecret: secret, startsRemaining: Self.budget.remaining(now: .now))
+        return MintResponse(clientSecret: apiKey, startsRemaining: Self.budget.remaining(now: .now))
     }
 
     func started(sessionID: UUID) async throws -> Int {
@@ -110,24 +88,6 @@ final class MintClient: Sendable {
     /// The mint server only counted these. Nothing to report without it.
     func crisis() async {}
     func possibleMinor() async {}
-
-    private static func secretValue(in object: [String: Any]) -> String? {
-        if let value = object["value"] as? String { return value }
-        if let nested = object["client_secret"] as? [String: Any], let value = nested["value"] as? String {
-            return value
-        }
-        return object["client_secret"] as? String
-    }
-
-    /// Same body `server/mint.mjs` posted to /v1/realtime/client_secrets.
-    /// Kept as a JSON string: a nested `[String: Any]` literal is slow for the type checker.
-    private static let sessionBody = Data("""
-    {"session":{"type":"realtime","model":"\(LiveConversationMouth.pinnedModel)","tools":[],"tracing":null,\
-    "audio":{"input":{"transcription":null,\
-    "turn_detection":{"type":"semantic_vad","eagerness":"low","create_response":false,"interrupt_response":false},\
-    "noise_reduction":{"type":"near_field"}}}},\
-    "expires_after":{"anchor":"created_at","seconds":120}}
-    """.utf8)
 }
 
 /// Local stand-in for the mint server's per-account budget.

@@ -25,7 +25,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Orator does not use the camera. Conversations are audio only.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Reading and topic-talk audio is sent to xAI for transcription. Partner audio is streamed to OpenAI. We do not keep the recording.</string>
+	<string>Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Reading and topic-talk audio is sent to xAI for transcription. Conversation audio is streamed to xAI for the AI partner. We do not keep the recording.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Orator uses on-device speech recognition while scoring a conversation. Recognition runs on your device.</string>
 	<key>UIBackgroundModes</key>

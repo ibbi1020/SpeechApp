@@ -17,7 +17,7 @@ require "shellwords"
 #
 # Auth: App Store Connect API key. Signing: Distribution .p12 + App Store profile from
 # repo secrets (no match). Never put PROVISIONING_PROFILE_SPECIFIER in global xcargs:
-# SPM products (SpeechAppKit, WebRTC) do not take provisioning profiles.
+# SPM products (SpeechAppKit) do not take provisioning profiles.
 
 DEFAULT_TEAM_ID = "Q2Z32YFFGP"
 DEFAULT_APP_IDENTIFIER = "com.speechapp.orator"
