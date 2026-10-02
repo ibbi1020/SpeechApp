@@ -54,6 +54,8 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # WebRTC links camera APIs; Apple rejects the upload without this (ITMS-90683). The app never asks for the camera.
+        NSCameraUsageDescription: Orator does not use the camera. Conversations are audio only.
         NSMicrophoneUsageDescription: Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Reading and topic-talk audio is sent to xAI for transcription. Partner audio is streamed to OpenAI. We do not keep the recording.
         NSSpeechRecognitionUsageDescription: Orator uses on-device speech recognition while scoring a conversation. Recognition runs on your device.
 schemes:

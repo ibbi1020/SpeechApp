@@ -166,7 +166,9 @@ platform :ios do
       app_identifier: app_identifier,
       skip_waiting_for_build_processing: true,
       distribute_external: false,
-      changelog: ENV["TESTFLIGHT_CHANGELOG"]
+      # An empty changelog still makes pilot wait for the build to appear (and hang if
+      # processing fails), so pass nil unless there is text.
+      changelog: env_or("TESTFLIGHT_CHANGELOG", nil)
     )
     UI.success("Uploaded #{app_identifier} build #{build_number} to TestFlight")
   end

@@ -120,30 +120,14 @@ final class MintClient: Sendable {
     }
 
     /// Same body `server/mint.mjs` posted to /v1/realtime/client_secrets.
-    private static let sessionBody: Data = {
-        let body: [String: Any] = [
-            "session": [
-                "type": "realtime",
-                "model": LiveConversationMouth.pinnedModel,
-                "tools": [Any](),
-                "tracing": NSNull(),
-                "audio": [
-                    "input": [
-                        "transcription": NSNull(),
-                        "turn_detection": [
-                            "type": "semantic_vad",
-                            "eagerness": "low",
-                            "create_response": false,
-                            "interrupt_response": false,
-                        ],
-                        "noise_reduction": ["type": "near_field"],
-                    ],
-                ],
-            ],
-            "expires_after": ["anchor": "created_at", "seconds": 120],
-        ]
-        return (try? JSONSerialization.data(withJSONObject: body)) ?? Data()
-    }()
+    /// Kept as a JSON string: a nested `[String: Any]` literal is slow for the type checker.
+    private static let sessionBody = Data("""
+    {"session":{"type":"realtime","model":"\(LiveConversationMouth.pinnedModel)","tools":[],"tracing":null,\
+    "audio":{"input":{"transcription":null,\
+    "turn_detection":{"type":"semantic_vad","eagerness":"low","create_response":false,"interrupt_response":false},\
+    "noise_reduction":{"type":"near_field"}}}},\
+    "expires_after":{"anchor":"created_at","seconds":120}}
+    """.utf8)
 }
 
 /// Local stand-in for the mint server's per-account budget.
