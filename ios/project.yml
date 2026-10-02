@@ -43,13 +43,15 @@ targets:
       properties:
         CFBundleDisplayName: Orator
         CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "3"
+        CFBundleVersion: "4"
         # Bonjour name of this Mac. Stays valid when the DHCP address changes.
         # Phone and Mac have to be on the same Wi-Fi. Do not put a 192.168 address here.
         CONVERSATION_API_BASE: "http://Ibraheens-MacBook-Air.local:8787"
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSLocalNetworkUsageDescription: Orator connects to your Mac on the local network to start a live conversation.
+        # Standard HTTPS/WebRTC encryption only (exempt). Skips the TestFlight export-compliance prompt.
+        ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes:
           - audio
         UILaunchScreen: {}

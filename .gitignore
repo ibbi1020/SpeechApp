@@ -19,3 +19,10 @@ logs/
 
 # Local visual-companion mockups
 .superpowers/
+
+# Fastlane / CI build output
+ios/build/
+ios/fastlane/report.xml
+ios/fastlane/README.md
+ios/fastlane/test_output/
+ios/vendor/
