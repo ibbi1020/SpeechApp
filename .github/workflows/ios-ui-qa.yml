@@ -109,7 +109,14 @@ jobs:
         run: |
           xcrun simctl io "$UDID" recordVideo --codec=h264 --force "$QA_OUT/sim.mp4" > "$QA_OUT/recordVideo.log" 2>&1 &
           echo $! > /tmp/rec.pid
-          sleep 3
+          # Epoch of the first video frame (pts 0), to line taps up with sim.mp4.
+          for i in $(seq 1 100); do
+            if grep -q "Recording started" "$QA_OUT/recordVideo.log"; then
+              python3 -c 'import time; print(f"{time.time():.3f}")' > "$QA_OUT/video_start_epoch.txt"; break
+            fi
+            sleep 0.05
+          done
+          sleep 2
           set +e
           TEST_RUNNER_QA_OUT="$QA_OUT" xcodebuild test-without-building \
             -xctestrun "$(ls "$DD"/Build/Products/*.xctestrun | head -1)" \

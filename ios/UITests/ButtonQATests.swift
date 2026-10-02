@@ -47,6 +47,15 @@ final class ButtonQATests: XCTestCase {
         }
     }
 
+    /// SessionStopModal carries `.isModal`, so XCUITest exposes it as an Alert.
+    @MainActor
+    private func modalButton(_ title: String) -> XCUIElement {
+        let inAlert = app.alerts.buttons[title]
+        if inAlert.exists { return inAlert }
+        let all = app.buttons.matching(identifier: title).allElementsBoundByIndex
+        return all.max(by: { $0.frame.width < $1.frame.width }) ?? app.buttons[title].firstMatch
+    }
+
     @MainActor
     private func label(containing text: String) -> XCUIElement {
         app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
@@ -89,7 +98,11 @@ final class ButtonQATests: XCTestCase {
         qaTap(screen, "Talk about something", app.buttons["Talk about something"]) {
             app.buttons["Change topic"].exists || app.buttons[ready].exists
         }
-        qaTap("Monologue", "custom Back (planning, no takes)", app.buttons["Back"].firstMatch) { homeVisible }
+        qaTap("Monologue", "custom Back (12pt right of glyph)", app.buttons["Back"].firstMatch,
+              pointOffset: CGVector(dx: 12, dy: 0), timeout: 3) { homeVisible }
+        if !homeVisible {
+            qaTap("Monologue", "custom Back (planning, no takes)", app.buttons["Back"].firstMatch) { homeVisible }
+        }
 
         qaTap(screen, "Start a conversation", app.buttons["Start a conversation"]) {
             app.navigationBars["Conversation"].exists
@@ -122,15 +135,28 @@ final class ButtonQATests: XCTestCase {
         qaTap("Passages", "passage row", firstPassageRow()) { app.buttons["Start"].exists }
 
         let start = app.buttons["Start"]
-        qaNote("Reading", "Start", start, note: "size")
-        qaTap("Reading", "Start", start, timeout: 3, note: "expect fog/countdown or error") {
+        qaNote("Reading", "Start", start, note: "size (text only; glass is wider)")
+        qaTap("Reading", "Start (left glass edge)", start, pointOffset: CGVector(dx: -150, dy: 12), timeout: 3,
+              note: "inside the tinted glass, outside the text") {
             anyText(containing: "Take a deep breath").exists
                 || anyText(containing: "isn\u{2019}t set up").exists
                 || anyText(containing: "permission").exists
                 || app.buttons["Pause"].exists
         }
-        // Wait out the countdown and see where it lands.
+        // Wait out the countdown, then time how long Pause is visible but not hittable (fog still up).
         let live = app.buttons["Pause"].waitForExistence(timeout: 10)
+        if live {
+            let shownAt = Date()
+            var hittableAt: Date?
+            while Date().timeIntervalSince(shownAt) < 30 {
+                if app.buttons["Pause"].isHittable { hittableAt = Date(); break }
+                usleep(200_000)
+            }
+            let ms = hittableAt.map { Int($0.timeIntervalSince(shownAt) * 1000) }
+            qaNote("Reading live", "Pause dead window", app.buttons["Pause"],
+                   note: "visible-but-not-hittable for \(ms.map(String.init) ?? ">30000") ms after appearing")
+            qa.shot("reading-pause-hittable", in: self)
+        }
         qa.shot("reading-after-countdown-live-\(live)", in: self)
         if live {
             readingLiveControls()
@@ -154,11 +180,21 @@ final class ButtonQATests: XCTestCase {
         qaTap(screen, "Pause", app.buttons["Pause"]) { app.buttons["Resume"].exists }
         qaTap(screen, "Resume", app.buttons["Resume"]) { app.buttons["Pause"].exists }
         qaTap(screen, "Stop", app.buttons["Stop"].firstMatch) { app.buttons["Keep reading"].exists }
-        qaTap("Reading stop modal", "Keep reading", app.buttons["Keep reading"]) {
+        qaTap("Reading stop modal", "Keep reading (left glass edge)", modalButton("Keep reading"),
+              pointOffset: CGVector(dx: -120, dy: 12), timeout: 3, note: "inside the glass, outside the text") {
+            !app.buttons["Keep reading"].exists && app.buttons["Pause"].exists
+        }
+        if app.buttons["Keep reading"].exists {
+            qaTap("Reading stop modal", "Keep reading", modalButton("Keep reading")) {
+                !app.buttons["Keep reading"].exists && app.buttons["Pause"].exists
+            }
+        }
+        qaTap(screen, "Stop", app.buttons["Stop"].firstMatch) { app.buttons["Keep reading"].exists }
+        qaTap("Reading stop modal", "Keep reading", modalButton("Keep reading")) {
             !app.buttons["Keep reading"].exists && app.buttons["Pause"].exists
         }
         qaTap(screen, "Stop", app.buttons["Stop"].firstMatch) { app.buttons["Keep reading"].exists }
-        qaTap("Reading stop modal", "Stop (confirm)", app.buttons["Stop"].firstMatch, timeout: 10) {
+        qaTap("Reading stop modal", "Stop (confirm)", modalButton("Stop"), timeout: 10) {
             app.buttons["Read this again"].exists
         }
         if app.buttons["Read this again"].exists { readingReport() }
@@ -201,18 +237,20 @@ final class ButtonQATests: XCTestCase {
         if pause.waitForExistence(timeout: 10) {
             qaNote(screen, "Pause", pause, note: "size")
             qaTap(screen, "Pause", pause) { app.buttons["Resume"].exists }
-            qaTap(screen, "Resume", app.buttons["Resume"]) { app.buttons["Pause"].exists }
+            qaTap(screen, "Resume (near circle edge)", app.buttons["Resume"], pointOffset: CGVector(dx: -20, dy: 0)) {
+                app.buttons["Pause"].exists
+            }
         } else {
             qaNote(screen, "Pause", pause, note: "pause never became available (phase not talking)")
         }
         qaTap(screen, "Stop", stop) { app.buttons["Keep talking"].exists }
-        qaTap("Conversation stop modal", "Keep talking", app.buttons["Keep talking"]) {
+        qaTap("Conversation stop modal", "Keep talking", modalButton("Keep talking")) {
             !app.buttons["Keep talking"].exists && app.buttons["Stop"].exists
         }
         // Let the debug loop run one fake user turn so the report has content.
         sleep(9)
         qaTap(screen, "Stop", app.buttons["Stop"].firstMatch) { app.buttons["Keep talking"].exists }
-        qaTap("Conversation stop modal", "Stop (confirm)", app.buttons["Stop"].firstMatch, timeout: 10) {
+        qaTap("Conversation stop modal", "Stop (confirm)", modalButton("Stop"), timeout: 10) {
             app.buttons["Back to home"].exists
         }
         qa.shot("conversation-end-screen", in: self)
@@ -241,14 +279,18 @@ final class ButtonQATests: XCTestCase {
         qaTap(screen, "Change topic", change) { currentPromptText() != promptBefore }
         let promptMid = currentPromptText()
         // Right-hand side of the 44pt row the code reserves (frame is outside the Button).
-        qaTap(screen, "Change topic (row area right of text)", change, at: CGVector(dx: 1.6, dy: 0.5), timeout: 2,
-              note: "tap 60% past the label's right edge, inside the visual row") {
+        qaTap(screen, "Change topic (12pt below text, inside 44pt row)", change, pointOffset: CGVector(dx: 0, dy: 13), timeout: 2,
+              note: ".frame(minHeight: 44) is applied outside the Button") {
             currentPromptText() != promptMid
+        }
+        let promptMid2 = currentPromptText()
+        qaTap(screen, "Change topic (30pt right of text)", change, pointOffset: CGVector(dx: 77, dy: 0), timeout: 2) {
+            currentPromptText() != promptMid2
         }
 
         let addNote = app.buttons["Add note"]
         qaNote(screen, "Add note", addNote, note: "size")
-        qaTap(screen, "Add note (right side of row)", addNote, at: CGVector(dx: 0.9, dy: 0.5), timeout: 2,
+        qaTap(screen, "Add note (row, 150pt right of label)", addNote, pointOffset: CGVector(dx: 150, dy: 0), timeout: 2,
               note: "label has maxWidth frame but no contentShape") {
             app.textFields["Short note"].exists
         }
@@ -270,7 +312,7 @@ final class ButtonQATests: XCTestCase {
         let remove = app.buttons["Remove note"].firstMatch
         qaNote(screen, "Remove note", remove, note: "size")
         let count = app.buttons.matching(identifier: "Remove note").count
-        qaTap(screen, "Remove note (corner of 44pt frame)", remove, at: CGVector(dx: 0.12, dy: 0.12), timeout: 2,
+        qaTap(screen, "Remove note (14pt left of glyph, inside 44pt frame)", remove, pointOffset: CGVector(dx: -14, dy: 0), timeout: 2,
               note: "frame(44x44) inside label, no contentShape") {
             app.buttons.matching(identifier: "Remove note").count < count
         }
@@ -282,8 +324,8 @@ final class ButtonQATests: XCTestCase {
         }
 
         let readyButton = app.buttons[ready]
-        qaNote(screen, ready, readyButton, note: "size")
-        qaTap(screen, ready, readyButton, timeout: 4) {
+        qaNote(screen, ready, readyButton, note: "size (text only; glass is wider)")
+        qaTap(screen, ready + " (left glass edge)", readyButton, pointOffset: CGVector(dx: -150, dy: 12), timeout: 4) {
             app.otherElements.matching(NSPredicate(format: "label == '3' OR label == '2'")).firstMatch.exists
                 || anyText(containing: "isn\u{2019}t set up").exists
                 || anyText(containing: "permission").exists
@@ -303,11 +345,11 @@ final class ButtonQATests: XCTestCase {
                 qaTap("Monologue between", "custom Back (has takes)", app.buttons["Back"].firstMatch) {
                     app.buttons["Keep going"].exists
                 }
-                qaTap("Monologue leave modal", "Keep going", app.buttons["Keep going"]) { !app.buttons["Keep going"].exists }
+                qaTap("Monologue leave modal", "Keep going", modalButton("Keep going")) { !app.buttons["Keep going"].exists }
                 qaTap("Monologue between", "custom Back (has takes)", app.buttons["Back"].firstMatch) {
                     app.buttons["Leave"].exists
                 }
-                qaTap("Monologue leave modal", "Leave", app.buttons["Leave"], timeout: 8) {
+                qaTap("Monologue leave modal", "Leave", modalButton("Leave"), timeout: 8) {
                     app.buttons["Back to home"].exists || homeVisible
                 }
             }
@@ -372,7 +414,7 @@ final class ButtonQATests: XCTestCase {
             qaTap("Conversation", "Stop", app.buttons["Stop"].firstMatch, action: "doubleTap") {
                 app.buttons["Keep talking"].exists
             }
-            qaTap("Conversation stop modal", "Stop (confirm)", app.buttons["Stop"].firstMatch, action: "doubleTap", timeout: 10) {
+            qaTap("Conversation stop modal", "Stop (confirm)", modalButton("Stop"), action: "doubleTap", timeout: 10) {
                 app.buttons["Back to home"].exists
             }
             qa.shot("conversation-after-double-confirm", in: self)

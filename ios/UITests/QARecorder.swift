@@ -19,6 +19,13 @@ struct TapRecord: Codable {
     var note: String
     var before: String
     var after: String
+    /// Wall clock (epoch s) just before / after the XCUITest tap call. Used to line taps up with sim.mp4.
+    var startEpoch: Double = 0
+    var endEpoch: Double = 0
+    /// Point offset from the element centre used for hit-area probes ("" = centre).
+    var offsetPt: String = ""
+    /// Orb frame at tap time (masked out when measuring visual response in the video).
+    var orbFrame: String = ""
 }
 
 @MainActor
@@ -96,6 +103,7 @@ extension XCTestCase {
         _ element: XCUIElement,
         action: String = "tap",
         at offset: CGVector? = nil,
+        pointOffset: CGVector? = nil,
         timeout: TimeInterval = 6,
         note: String = "",
         expect: () -> Bool
@@ -123,23 +131,39 @@ extension XCTestCase {
         record.widthPt = Double(frame.width)
         record.heightPt = Double(frame.height)
         record.before = qa.shot("\(slug)-before", in: self)
+        let orb = XCUIApplication().otherElements.matching(
+            NSPredicate(format: "label IN {'Listening.', 'Speaking.', 'Connecting.', 'Hearing you.', 'Paused.'}")
+        ).firstMatch
+        if orb.exists {
+            let f = orb.frame
+            record.orbFrame = "\(Int(f.minX)),\(Int(f.minY)) \(Int(f.width))x\(Int(f.height))"
+        }
+        if let pointOffset {
+            record.offsetPt = "\(Int(pointOffset.dx)),\(Int(pointOffset.dy))"
+        }
 
+        record.startEpoch = Date().timeIntervalSince1970
         let start = CFAbsoluteTimeGetCurrent()
         switch action {
         case "doubleTap":
-            if let offset {
+            if let pointOffset {
+                element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(pointOffset).doubleTap()
+            } else if let offset {
                 element.coordinate(withNormalizedOffset: offset).doubleTap()
             } else {
                 element.doubleTap()
             }
         default:
-            if let offset {
+            if let pointOffset {
+                element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(pointOffset).tap()
+            } else if let offset {
                 element.coordinate(withNormalizedOffset: offset).tap()
             } else {
                 element.tap()
             }
         }
         let afterTap = CFAbsoluteTimeGetCurrent()
+        record.endEpoch = Date().timeIntervalSince1970
         record.tapCallMs = (afterTap - start) * 1000
 
         let deadline = start + timeout
