@@ -13,6 +13,7 @@ ios/*.xcworkspace/
 # Secrets / local signing (never commit a real team id override)
 ios/local.xcconfig
 server/.env
+server/node_modules/
 
 # Device session diagnostics (share locally; do not commit)
 logs/

@@ -1,4 +1,7 @@
 {
   "type": "module",
-  "name": "speechapp-mint"
+  "name": "speechapp-mint",
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
 }

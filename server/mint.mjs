@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { attachSttRelay } from "./stt-relay.mjs";
 
 export function monthKey(ms = Date.now()) {
   const d = new Date(ms);
@@ -147,5 +148,7 @@ function readJson(req) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  createServer((req, res) => handleRequest(req, res)).listen(process.env.PORT || 8787);
+  const server = createServer((req, res) => handleRequest(req, res));
+  attachSttRelay(server);
+  server.listen(process.env.PORT || 8787);
 }

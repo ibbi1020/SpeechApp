@@ -19,7 +19,7 @@ struct MonologueSessionView: View {
     @State private var startTask: Task<Void, Never>?
 
     // Live capture — held so the pump Tasks and engine/source can be cancelled/stopped.
-    @State private var liveEngine: LiveTranscriptionEngine?
+    @State private var liveEngine: (any TranscriptionEngine)?
     @State private var liveSource: MicAudioSource?
     @State private var transcriptTask: Task<Void, Never>?
     @State private var audioTask: Task<Void, Never>?
@@ -32,11 +32,9 @@ struct MonologueSessionView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var stageDurationSize: CGFloat = 48
     @ScaledMetric(relativeTo: .largeTitle) private var clockSize: CGFloat = 76
 
-    // Current-take recognition accumulation. `LiveTranscriptionEngine` sometimes grows
-    // the same hypothesis and sometimes starts a fresh segment — these track that so we
-    // can assign the full take text/ranges to the session instead of dropping earlier speech.
+    // Full take text from Grok. The stitcher already keeps earlier words, so each
+    // update's rawText replaces this rather than being appended.
     @State private var hypothesis: String = ""
-    @State private var lastRaw: String = ""
     @State private var committedRanges: [ConversationSpeechInterval] = []
 
     /// Fog the notes page for the 3-2-1 after I’m ready. The take clock stays stopped until it ends.
@@ -358,7 +356,7 @@ struct MonologueSessionView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .padding(.top, 8)
 
-            VStack(spacing: 12) {
+            VStack(spacing: 20) {
                 MonologueCountdown(
                     session: session,
                     reduceMotion: reduceMotion,
@@ -371,23 +369,21 @@ struct MonologueSessionView: View {
                         .font(.title3.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
+
+                if !line.isEmpty {
+                    Text(line)
+                        .font(.system(size: 22, weight: .regular, design: .serif))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(6)
+                        .foregroundStyle(.primary)
+                        .lineLimit(4)
+                        .truncationMode(.head)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel(line)
+                        .accessibilityAddTraits(.updatesFrequently)
+                }
             }
             .frame(maxWidth: .infinity)
-
-            if !line.isEmpty {
-                Text(line)
-                    .font(.system(.subheadline, design: .serif))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(2)
-                    .foregroundStyle(.primary.opacity(0.7))
-                    .lineLimit(2)
-                    .truncationMode(.head)
-                    .frame(maxWidth: 280)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, 10)
-                    .accessibilityLabel(line)
-                    .accessibilityAddTraits(.updatesFrequently)
-            }
         }
         .padding(.horizontal, SpeechSpacing.page)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -473,10 +469,10 @@ struct MonologueSessionView: View {
         session.notes = notes.map(\.text).joined(separator: "\n")
     }
 
-    /// The newest words, capped so a long take stays a two-line caption.
+    /// The newest words, capped so a long take stays on screen under the clock.
     private func subtitleLine(_ transcript: String) -> String {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        let limit = 110
+        let limit = 180
         guard trimmed.count > limit else { return trimmed }
         let start = trimmed.index(trimmed.endIndex, offsetBy: -limit)
         let tail = trimmed[start...]
@@ -486,8 +482,7 @@ struct MonologueSessionView: View {
 
     // MARK: - Live capture
 
-    /// Permission-first on-device listen. A 3-2-1 plays after I’m ready, then
-    /// `session.ready()` starts the take clock. No PCM storage, no WebRTC.
+    /// A 3-2-1 plays after the Grok relay is ready, then `session.ready()` starts the take clock.
     private func beginListen(_ session: MonologueSession) async {
         dismissKeyboardImmediately()
         guard !isStartingListen else { return }
@@ -497,7 +492,6 @@ struct MonologueSessionView: View {
         listenError = nil
         // New take — reset accumulation so take-1 speech never leaks into take 2/3.
         hypothesis = ""
-        lastRaw = ""
         committedRanges = []
         // Take 2/3 "I'm ready" must not retain take-1 audio.
         await stopListen()
@@ -508,10 +502,8 @@ struct MonologueSessionView: View {
             listenError = "Microphone permission is required."
             return
         }
-        do {
-            try await LiveTranscriptionEngine.requestSpeechAuthorization()
-        } catch {
-            listenError = "Speech recognition permission is required (Settings → Orator)."
+        guard let relay = MintClient.makeIfConfigured(uuid: model.account.accountUUID) else {
+            listenError = "Topic-talk transcription needs the local server."
             return
         }
 
@@ -523,10 +515,15 @@ struct MonologueSessionView: View {
             countdownRemaining = nil
         }
 
-        let engine = LiveTranscriptionEngine()
-        engine.setContextualPhrases([session.prompt])
+        let engine = GrokTranscriptionEngine(
+            relayBase: relay.base,
+            bearerToken: relay.uuid.uuidString
+        )
+        engine.setContextualPhrases(Self.keyterms(prompt: session.prompt, reuseLine: session.reuseLine))
+        // Subscribe before prepare. A later read of `updates` would replace the stream and drop words.
+        let updates = engine.updates
         let prepareTask = Task {
-            try await engine.prepareIfNeeded()
+            try await engine.prepareIfNeeded(locale: Locale(identifier: "en-US"))
         }
 
         var startedSource: MicAudioSource?
@@ -539,10 +536,10 @@ struct MonologueSessionView: View {
             countdownRemaining = nil
             try await prepareTask.value
             try Task.checkCancellation()
+            try await engine.start(locale: Locale(identifier: "en-US"), preference: .autoPreferSpeechTranscriber)
             let source = MicAudioSource()
             try await source.start()
             startedSource = source
-            try await engine.start()
         } catch is CancellationError {
             prepareTask.cancel()
             await startedSource?.stop()
@@ -555,14 +552,16 @@ struct MonologueSessionView: View {
         }
 
         guard let source = startedSource else { return }
-        let updates = engine.updates
 
         liveEngine = engine
         liveSource = source
 
         transcriptTask = Task {
             for await update in updates {
-                absorbHypothesis(update.rawText)
+                let text = update.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty {
+                    hypothesis = text
+                }
                 session.ingestText(hypothesis)
 
                 let timedTokens: [(isFinal: Bool, interval: ConversationSpeechInterval)] = update.tokens.compactMap { token in
@@ -601,36 +600,11 @@ struct MonologueSessionView: View {
         #endif
     }
 
-    /// Absorbs a new recognizer `rawText` into the running take's `hypothesis`.
-    /// `LiveTranscriptionEngine` sometimes yields a growing full result (rawText extends
-    /// the previous one) and sometimes a fresh segment (`deltaFinals` treats non-prefix
-    /// text as new). This never shrinks the accumulated hypothesis.
-    private func absorbHypothesis(_ rawText: String) {
-        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-
-        let lowerHypothesis = hypothesis.lowercased()
-        let lowerText = text.lowercased()
-
-        if hypothesis.isEmpty || lowerHypothesis.hasPrefix(lowerText) || lowerText.hasPrefix(lowerHypothesis) {
-            // One is a case-insensitive prefix of the other — keep the longer one.
-            // If the new text is a prefix of the current hypothesis, keep the hypothesis.
-            if text.count > hypothesis.count {
-                hypothesis = text
-            }
-        } else if !lastRaw.isEmpty,
-                  hypothesis.count > lastRaw.count,
-                  lowerHypothesis.hasSuffix(lastRaw.lowercased()) {
-            // The latest segment grew — replace that trailing segment with the new text.
-            let keepCount = hypothesis.count - lastRaw.count
-            let keepEnd = hypothesis.index(hypothesis.startIndex, offsetBy: keepCount)
-            hypothesis = String(hypothesis[hypothesis.startIndex..<keepEnd]) + text
-        } else {
-            // Fresh segment.
-            hypothesis += " " + text
-        }
-
-        lastRaw = text
+    /// Topic words to bias Grok toward. Each term is capped at 50 characters by the relay.
+    private static func keyterms(prompt: String, reuseLine: String) -> [String] {
+        [prompt, reuseLine]
+            .flatMap { $0.split(whereSeparator: \.isWhitespace).map(String.init) }
+            .filter { !$0.isEmpty }
     }
 
     /// Cancels the pump Tasks and stops engine/source. Never stopped on user Pause —

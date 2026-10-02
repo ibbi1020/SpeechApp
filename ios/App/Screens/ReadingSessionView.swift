@@ -114,8 +114,28 @@ struct ReadingSessionView: View {
     }
 
     private var passageScroll: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+        ScrollViewReader { proxy in
+            ScrollView {
+                passageBody
+            }
+            .onChange(of: session?.currentWordID) { _, wordID in
+                guard isLive, let wordID else { return }
+                guard let index = passage.words.firstIndex(where: { $0.id == wordID }), index >= 12 else {
+                    return
+                }
+                if reduceMotion {
+                    proxy.scrollTo(wordID, anchor: .center)
+                } else {
+                    withAnimation(SpeechMotion.scroll) {
+                        proxy.scrollTo(wordID, anchor: .center)
+                    }
+                }
+            }
+        }
+    }
+
+    private var passageBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(passage.title)
                         .font(.system(.title2, design: .serif).weight(.semibold))
@@ -126,21 +146,17 @@ struct ReadingSessionView: View {
                         .foregroundStyle(isFogged ? .tertiary : .secondary)
                 }
 
-                Text(passage.text)
-                    .font(.system(size: 22, weight: .regular, design: .serif))
-                    .foregroundStyle(isFogged ? .tertiary : .primary)
-                    .lineSpacing(10)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
-                    .accessibilityLabel(passage.text)
-                    .padding(.top, 28)
-            }
-            .padding(.horizontal, SpeechSpacing.reading)
-            .padding(.top, 20)
-            .padding(.bottom, 12)
+                ReadingFollowAlong(
+                    words: passage.words,
+                    currentWordID: isLive ? session?.currentWordID : nil,
+                    reduceMotion: reduceMotion,
+                    dimmed: isFogged
+                )
+                .padding(.top, 28)
         }
+        .padding(.horizontal, SpeechSpacing.reading)
+        .padding(.top, 20)
+        .padding(.bottom, 12)
     }
 
     private var bottomChrome: some View {
@@ -220,10 +236,8 @@ struct ReadingSessionView: View {
             errorMessage = "Microphone permission is required."
             return
         }
-        do {
-            try await LiveTranscriptionEngine.requestSpeechAuthorization()
-        } catch {
-            errorMessage = "Speech recognition permission is required (Settings → Orator)."
+        guard let relay = MintClient.makeIfConfigured(uuid: model.account.accountUUID) else {
+            errorMessage = "Reading transcription needs the local server."
             return
         }
 
@@ -235,10 +249,14 @@ struct ReadingSessionView: View {
             countdownRemaining = nil
         }
 
-        let engine = LiveTranscriptionEngine()
+        let engine = GrokTranscriptionEngine(
+            relayBase: relay.base,
+            bearerToken: relay.uuid.uuidString
+        )
+        model.speechEngineKind = .grokVoiceTranscribe
+        engine.setContextualPhrases(ReadingSession.contextualPhrases(for: passage, fromIndex: 0))
         let prepareTask = Task {
-            try await prepareAvailability()
-            try await engine.prepareIfNeeded()
+            try await engine.prepareIfNeeded(locale: Locale(identifier: "en-US"))
         }
 
         do {
@@ -254,7 +272,7 @@ struct ReadingSessionView: View {
             try await session?.start(
                 audioSource: source,
                 engine: engine,
-                preference: enginePreference(for: model.speechEngineKind)
+                preference: .autoPreferSpeechTranscriber
             )
         } catch is CancellationError {
             prepareTask.cancel()
@@ -265,36 +283,6 @@ struct ReadingSessionView: View {
         #else
         errorMessage = "Live mic requires iOS."
         #endif
-    }
-
-    private func prepareAvailability() async throws {
-        let availability = await LiveTranscriptionEngine.checkAvailability()
-        switch availability {
-        case .speechTranscriberReady:
-            model.speechEngineKind = .speechTranscriber
-        case .dictationTranscriberReady:
-            model.speechEngineKind = .dictationTranscriber
-        case .dictationTranscriberNeedsDownload:
-            try await LiveTranscriptionEngine.ensureDictationAssets()
-            model.speechEngineKind = .dictationTranscriber
-        case .fallbackSFSpeechRecognizer:
-            model.speechEngineKind = .sfSpeechRecognizerOnDevice
-        case .unavailable(let message):
-            throw WarmupError.message(message)
-        }
-    }
-
-    private func enginePreference(
-        for kind: LiveTranscriptionEngine.EngineKind
-    ) -> LiveTranscriptionEngine.EnginePreference {
-        switch kind {
-        case .speechTranscriber:
-            return .speechTranscriber
-        case .dictationTranscriber:
-            return .dictationTranscriber
-        default:
-            return .autoPreferSpeechTranscriber
-        }
     }
 
     private func stopSession() async {
@@ -315,12 +303,90 @@ struct ReadingSessionView: View {
     #endif
 }
 
-private enum WarmupError: LocalizedError {
-    case message(String)
+/// Passage words with a single underline on the word being spoken.
+private struct ReadingFollowAlong: View {
+    let words: [ScriptWord]
+    let currentWordID: String?
+    let reduceMotion: Bool
+    let dimmed: Bool
 
-    var errorDescription: String? {
-        switch self {
-        case .message(let message): message
+    var body: some View {
+        WordWrapLayout(spacing: 8, lineSpacing: 14) {
+            ForEach(words) { word in
+                let isCurrent = word.id == currentWordID
+                Text(word.surface)
+                    .font(.system(size: 22, weight: isCurrent ? .semibold : .regular, design: .serif))
+                    .foregroundStyle(dimmed ? .tertiary : .primary)
+                    .underline(isCurrent, color: dimmed ? Color.secondary : Color.primary)
+                    .id(word.id)
+                    .accessibilityAddTraits(isCurrent ? .isSelected : [])
+            }
         }
+        .animation(reduceMotion ? nil : SpeechMotion.follow, value: currentWordID)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(words.map(\.surface).joined(separator: " "))
+    }
+}
+
+/// Left-to-right wrapping rows. Used so each passage word can take its own underline.
+private struct WordWrapLayout: Layout {
+    var spacing: CGFloat
+    var lineSpacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 0
+        let rows = rows(in: width, subviews: subviews)
+        let height = rows.reduce(CGFloat(0)) { $0 + $1.height }
+            + lineSpacing * CGFloat(max(0, rows.count - 1))
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = rows(in: bounds.width, subviews: subviews)
+        var y = bounds.minY
+        for row in rows {
+            var x = bounds.minX
+            for index in row.indexes {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(
+                    at: CGPoint(x: x, y: y + (row.height - size.height) / 2),
+                    proposal: ProposedViewSize(size)
+                )
+                x += size.width + spacing
+            }
+            y += row.height + lineSpacing
+        }
+    }
+
+    private struct Row {
+        var indexes: [Int]
+        var height: CGFloat
+    }
+
+    private func rows(in width: CGFloat, subviews: Subviews) -> [Row] {
+        var rows: [Row] = []
+        var indexes: [Int] = []
+        var rowWidth: CGFloat = 0
+        var rowHeight: CGFloat = 0
+
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let nextWidth = indexes.isEmpty ? size.width : rowWidth + spacing + size.width
+            if !indexes.isEmpty, width > 0, nextWidth > width {
+                rows.append(Row(indexes: indexes, height: rowHeight))
+                indexes = [index]
+                rowWidth = size.width
+                rowHeight = size.height
+            } else {
+                indexes.append(index)
+                rowWidth = nextWidth
+                rowHeight = max(rowHeight, size.height)
+            }
+        }
+        if !indexes.isEmpty {
+            rows.append(Row(indexes: indexes, height: rowHeight))
+        }
+        return rows
     }
 }
