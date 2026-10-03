@@ -96,12 +96,14 @@ struct ReadingSessionView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
-        // Own back button that stays in the bar (disabled) while the stop card is up. Removing
-        // or hiding the only bar item collapses the bar and shifts the page up.
+        // Own back button that stays in the bar, unchanged, while the stop card is up: removing
+        // or hiding the only bar item collapses the bar and shifts the page up, and toggling it
+        // disabled left the next tap on the live Stop dead. The card guards it instead.
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
+                    guard !showStopConfirm, !isStopping else { return }
                     withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
                         model.chooseAnotherPassage()
                     }
@@ -110,7 +112,6 @@ struct ReadingSessionView: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .disabled(showStopConfirm || isStopping)
                 .accessibilityLabel("Back")
             }
         }

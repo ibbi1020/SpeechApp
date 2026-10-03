@@ -93,19 +93,19 @@ struct MonologueSessionView: View {
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        // The bar stays up during the leave card (hiding it shifts the page); only Back goes.
+        // Back stays in the bar, unchanged, while the leave card is up (like Reading): removing
+        // the only bar item collapses the bar and shifts the page up. The card guards it instead.
         .toolbar {
-            if !showLeaveConfirm {
-                ToolbarItem(placement: .navigation) {
-                    Button {
-                        handleBack()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .accessibilityLabel("Back")
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    guard !showLeaveConfirm, !isEnding else { return }
+                    handleBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .accessibilityLabel("Back")
             }
         }
         .background {
