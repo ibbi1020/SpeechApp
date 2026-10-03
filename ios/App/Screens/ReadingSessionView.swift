@@ -79,23 +79,21 @@ struct ReadingSessionView: View {
                 ReadingCountdownOverlay(remaining: countdownRemaining)
             }
 
-            // Always in the tree; shown and hit-testable only while asked for. A removed card kept
-            // its backdrop over the live Stop (dead taps) until its fade-out transition finished.
-            SessionStopModal(
-                title: "Stop this reading?",
-                confirmTitle: "Stop",
-                dismissTitle: "Keep reading",
-                onConfirm: {
-                    guard showStopConfirm, !isStopping else { return }
-                    isStopping = true
-                    showStopConfirm = false
-                    Task { await stopSession() }
-                },
-                onDismiss: { showStopConfirm = false }
-            )
-            .opacity(showStopConfirm ? 1 : 0)
-            .allowsHitTesting(showStopConfirm)
-            .accessibilityHidden(!showStopConfirm)
+            if showStopConfirm {
+                SessionStopModal(
+                    title: "Stop this reading?",
+                    confirmTitle: "Stop",
+                    dismissTitle: "Keep reading",
+                    onConfirm: {
+                        guard !isStopping else { return }
+                        isStopping = true
+                        showStopConfirm = false
+                        Task { await stopSession() }
+                    },
+                    onDismiss: { showStopConfirm = false }
+                )
+                .transition(.opacity)
+            }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
