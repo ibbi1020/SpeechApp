@@ -173,8 +173,12 @@ struct MonologueSessionView: View {
 
     @ViewBuilder
     private func sessionChrome(_ session: MonologueSession, live: Bool) -> some View {
-        if live {
-            liveChrome(session)
+        // Mount the orb during the 3-2-1, same as Reading, so the WebGL view
+        // has a real frame before the take. Opacity 0 drops the context.
+        if live || isFogged {
+            liveChrome(session, live: live)
+                .allowsHitTesting(live)
+                .accessibilityHidden(!live)
         } else if session.phase == .planning || session.phase == .between {
             planningChrome(session)
                 .blur(radius: fogBlurRadius)
@@ -345,8 +349,7 @@ struct MonologueSessionView: View {
     // MARK: - Taking / paused
 
     private func liveCanvas(_ session: MonologueSession) -> some View {
-        let line = subtitleLine(hypothesis)
-        return ZStack {
+        ZStack {
             Text(session.prompt)
                 .font(.system(.subheadline, design: .serif))
                 .foregroundStyle(.secondary)
@@ -369,19 +372,6 @@ struct MonologueSessionView: View {
                         .font(.title3.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
-
-                if !line.isEmpty {
-                    Text(line)
-                        .font(.system(size: 22, weight: .regular, design: .serif))
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(6)
-                        .foregroundStyle(.primary)
-                        .lineLimit(4)
-                        .truncationMode(.head)
-                        .frame(maxWidth: .infinity)
-                        .accessibilityLabel(line)
-                        .accessibilityAddTraits(.updatesFrequently)
-                }
             }
             .frame(maxWidth: .infinity)
         }
@@ -389,41 +379,65 @@ struct MonologueSessionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func liveChrome(_ session: MonologueSession) -> some View {
-        SessionOrbBar(
-            phase: .monologue(isPreparing: false, phase: session.phase),
-            inputVolume: session.phase == .taking ? speechEnergy : 0,
-            animating: session.phase == .taking
-        ) {
-            Button {
-                if session.phase == .paused {
-                    session.resume()
-                } else {
-                    session.pause()
+    private func liveChrome(_ session: MonologueSession, live: Bool) -> some View {
+        VStack(spacing: 4) {
+            caption
+            SessionOrbBar(
+                phase: .monologue(isPreparing: !live, phase: session.phase),
+                inputVolume: session.phase == .taking ? speechEnergy : 0,
+                animating: session.phase != .paused
+            ) {
+                Button {
+                    if session.phase == .paused {
+                        session.resume()
+                    } else {
+                        session.pause()
+                    }
+                } label: {
+                    Image(systemName: session.phase == .paused ? "play.fill" : "pause.fill")
+                        .speechGlassCircle()
                 }
-            } label: {
-                Image(systemName: session.phase == .paused ? "play.fill" : "pause.fill")
-                    .speechGlassCircle()
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(session.phase == .paused ? "Resume" : "Pause")
-        } trailing: {
-            Button {
-                Task {
-                    await stopListen()
-                    session.done()
-                    routeIfFinished()
+                .buttonStyle(.plain)
+                .accessibilityLabel(session.phase == .paused ? "Resume" : "Pause")
+            } trailing: {
+                Button {
+                    Task {
+                        await stopListen()
+                        session.done()
+                        routeIfFinished()
+                    }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .speechGlassCircle(tint: .accentColor)
                 }
-            } label: {
-                Image(systemName: "checkmark")
-                    .speechGlassCircle(tint: .accentColor)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Done")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Done")
         }
         .padding(.horizontal, SpeechSpacing.page)
-        .padding(.top, 12)
+        .padding(.top, 8)
         .padding(.bottom, 16)
+        // A spring on the phase change animates this bar in from zero height and
+        // the WebGL orb stays blank. Keep the bar at its real size.
+        .transaction { $0.disablesAnimations = true }
+    }
+
+    /// Two-line caption sitting on the orb. Capped at 14pt so it stays a subtitle.
+    @ViewBuilder
+    private var caption: some View {
+        let line = subtitleLine(hypothesis)
+        if !line.isEmpty {
+            Text(line)
+                .font(.system(size: 14, weight: .regular))
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .foregroundStyle(.primary.opacity(0.55))
+                .lineLimit(2)
+                .truncationMode(.head)
+                .frame(maxWidth: .infinity)
+                .accessibilityLabel(line)
+                .accessibilityAddTraits(.updatesFrequently)
+        }
     }
 
     // MARK: - Error state
@@ -469,10 +483,10 @@ struct MonologueSessionView: View {
         session.notes = notes.map(\.text).joined(separator: "\n")
     }
 
-    /// The newest words, capped so a long take stays on screen under the clock.
+    /// The newest words, capped so the caption stays two short lines above the orb.
     private func subtitleLine(_ transcript: String) -> String {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        let limit = 180
+        let limit = 96
         guard trimmed.count > limit else { return trimmed }
         let start = trimmed.index(trimmed.endIndex, offsetBy: -limit)
         let tail = trimmed[start...]

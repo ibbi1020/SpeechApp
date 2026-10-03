@@ -15,8 +15,9 @@ struct ReadingSessionView: View {
     @State private var startTask: Task<Void, Never>?
     @State private var startPulse = false
     @State private var showStopConfirm = false
-    @State private var followDriver = LiveCaretDriver()
     @State private var displayIndex = 0
+    @State private var caretGeneration = 0
+    @State private var layoutReady = false
     @State private var wordTops: [String: CGFloat] = [:]
     @State private var lastScrolledLine: CGFloat?
 
@@ -97,17 +98,18 @@ struct ReadingSessionView: View {
             NavigationPopLock(isLocked: showStopConfirm)
         }
         .background {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isLive)) { context in
-                Color.clear
-                    .onChange(of: context.date) { _, _ in
-                        stepFollowCaret()
-                    }
-            }
+            CaretClock(
+                wordCount: passage.words.count,
+                generation: caretGeneration,
+                isLive: isLive,
+                speaking: session?.isHearingSpeech == true,
+                reduceMotion: reduceMotion,
+                anchor: session?.caretAnchor ?? CaretAnchor(index: 0, speechEnd: nil, hostTime: 0),
+                displayIndex: $displayIndex,
+                layoutReady: $layoutReady
+            )
         }
         .onAppear {
-            if followDriver.follow.wordCount != passage.words.count {
-                followDriver.reset(wordCount: passage.words.count)
-            }
             VoiceOrbPreloader.warmup()
             if session == nil {
                 session = ReadingSession(
@@ -140,25 +142,13 @@ struct ReadingSessionView: View {
             }
             .coordinateSpace(.named("reading-passage"))
             .onPreferenceChange(WordLineTops.self) { tops in
-                guard tops != wordTops else { return }
+                guard layoutReady, tops != wordTops else { return }
                 wordTops = tops
                 scrollIfLineChanged(proxy: proxy)
             }
             .onChange(of: displayIndex) { _, _ in
                 scrollIfLineChanged(proxy: proxy)
             }
-        }
-    }
-
-    private func stepFollowCaret() {
-        guard isLive, let session else { return }
-        let index = followDriver.step(
-            anchor: session.caretAnchor,
-            speaking: session.isHearingSpeech,
-            reduceMotion: reduceMotion
-        )
-        if index != displayIndex {
-            displayIndex = index
         }
     }
 
@@ -312,7 +302,7 @@ struct ReadingSessionView: View {
             countdownRemaining = nil
             try await prepareTask.value
             try Task.checkCancellation()
-            followDriver.reset(wordCount: passage.words.count)
+            caretGeneration += 1
             displayIndex = 0
             lastScrolledLine = nil
             let source = MicAudioSource()
@@ -391,29 +381,107 @@ private struct WordLineTops: PreferenceKey {
     }
 }
 
-/// Holds the follow clock without publishing a new view value on every frame.
-@MainActor
-private final class LiveCaretDriver {
-    var follow = CaretFollow()
+/// Moves the underline after the navigation push has finished.
+///
+/// A per-frame SwiftUI animation during that push throws
+/// "Failed to preempt running transition" and leaves a black screen.
+private struct CaretClock: UIViewControllerRepresentable {
+    var wordCount: Int
+    var generation: Int
+    var isLive: Bool
+    var speaking: Bool
+    var reduceMotion: Bool
+    var anchor: CaretAnchor
+    @Binding var displayIndex: Int
+    @Binding var layoutReady: Bool
 
-    func reset(wordCount: Int) {
-        follow = CaretFollow(wordCount: wordCount)
+    func makeUIViewController(context: Context) -> Controller {
+        Controller()
     }
 
-    func step(anchor: CaretAnchor, speaking: Bool, reduceMotion: Bool) -> Int {
-        if anchor.hostTime > 0 {
-            follow.noteAnchor(
-                index: anchor.index,
-                speechEnd: anchor.speechEnd,
-                hostNow: anchor.hostTime
-            )
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        controller.wordCount = wordCount
+        controller.generation = generation
+        controller.isLive = isLive
+        controller.speaking = speaking
+        controller.reduceMotion = reduceMotion
+        controller.anchor = anchor
+        controller.onIndex = { index in
+            if displayIndex != index {
+                displayIndex = index
+            }
         }
-        follow.tick(
-            hostNow: ProcessInfo.processInfo.systemUptime,
-            speaking: speaking,
-            reduceMotion: reduceMotion
-        )
-        return follow.displayWordIndex
+        controller.onReady = {
+            if !layoutReady {
+                layoutReady = true
+            }
+        }
+        controller.sync()
+    }
+
+    final class Controller: UIViewController {
+        var follow = CaretFollow()
+        var wordCount = 0
+        var generation = 0
+        var isLive = false
+        var speaking = false
+        var reduceMotion = false
+        var anchor = CaretAnchor(index: 0, speechEnd: nil, hostTime: 0)
+        var onIndex: (Int) -> Void = { _ in }
+        var onReady: () -> Void = {}
+        private var link: CADisplayLink?
+        private var didAppear = false
+        private var appliedGeneration = -1
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            didAppear = true
+            onReady()
+            sync()
+        }
+
+        override func viewDidDisappear(_ animated: Bool) {
+            super.viewDidDisappear(animated)
+            didAppear = false
+            link?.invalidate()
+            link = nil
+        }
+
+        func sync() {
+            guard didAppear else { return }
+            if generation != appliedGeneration || follow.wordCount != wordCount {
+                appliedGeneration = generation
+                follow = CaretFollow(wordCount: max(wordCount, 1))
+            }
+            if isLive {
+                if link == nil {
+                    let link = CADisplayLink(target: self, selector: #selector(tick))
+                    link.preferredFrameRateRange = CAFrameRateRange(minimum: 20, maximum: 30, preferred: 30)
+                    link.add(to: .main, forMode: .common)
+                    self.link = link
+                }
+                link?.isPaused = false
+            } else {
+                link?.isPaused = true
+            }
+        }
+
+        @objc private func tick() {
+            guard isLive else { return }
+            if anchor.hostTime > 0 {
+                follow.noteAnchor(
+                    index: anchor.index,
+                    speechEnd: anchor.speechEnd,
+                    hostNow: anchor.hostTime
+                )
+            }
+            follow.tick(
+                hostNow: ProcessInfo.processInfo.systemUptime,
+                speaking: speaking,
+                reduceMotion: reduceMotion
+            )
+            onIndex(follow.displayWordIndex)
+        }
     }
 }
 

@@ -3,7 +3,6 @@ import SpeechAppKit
 
 struct HomeView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -38,11 +37,7 @@ struct HomeView: View {
         disabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        Button {
-            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                action()
-            }
-        } label: {
+        Button(action: action) {
             Text(title)
                 .font(.body)
                 .foregroundStyle(.primary)

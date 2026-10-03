@@ -3,7 +3,6 @@ import SpeechAppKit
 
 struct PassageLibraryView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         List {
@@ -21,9 +20,7 @@ struct PassageLibraryView: View {
     }
 
     private func select(_ passage: Passage) {
-        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-            model.selectPassage(passage)
-        }
+        model.selectPassage(passage)
     }
 }
 

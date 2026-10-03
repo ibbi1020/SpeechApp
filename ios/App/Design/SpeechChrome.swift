@@ -279,7 +279,11 @@ enum VoiceOrbPreloader {
 
         func warmup() {
             _ = preparedWebView()
-            attachPark()
+            // Inserting into the window during its open transition throws
+            // "Failed to preempt running transition" and the first frame stays black.
+            DispatchQueue.main.async {
+                self.attachPark()
+            }
         }
 
         func borrow() -> WKWebView {
