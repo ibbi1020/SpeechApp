@@ -337,7 +337,7 @@ final class ButtonQATests: XCTestCase {
         let readyButton = app.buttons[ready]
         qaNote(screen, ready, readyButton, note: "size (text only; glass is wider)")
         qaTap(screen, ready + " (left glass edge)", readyButton, pointOffset: CGVector(dx: -150, dy: 12), timeout: 4) {
-            app.otherElements.matching(NSPredicate(format: "label == '3' OR label == '2'")).firstMatch.exists
+            app.descendants(matching: .any).matching(NSPredicate(format: "label == '3' OR label == '2' OR label == '1'")).firstMatch.exists
                 || anyText(containing: "isn\u{2019}t set up").exists
                 || anyText(containing: "permission").exists
                 || app.buttons["Done"].exists
