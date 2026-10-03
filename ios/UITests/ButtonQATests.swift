@@ -122,6 +122,13 @@ final class ButtonQATests: XCTestCase {
 
     // MARK: - 2. Reading
 
+    /// Records the nav bar frame so a modal that hides it (and shifts the page) shows up in the data.
+    @MainActor
+    func noteNavBar(_ screen: String, _ when: String) {
+        let bar = app.navigationBars.firstMatch
+        qaNote(screen, "nav bar (\(when))", bar, note: bar.exists ? "nav bar present" : "nav bar HIDDEN")
+    }
+
     @MainActor
     func test02_ReadingFlow() {
         launch()
@@ -179,7 +186,9 @@ final class ButtonQATests: XCTestCase {
         qaNote(screen, "Pause", app.buttons["Pause"], note: "size")
         qaTap(screen, "Pause", app.buttons["Pause"]) { app.buttons["Resume"].exists }
         qaTap(screen, "Resume", app.buttons["Resume"]) { app.buttons["Pause"].exists }
+        noteNavBar(screen, "before stop modal")
         qaTap(screen, "Stop", app.buttons["Stop"].firstMatch) { app.buttons["Keep reading"].exists }
+        noteNavBar("Reading stop modal", "modal up")
         qaTap("Reading stop modal", "Keep reading (left glass edge)", modalButton("Keep reading"),
               pointOffset: CGVector(dx: -120, dy: 12), timeout: 3, note: "inside the glass, outside the text") {
             !app.buttons["Keep reading"].exists && app.buttons["Pause"].exists
@@ -243,7 +252,9 @@ final class ButtonQATests: XCTestCase {
         } else {
             qaNote(screen, "Pause", pause, note: "pause never became available (phase not talking)")
         }
+        noteNavBar(screen, "before stop modal")
         qaTap(screen, "Stop", stop) { app.buttons["Keep talking"].exists }
+        noteNavBar("Conversation stop modal", "modal up")
         qaTap("Conversation stop modal", "Keep talking", modalButton("Keep talking")) {
             !app.buttons["Keep talking"].exists && app.buttons["Stop"].exists
         }
@@ -342,9 +353,11 @@ final class ButtonQATests: XCTestCase {
                 app.buttons[ready].exists || app.buttons["Back to home"].exists
             }
             if app.buttons["Back"].exists {
+                noteNavBar("Monologue between", "before leave modal")
                 qaTap("Monologue between", "custom Back (has takes)", app.buttons["Back"].firstMatch) {
                     app.buttons["Keep going"].exists
                 }
+                noteNavBar("Monologue leave modal", "modal up")
                 qaTap("Monologue leave modal", "Keep going", modalButton("Keep going")) { !app.buttons["Keep going"].exists }
                 qaTap("Monologue between", "custom Back (has takes)", app.buttons["Back"].firstMatch) {
                     app.buttons["Leave"].exists
