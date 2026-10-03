@@ -16,9 +16,6 @@ settings:
 packages:
   SpeechAppKit:
     path: Packages/SpeechAppKit
-  WebRTC:
-    url: https://github.com/stasel/WebRTC.git
-    from: 153.0.0
 targets:
   SpeechApp:
     type: application
@@ -37,7 +34,6 @@ targets:
         SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
     dependencies:
       - package: SpeechAppKit
-      - package: WebRTC
     info:
       path: App/Info.plist
       properties:
@@ -49,13 +45,13 @@ targets:
         CONVERSATION_API_BASE: "http://Ibraheens-MacBook-Air.local:8787"
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        NSLocalNetworkUsageDescription: Orator connects to your Mac on the local network to start a live conversation.
+        NSLocalNetworkUsageDescription: Orator connects to your Mac on the local network to transcribe reading and topic talks.
         UIBackgroundModes:
           - audio
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        NSMicrophoneUsageDescription: Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Partner audio is streamed to OpenAI. Reading and topic talks are scored on this device. We do not keep the recording.
+        NSMicrophoneUsageDescription: Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Speech is sent to xAI for transcription and live conversation. We do not keep the recording.
         NSSpeechRecognitionUsageDescription: Orator uses on-device speech recognition to follow reading and to time topic talks. Recognition runs on your device.
 schemes:
   SpeechApp:

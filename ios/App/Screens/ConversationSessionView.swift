@@ -159,23 +159,7 @@ struct ConversationSessionView: View {
     }
 
     private var liveCanvas: some View {
-        let line = session?.stageLine ?? ""
-        return ZStack {
-            if !line.isEmpty {
-                Text(line)
-                    .font(.system(.title3, design: .serif))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                    .foregroundStyle(isFogged ? .tertiary : .primary)
-                    .lineLimit(4)
-                    .truncationMode(.head)
-                    .frame(maxWidth: 320)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .padding(.top, 28)
-                    .accessibilityLabel(line)
-                    .accessibilityAddTraits(.updatesFrequently)
-            }
-
+        ZStack {
             if isPaused {
                 Text("Paused — still here.")
                     .font(.title3.weight(.medium))
@@ -229,6 +213,13 @@ struct ConversationSessionView: View {
     }
 
     private var liveControlRow: some View {
+        VStack(spacing: 4) {
+            SpeechSubtitle(text: session?.subtitleLine ?? "")
+            conversationOrbBar
+        }
+    }
+
+    private var conversationOrbBar: some View {
         SessionOrbBar(
             phase: orbPhase,
             inputVolume: orbPhase == .listening ? speechEnergy : 0,
@@ -288,9 +279,6 @@ struct ConversationSessionView: View {
 
             built.session.beginCountdown()
 
-            let mintTask: Task<MintResponse, Error>? = built.mint.map { client in
-                Task { try await client.mint() }
-            }
             let prepareTask = Task {
                 try await built.mouth.prepare()
             }
@@ -305,24 +293,12 @@ struct ConversationSessionView: View {
             countdownRemaining = nil
             built.session.enterConnecting()
 
-            do {
-                try await prepareTask.value
-            } catch {
-                if !(error is CancellationError) { mintTask?.cancel() }
-                throw error
-            }
+            try await prepareTask.value
 
-            if let mintTask {
-                let minted: MintResponse
+            // Format 2: Bearer token from gitignored plist — no mint server.
+            if let apiKey = built.directAPIKey {
                 do {
-                    minted = try await mintTask.value
-                } catch {
-                    if !(error is CancellationError) { await built.mouth.close() }
-                    throw error
-                }
-                didMint = true
-                do {
-                    try await built.session.countdownReachedZero(ephemeralKey: minted.clientSecret)
+                    try await built.session.countdownReachedZero(ephemeralKey: apiKey)
                 } catch {
                     await built.session.handle(.failed)
                     throw error
@@ -337,6 +313,8 @@ struct ConversationSessionView: View {
                 #if DEBUG
                 startDebugUserLoop(session: built.session, mouth: fake)
                 #endif
+            } else {
+                throw ConversationSessionError.missingAPIKey
             }
         } catch is CancellationError {
             countdownRemaining = nil
@@ -377,7 +355,7 @@ struct ConversationSessionView: View {
         countdownRemaining = nil
     }
 
-    /// WebRTC owns the mic and partner audio; the orb reads both from stats.
+    /// Mouth owns the mic and partner audio; the orb reads both levels.
     private func startLevelPump() {
         levelTask?.cancel()
         levelTask = Task { @MainActor in
@@ -415,10 +393,10 @@ struct ConversationSessionView: View {
         var rng = SplitMix64(seed: UInt64.random(in: 1...UInt64.max))
         let stance = deck.sample(rng: &rng).views.joined(separator: "\n")
         let openQuestion = bank.prompts[Int(rng.next() % UInt64(bank.prompts.count))]
-        let mint = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
+        let apiKey = XAIDirectKey.load()
         let mouth: any ConversationMouth
         let fake: FakeConversationMouth?
-        if mint != nil {
+        if apiKey != nil {
             mouth = LiveConversationMouth()
             fake = nil
         } else {
@@ -437,7 +415,13 @@ struct ConversationSessionView: View {
             stance: stance,
             openQuestion: openQuestion
         )
-        return SessionStart(session: session, mouth: mouth, fake: fake, mint: mint)
+        return SessionStart(
+            session: session,
+            mouth: mouth,
+            fake: fake,
+            mint: nil,
+            directAPIKey: apiKey
+        )
     }
 
     private func startEventPump(session: ConversationSession, mouth: any ConversationMouth) {
@@ -620,14 +604,17 @@ private struct SessionStart {
     let mouth: any ConversationMouth
     let fake: FakeConversationMouth?
     let mint: MintClient?
+    let directAPIKey: String?
 }
 
 private enum ConversationSessionError: LocalizedError {
     case missingOpens
+    case missingAPIKey
 
     var errorDescription: String? {
         switch self {
         case .missingOpens: "Opening prompts didn’t load."
+        case .missingAPIKey: "Conversation isn’t configured. Add XAI_API_KEY to server/.env and rebuild."
         }
     }
 }

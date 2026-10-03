@@ -13,8 +13,12 @@ public final class ConversationSession {
 
     /// Opening question until the partner speaks, then the newest partner words.
     public var stageLine: String {
-        let source = partnerLine.isEmpty ? openQuestion : partnerLine
-        return Self.captionTail(source)
+        Self.captionTail(subtitleLine)
+    }
+
+    /// Full live caption. The subtitle view trims to the screen; do not pre-chop.
+    public var subtitleLine: String {
+        partnerLine.isEmpty ? openQuestion : partnerLine
     }
 
     public var elapsed: TimeInterval {
@@ -353,12 +357,14 @@ public final class ConversationSession {
             claimedSpeechSeconds: claimed
         )
         let spokenForReport = userSpeechSeconds > 0 ? userSpeechSeconds : unionSeconds
+        let captionSyncLogPath = mouth.captionSyncLogURL?.path
         report = ConversationReportBuilder.build(
             userSpeechSeconds: spokenForReport,
             userTurns: userTurns,
             endReason: reason,
             extraFullLines: extraFullLines(metrics: metrics, spokenSeconds: unionSeconds > 0 ? unionSeconds : spokenForReport),
-            limitedAnalysis: metrics.limitedAnalysis
+            limitedAnalysis: metrics.limitedAnalysis,
+            captionSyncLogPath: captionSyncLogPath
         )
         await mouth.close()
     }

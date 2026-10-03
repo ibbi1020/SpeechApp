@@ -130,7 +130,7 @@ struct ReadingCountdownOverlay: View {
     }
 
     var body: some View {
-        VStack(spacing: showsInstruction ? 14 : 0) {
+        ZStack {
             if let remaining {
                 Text("\(remaining)")
                     .font(.system(size: SpeechCountdown.digitSize, weight: .semibold))
@@ -153,6 +153,7 @@ struct ReadingCountdownOverlay: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 260)
+                    .offset(y: SpeechCountdown.digitSize / 2 + 22)
                     .transition(.opacity)
             }
         }
@@ -161,7 +162,7 @@ struct ReadingCountdownOverlay: View {
             value: remaining == nil
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .offset(y: -12)
+        .ignoresSafeArea()
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.updatesFrequently)
         .accessibilityLabel(accessibilityText)
@@ -185,7 +186,7 @@ struct VoiceOrb: View {
     /// orb-ui cloud theme draws the sphere at this fraction of `box`.
     private static let diameterRatio: CGFloat = 0.55
     /// Clear space between each glass button and the drawn sphere.
-    private static let controlGap: CGFloat = 16
+    private static let controlGap: CGFloat = 28
 
     /// HStack spacing that leaves `controlGap` between the buttons and the cloud.
     /// The web view is wider than the sphere, so this is negative without overlapping it.

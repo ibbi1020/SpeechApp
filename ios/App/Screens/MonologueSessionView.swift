@@ -381,63 +381,48 @@ struct MonologueSessionView: View {
 
     private func liveChrome(_ session: MonologueSession, live: Bool) -> some View {
         VStack(spacing: 4) {
-            caption
-            SessionOrbBar(
-                phase: .monologue(isPreparing: !live, phase: session.phase),
-                inputVolume: session.phase == .taking ? speechEnergy : 0,
-                animating: session.phase != .paused
-            ) {
-                Button {
-                    if session.phase == .paused {
-                        session.resume()
-                    } else {
-                        session.pause()
-                    }
-                } label: {
-                    Image(systemName: session.phase == .paused ? "play.fill" : "pause.fill")
-                        .speechGlassCircle()
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(session.phase == .paused ? "Resume" : "Pause")
-            } trailing: {
-                Button {
-                    Task {
-                        await stopListen()
-                        session.done()
-                        routeIfFinished()
-                    }
-                } label: {
-                    Image(systemName: "checkmark")
-                        .speechGlassCircle(tint: .accentColor)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Done")
-            }
+            SpeechSubtitle(text: subtitleLine(hypothesis))
+            orbBar(session: session, live: live)
         }
         .padding(.horizontal, SpeechSpacing.page)
         .padding(.top, 8)
         .padding(.bottom, 16)
-        // A spring on the phase change animates this bar in from zero height and
-        // the WebGL orb stays blank. Keep the bar at its real size.
-        .transaction { $0.disablesAnimations = true }
     }
 
-    /// Two-line caption sitting on the orb. Capped at 14pt so it stays a subtitle.
-    @ViewBuilder
-    private var caption: some View {
-        let line = subtitleLine(hypothesis)
-        if !line.isEmpty {
-            Text(line)
-                .font(.system(size: 14, weight: .regular))
-                .multilineTextAlignment(.center)
-                .lineSpacing(2)
-                .foregroundStyle(.primary.opacity(0.55))
-                .lineLimit(2)
-                .truncationMode(.head)
-                .frame(maxWidth: .infinity)
-                .accessibilityLabel(line)
-                .accessibilityAddTraits(.updatesFrequently)
+    /// Phase springs shrink this bar to zero and leave the WebGL orb blank.
+    private func orbBar(session: MonologueSession, live: Bool) -> some View {
+        SessionOrbBar(
+            phase: .monologue(isPreparing: !live, phase: session.phase),
+            inputVolume: session.phase == .taking ? speechEnergy : 0,
+            animating: session.phase != .paused
+        ) {
+            Button {
+                if session.phase == .paused {
+                    session.resume()
+                } else {
+                    session.pause()
+                }
+            } label: {
+                Image(systemName: session.phase == .paused ? "play.fill" : "pause.fill")
+                    .speechGlassCircle()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(session.phase == .paused ? "Resume" : "Pause")
+        } trailing: {
+            Button {
+                Task {
+                    await stopListen()
+                    session.done()
+                    routeIfFinished()
+                }
+            } label: {
+                Image(systemName: "checkmark")
+                    .speechGlassCircle(tint: .accentColor)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Done")
         }
+        .transaction { $0.disablesAnimations = true }
     }
 
     // MARK: - Error state
@@ -700,11 +685,6 @@ struct MonologueSessionView: View {
         }
     }
 
-    private func clockLabel(_ t: TimeInterval) -> String {
-        let s = max(0, Int(t.rounded()))
-        return String(format: "%d:%02d", s / 60, s % 60)
-    }
-
     /// Drops the keyboard on this frame. A normal resign waits out the countdown
     /// animation, so I’m ready would leave the keyboard up on the next screen.
     private func dismissKeyboardImmediately() {
@@ -721,13 +701,6 @@ struct MonologueSessionView: View {
                 for: nil
             )
         }
-    }
-
-    private func spokenRemaining(_ t: TimeInterval) -> String {
-        let total = max(0, Int(t.rounded()))
-        let minutes = total / 60
-        let seconds = total % 60
-        return "\(minutes) minutes \(seconds) seconds remaining"
     }
 }
 

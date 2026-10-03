@@ -2,44 +2,52 @@ import AVFoundation
 import Foundation
 import os
 import SpeechAppKit
-@preconcurrency import WebRTC
 
-/// OpenAI Realtime over WebRTC. Never starts Reading's `MicAudioSource`.
+/// Grok speech-to-speech over WebSocket. Never starts Reading's `MicAudioSource`.
 final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Sendable {
-    static let pinnedModel = "gpt-realtime-2.1-mini"
-    private static let callsURL = URL(string: "https://api.openai.com/v1/realtime/calls")!
-    private static let stun = "stun:stun.l.google.com:19302"
+    static let pinnedModel = "grok-voice-think-fast-2.0"
+    private static let realtimeURL = URL(
+        string: "wss://api.x.ai/v1/realtime?model=\(pinnedModel)"
+    )!
+    private static let sampleRate: Double = 24_000
     private static let log = Logger(subsystem: "com.speechapp", category: "LiveConversationMouth")
-
-    /// Audio-only factory. Video codecs would hit the GPU next to the orb WebGL canvas.
-    private static let factory: RTCPeerConnectionFactory = {
-        RTCInitializeSSL()
-        return RTCPeerConnectionFactory()
-    }()
 
     let events: AsyncStream<MouthEvent>
     private let continuation: AsyncStream<MouthEvent>.Continuation
     private let lock = NSLock()
 
-    private var peer: RTCPeerConnection?
-    private var dataChannel: RTCDataChannel?
-    private var localAudioTrack: RTCAudioTrack?
     private var closed = false
     private var emittedFailed = false
-    private var iceReady = false
-    private var dataChannelIsOpen = false
-    private var dataChannelOpened: CheckedContinuation<Void, Never>?
-    private var iceReadyWaiter: CheckedContinuation<Void, Never>?
-    private var iceWaitID = 0
     private var prepareTask: Task<Void, Error>?
-    private var preparedOfferSDP: String?
-    private var disconnectGraceTask: Task<Void, Never>?
-    private var iceWasConnected = false
+    private var urlSession: URLSession?
+    private var socket: URLSessionWebSocketTask?
+    private var readyContinuation: CheckedContinuation<Void, Error>?
+    private var socketReady = false
+    private var micEnabled = false
     private var responseTranscript = ""
+    private var captionLedger = CaptionAudioLedger()
+    private var captionPlayhead = CaptionPlayhead()
+    private var captionPlayheadTask: Task<Void, Never>?
+    private var lastYieldedCaption = ""
+    private var drainingAfterDone = false
+    private var captionSync: CaptionSyncDiagnostics?
     private var pendingNullTurnDetection = false
     private var emittedPlaybackStart = false
     private var bargeIn = BargeInGate()
     private var bargeInPollTask: Task<Void, Never>?
+    private var sessionUpdateAttempt = 0
+    private var didEmitReady = false
+    private var frames = PCM16FrameBuffer(rate: sampleRate)
+
+    private let engine = AVAudioEngine()
+    private let player = AVAudioPlayerNode()
+    private var playbackFormat: AVAudioFormat?
+    private var inputLevel: Float = 0
+    private var outputLevel: Float = 0
+
+    var captionSyncLogURL: URL? {
+        captionSync?.logFileURL
+    }
 
     override init() {
         let pair = AsyncStream<MouthEvent>.makeStream(bufferingPolicy: .unbounded)
@@ -48,7 +56,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         super.init()
     }
 
-    /// Audio session, peer, offer, and ICE during the countdown. Local mic stays muted.
+    /// Warm the audio session during the countdown. WebSocket opens in `connect(ephemeralKey:)`.
     func prepare() async throws {
         try throwIfClosed()
         if let prepareTask {
@@ -70,42 +78,19 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         do {
             try await prepare()
             try throwIfClosed()
-            guard let peer, let offerSDP = preparedOfferSDP else {
-                throw MouthError.connectFailed
-            }
-            localAudioTrack?.isEnabled = true
-            let answerSDP = try await postSDP(offerSDP, ephemeralKey: ephemeralKey)
+            try await openSocket(token: ephemeralKey)
+            try await waitUntilSocketReady()
             try throwIfClosed()
-            try await setRemoteDescription(
-                RTCSessionDescription(type: .answer, sdp: answerSDP),
-                peer: peer
-            )
-            lock.withLock { iceReady = true }
+            setMicEnabled(true)
+            startCaptionSyncLog()
         } catch {
             teardown()
             throw MouthError.connectFailed
         }
     }
 
-    private func runPrepare() async throws {
-        try configureAudioSession()
-        let peer = try makePeerConnection()
-        self.peer = peer
-        let offer = try await createOffer(peer: peer)
-        try await setLocalDescription(offer, peer: peer)
-        // Countdown must stay send-muted until connect posts the SDP.
-        localAudioTrack?.isEnabled = false
-        preparedOfferSDP = offer.sdp
-        await waitForICEReady(peer: peer)
-        try throwIfClosed()
-        // Prefer post-gather SDP when candidates were appended.
-        if let local = peer.localDescription?.sdp, !local.isEmpty {
-            preparedOfferSDP = local
-        }
-    }
-
     func sendResponseCreate(instructions: String) async throws {
-        try await waitForDataChannel()
+        try throwIfClosed()
         try sendEvent([
             "type": "response.create",
             "response": ["instructions": instructions],
@@ -113,24 +98,20 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     }
 
     func updateTurnDetectionNull() async throws {
-        localAudioTrack?.isEnabled = false
+        setMicEnabled(false)
         pendingNullTurnDetection = true
-        try await waitForDataChannel()
+        try throwIfClosed()
         try sendEvent([
             "type": "session.update",
             "session": [
-                "type": "realtime",
-                "audio": [
-                    "input": [
-                        "turn_detection": NSNull(),
-                    ],
-                ],
+                "turn_detection": NSNull(),
             ],
         ])
     }
 
     func cancelResponse() async throws {
-        try await waitForDataChannel()
+        try throwIfClosed()
+        interruptPlaybackAndCaptions(reason: .cancel)
         try sendEvent(["type": "response.cancel"])
     }
 
@@ -139,339 +120,577 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     }
 
     func currentInputLevel() async -> Float {
-        await audioLevel(ConversationAudioLevels.input)
+        lock.withLock { inputLevel }
     }
 
     func currentOutputLevel() async -> Float {
-        await audioLevel(ConversationAudioLevels.output)
+        lock.withLock { outputLevel }
     }
 
-    private func audioLevel(
-        _ extract: @escaping @Sendable ([ConversationAudioStat]) -> Float
-    ) async -> Float {
-        let connection: RTCPeerConnection? = lock.withLock { closed ? nil : peer }
-        guard let connection else { return 0 }
-        return await withCheckedContinuation { continuation in
-            connection.statistics { report in
-                continuation.resume(returning: extract(Self.samples(from: report)))
-            }
-        }
-    }
-
-    private static func samples(from report: RTCStatisticsReport) -> [ConversationAudioStat] {
-        report.statistics.values.map { stat in
-            let values = stat.values
-            let remote: Bool? = (values["remoteSource"] as? NSNumber).map(\.boolValue)
-            return ConversationAudioStat(
-                type: stat.type,
-                kind: values["kind"] as? String,
-                remoteSource: remote,
-                audioLevel: floatValue(values["audioLevel"])
-            )
-        }
-    }
-
-    private static func floatValue(_ value: NSObject?) -> Float {
-        (value as? NSNumber)?.floatValue ?? 0
-    }
-
-    private func throwIfClosed() throws {
-        try lock.withLock {
-            if closed { throw MouthError.connectFailed }
-        }
+    private func runPrepare() async throws {
+        try configureAudioSession()
+        try startEngineIfNeeded()
     }
 
     private func configureAudioSession() throws {
-        // WebRTC reapplies its own configuration when the audio unit starts.
-        // That default is voice-chat to the receiver and drops `.defaultToSpeaker`,
-        // so the partner plays from the earpiece.
-        let preferred = RTCAudioSessionConfiguration.webRTC()
-        preferred.categoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
-        RTCAudioSessionConfiguration.setWebRTC(preferred)
-
-        let rtc = RTCAudioSession.sharedInstance()
-        rtc.useManualAudio = true
-        rtc.ignoresPreferredAttributeConfigurationErrors = true
-        rtc.add(self)
-        rtc.lockForConfiguration()
-        defer { rtc.unlockForConfiguration() }
-        try rtc.setCategory(
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(
             .playAndRecord,
             mode: .voiceChat,
             options: [.defaultToSpeaker, .allowBluetoothHFP]
         )
-        try rtc.setActive(true)
-        rtc.isAudioEnabled = true
-        try? rtc.overrideOutputAudioPort(.speaker)
+        try session.setActive(true)
     }
 
-    /// Loudspeaker when the route is the built-in receiver. Leaves headphones and Bluetooth alone.
-    private func preferLoudspeaker() {
-        let closedNow = lock.withLock { closed }
-        guard !closedNow else { return }
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        guard outputs.contains(where: { $0.portType == .builtInReceiver }) else { return }
-        guard !outputs.contains(where: Self.isExternalPlayback) else { return }
-        let rtc = RTCAudioSession.sharedInstance()
-        rtc.lockForConfiguration()
-        defer { rtc.unlockForConfiguration() }
-        try? rtc.overrideOutputAudioPort(.speaker)
-    }
-
-    private static func isExternalPlayback(_ port: AVAudioSessionPortDescription) -> Bool {
-        switch port.portType {
-        case .headphones, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .airPlay, .carAudio:
-            return true
-        default:
-            return false
+    private func startEngineIfNeeded() throws {
+        if engine.isRunning { return }
+        if player.engine == nil {
+            engine.attach(player)
+            let format = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: Self.sampleRate,
+                channels: 1,
+                interleaved: false
+            )
+            guard let format else { throw MouthError.connectFailed }
+            playbackFormat = format
+            engine.connect(player, to: engine.mainMixerNode, format: format)
         }
+
+        let input = engine.inputNode
+        do {
+            try input.setVoiceProcessingEnabled(true)
+        } catch {
+            Self.log.error("voice processing unavailable: \(error.localizedDescription, privacy: .public)")
+        }
+        let hwFormat = input.outputFormat(forBus: 0)
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 2_400, format: hwFormat) { [weak self] buffer, _ in
+            self?.handleMicBuffer(buffer)
+        }
+        engine.prepare()
+        try engine.start()
+        if !player.isPlaying {
+            player.play()
+        }
+        setMicEnabled(false)
     }
 
-    private func makePeerConnection() throws -> RTCPeerConnection {
-        let config = RTCConfiguration()
-        config.iceServers = [RTCIceServer(urlStrings: [Self.stun])]
-        config.sdpSemantics = .unifiedPlan
-        config.continualGatheringPolicy = .gatherOnce
-        let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
-        guard let peer = Self.factory.peerConnection(
-            with: config,
-            constraints: constraints,
-            delegate: self
-        ) else {
-            throw MouthError.connectFailed
+    private func openSocket(token: String) async throws {
+        var request = URLRequest(url: Self.realtimeURL)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let session = URLSession(configuration: .default)
+        let task = session.webSocketTask(with: request)
+        lock.withLock {
+            urlSession = session
+            socket = task
+            socketReady = false
+            sessionUpdateAttempt = 0
         }
-        let audioSource = Self.factory.audioSource(with: constraints)
-        let audioTrack = Self.factory.audioTrack(with: audioSource, trackId: "speechapp-audio")
-        localAudioTrack = audioTrack
-        peer.add(audioTrack, streamIds: ["speechapp-conversation"])
-        let channelConfig = RTCDataChannelConfiguration()
-        channelConfig.isOrdered = true
-        guard let channel = peer.dataChannel(forLabel: "oai-events", configuration: channelConfig) else {
-            throw MouthError.connectFailed
-        }
-        channel.delegate = self
-        dataChannel = channel
-        return peer
+        task.resume()
+        receiveNext(task)
     }
 
-    private func createOffer(peer: RTCPeerConnection) async throws -> RTCSessionDescription {
-        let constraints = RTCMediaConstraints(
-            mandatoryConstraints: [
-                "OfferToReceiveAudio": "true",
-                "OfferToReceiveVideo": "false",
-            ],
-            optionalConstraints: nil
-        )
-        return try await withCheckedThrowingContinuation { cont in
-            peer.offer(for: constraints) { sdp, error in
-                if let sdp {
-                    cont.resume(returning: sdp)
-                } else {
-                    cont.resume(throwing: error ?? MouthError.connectFailed)
+    private func waitUntilSocketReady() async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { [weak self] in
+                guard let self else { return }
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    self.lock.withLock {
+                        if self.socketReady {
+                            continuation.resume()
+                        } else if self.closed {
+                            continuation.resume(throwing: MouthError.connectFailed)
+                        } else {
+                            self.readyContinuation = continuation
+                        }
+                    }
                 }
             }
-        }
-    }
-
-    private func setLocalDescription(_ sdp: RTCSessionDescription, peer: RTCPeerConnection) async throws {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            peer.setLocalDescription(sdp) { error in
-                if let error {
-                    cont.resume(throwing: error)
-                } else {
-                    cont.resume()
-                }
+            group.addTask {
+                try await Task.sleep(for: .seconds(12))
+                throw MouthError.connectFailed
             }
+            try await group.next()
+            group.cancelAll()
         }
     }
 
-    private func setRemoteDescription(_ sdp: RTCSessionDescription, peer: RTCPeerConnection) async throws {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            peer.setRemoteDescription(sdp) { error in
-                if let error {
-                    cont.resume(throwing: error)
-                } else {
-                    cont.resume()
-                }
-            }
-        }
-    }
-
-    /// Proceed once we have a server-reflexive candidate, or after 1s / gather-complete.
-    private func waitForICEReady(peer: RTCPeerConnection) async {
-        if Self.isICEOfferReady(peer) { return }
-        iceWaitID += 1
-        let id = iceWaitID
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            iceReadyWaiter = cont
-            if Self.isICEOfferReady(peer) {
-                finishICEWait(expectedID: id)
-                return
-            }
-            Task { [weak self] in
-                try? await Task.sleep(for: .seconds(1))
-                self?.finishICEWait(expectedID: id)
-            }
-        }
-    }
-
-    private func finishICEWait(expectedID: Int? = nil) {
-        if let expectedID, expectedID != iceWaitID { return }
-        iceReadyWaiter?.resume()
-        iceReadyWaiter = nil
-        iceWaitID += 1
-    }
-
-    private static func isICEOfferReady(_ peer: RTCPeerConnection) -> Bool {
-        offerHasSrflx(peer.localDescription?.sdp) || peer.iceGatheringState == .complete
-    }
-
-    private static func offerHasSrflx(_ sdp: String?) -> Bool {
-        guard let sdp else { return false }
-        return sdp.contains(" typ srflx ")
-    }
-
-    private func postSDP(_ sdp: String, ephemeralKey: String) async throws -> String {
-        var lastError: Error = MouthError.connectFailed
-        for _ in 0..<2 {
-            do {
-                return try await postSDPOnce(sdp, ephemeralKey: ephemeralKey)
-            } catch {
-                lastError = error
-            }
-        }
-        throw lastError
-    }
-
-    private func postSDPOnce(_ sdp: String, ephemeralKey: String) async throws -> String {
-        var req = URLRequest(url: Self.callsURL)
-        req.httpMethod = "POST"
-        req.setValue("Bearer \(ephemeralKey)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/sdp", forHTTPHeaderField: "Content-Type")
-        req.httpBody = sdp.data(using: .utf8)
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200...299).contains(code), let answer = String(data: data, encoding: .utf8), !answer.isEmpty else {
-            throw MouthError.connectFailed
-        }
-        return answer
-    }
-
-    private func waitForDataChannel() async throws {
-        try throwIfClosed()
-        if dataChannel?.readyState == .open { return }
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            let alreadyOpen = lock.withLock { () -> Bool in
-                if dataChannel?.readyState == .open { return true }
-                dataChannelOpened = cont
-                return false
-            }
-            if alreadyOpen { cont.resume() }
-        }
-        try throwIfClosed()
-        guard dataChannel?.readyState == .open else { throw MouthError.connectFailed }
-    }
-
-    private func noteDataChannelOpen() {
-        let waiter = lock.withLock { () -> CheckedContinuation<Void, Never>? in
-            dataChannelIsOpen = true
-            let waiter = dataChannelOpened
-            dataChannelOpened = nil
+    private func markSocketReady() {
+        let waiter = lock.withLock { () -> CheckedContinuation<Void, Error>? in
+            socketReady = true
+            let waiter = readyContinuation
+            readyContinuation = nil
             return waiter
         }
         waiter?.resume()
     }
 
-    private func sendEvent(_ body: [String: Any]) throws {
-        guard let channel = dataChannel, channel.readyState == .open else {
-            throw MouthError.connectFailed
+    private func failReady(_ error: Error) {
+        let waiter = lock.withLock { () -> CheckedContinuation<Void, Error>? in
+            let waiter = readyContinuation
+            readyContinuation = nil
+            return waiter
         }
-        guard JSONSerialization.isValidJSONObject(body),
-              let data = try? JSONSerialization.data(withJSONObject: body) else {
-            throw MouthError.connectFailed
-        }
-        channel.sendData(RTCDataBuffer(data: data, isBinary: false))
+        waiter?.resume(throwing: error)
     }
 
-    private func sendInitialSessionUpdate() {
-        let body: [String: Any] = [
-            "type": "session.update",
-            "session": [
-                "type": "realtime",
-                "audio": [
-                    "input": [
-                        "turn_detection": [
-                            "type": "semantic_vad",
-                            "eagerness": "low",
-                            "create_response": false,
-                            // Client owns barge-in via BargeInGate + response.cancel.
-                            // Server interrupt cancels on echo / cough before any filter runs.
-                            "interrupt_response": false,
-                        ],
-                        "noise_reduction": [
-                            "type": "near_field",
-                        ],
-                    ],
-                ],
-            ],
-        ]
-        try? sendEvent(body)
+    private func receiveNext(_ task: URLSessionWebSocketTask) {
+        task.receive { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let message):
+                switch message {
+                case .string(let text):
+                    self.handleServerText(text)
+                case .data(let data):
+                    if let text = String(data: data, encoding: .utf8) {
+                        self.handleServerText(text)
+                    }
+                @unknown default:
+                    break
+                }
+                if !self.lock.withLock({ self.closed }) {
+                    self.receiveNext(task)
+                }
+            case .failure:
+                self.emitFailed()
+                self.failReady(MouthError.connectFailed)
+            }
+        }
     }
 
-    private func handleServerEvent(_ json: [String: Any]) {
-        guard let type = json["type"] as? String else { return }
+    private func handleServerText(_ text: String) {
+        guard let data = text.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = json["type"] as? String
+        else {
+            return
+        }
+        handleServerEvent(type: type, json: json)
+    }
+
+    private func handleServerEvent(type: String, json: [String: Any]) {
         switch type {
         case "session.created":
             let model = ((json["session"] as? [String: Any])?["model"] as? String) ?? ""
             Self.log.info("session.created model=\(model, privacy: .public)")
-            if !Self.modelIsPinned(model) {
+            if !model.isEmpty, !Self.modelIsPinned(model) {
                 continuation.yield(.configDrift)
+                failReady(MouthError.connectFailed)
                 return
             }
-            sendInitialSessionUpdate()
-            continuation.yield(.ready)
+            sessionUpdateAttempt = 0
+            sendInitialSessionUpdate(includeClientTurnFlags: true)
         case "session.updated":
             if pendingNullTurnDetection {
                 pendingNullTurnDetection = false
                 try? sendEvent(["type": "input_audio_buffer.clear"])
             }
+            markSocketReady()
+            emitReadyOnce()
             continuation.yield(.sessionUpdated)
+        case "error":
+            let message = (json["error"] as? [String: Any])?["message"] as? String
+                ?? (json["message"] as? String)
+                ?? "unknown"
+            Self.log.error("realtime error: \(message, privacy: .public)")
+            let (attempt, ready) = lock.withLock { (sessionUpdateAttempt, socketReady) }
+            if !ready {
+                if attempt == 1 {
+                    // Retry without create_response / interrupt_response.
+                    sendInitialSessionUpdate(includeClientTurnFlags: false)
+                } else {
+                    failReady(MouthError.connectFailed)
+                    emitFailed()
+                }
+            }
         case "input_audio_buffer.speech_started":
             handleSpeechStarted()
         case "input_audio_buffer.speech_stopped":
             handleSpeechStopped()
         case "response.created":
-            responseTranscript = ""
-            emittedPlaybackStart = false
-            // Arm barge-in before first audio frame — closes the race where mic
-            // echo of the open is treated as a user turn before noteAgentAudio.
+            beginPartnerResponse()
             mutateBargeIn { $0.noteAgentAudio() }
             continuation.yield(.responseStarted)
-        case "response.audio.delta", "response.output_audio.delta", "conversation.output_audio.delta",
-             "output_audio_buffer.started":
+        case "response.audio.delta", "response.output_audio.delta", "conversation.output_audio.delta":
+            if let delta = json["delta"] as? String {
+                playBase64PCM16(delta)
+            }
             notePartnerPlaybackStarted()
             mutateBargeIn { $0.noteAgentAudio() }
-        case "output_audio_buffer.stopped":
-            break
         case "response.audio_transcript.delta", "response.output_audio_transcript.delta":
             if let delta = json["delta"] as? String {
                 responseTranscript += delta
-                let trimmed = responseTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    continuation.yield(.partnerCaption(trimmed))
+                let heard = lock.withLock { () -> Bool in
+                    captionLedger.appendTranscript(delta)
+                    return captionLedger.heardFrames > 0
+                }
+                logTranscriptDelta(deltaChars: delta.count)
+                // If audio is already playing, catch the caption up to the playhead.
+                if heard {
+                    publishCaptionFromLedger(forceFull: false)
+                }
+            }
+        case "response.audio_transcript.done", "response.output_audio_transcript.done":
+            if let transcript = json["transcript"] as? String, !transcript.isEmpty {
+                responseTranscript = transcript
+                let heard = lock.withLock { () -> Bool in
+                    captionLedger.seedTranscriptIfEmpty(transcript)
+                    return captionLedger.heardFrames > 0
+                }
+                logTranscriptDone()
+                if heard {
+                    publishCaptionFromLedger(forceFull: false)
                 }
             }
         case "response.done":
             stopBargeInPoll()
             let release = mutateBargeIn { $0.noteResponseDone() }
-            continuation.yield(.responseDone(transcript: outputTranscript(from: json)))
-            responseTranscript = ""
+            let full = outputTranscript(from: json)
+            continuation.yield(.responseDone(transcript: full))
+            finishPartnerResponseAudio(seedTranscript: full)
             if release == .passThrough {
                 continuation.yield(.speechStarted)
             }
         default:
             break
         }
+    }
+
+    private func emitReadyOnce() {
+        let should = lock.withLock { () -> Bool in
+            guard !didEmitReady else { return false }
+            didEmitReady = true
+            return true
+        }
+        if should {
+            continuation.yield(.ready)
+        }
+    }
+
+    private func sendInitialSessionUpdate(includeClientTurnFlags: Bool) {
+        sessionUpdateAttempt += 1
+        var turnDetection: [String: Any] = ["type": "server_vad"]
+        if includeClientTurnFlags {
+            turnDetection["create_response"] = false
+            turnDetection["interrupt_response"] = false
+        }
+        let pcmFormat: [String: Any] = ["type": "audio/pcm", "rate": Int(Self.sampleRate)]
+        try? sendEvent([
+            "type": "session.update",
+            "session": [
+                "voice": "eve",
+                "tools": [],
+                "reasoning": ["effort": "none"],
+                "turn_detection": turnDetection,
+                "audio": [
+                    "input": ["format": pcmFormat],
+                    "output": ["format": pcmFormat],
+                ],
+            ],
+        ])
+    }
+
+    private func handleMicBuffer(_ buffer: AVAudioPCMBuffer) {
+        let samples = FileReplayAudioSource.floatSamples(from: buffer)
+        let rms = Self.rms(samples)
+        let enabled = lock.withLock { () -> Bool in
+            inputLevel = rms
+            return micEnabled && !closed
+        }
+        guard enabled else { return }
+        let rate = buffer.format.sampleRate
+        let chunks: [Data] = lock.withLock {
+            frames.append(samples: samples, sampleRate: rate)
+        }
+        for chunk in chunks {
+            sendAudioAppend(chunk)
+        }
+    }
+
+    private func sendAudioAppend(_ pcm: Data) {
+        let b64 = pcm.base64EncodedString()
+        try? sendEvent([
+            "type": "input_audio_buffer.append",
+            "audio": b64,
+        ])
+    }
+
+    private func playBase64PCM16(_ b64: String) {
+        guard let data = Data(base64Encoded: b64), !data.isEmpty else { return }
+        guard let format = playbackFormat else { return }
+        let frameCount = data.count / MemoryLayout<Int16>.size
+        guard frameCount > 0,
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount))
+        else {
+            return
+        }
+        buffer.frameLength = AVAudioFrameCount(frameCount)
+        guard let channel = buffer.floatChannelData?[0] else { return }
+        data.withUnsafeBytes { raw in
+            guard let source = raw.bindMemory(to: Int16.self).baseAddress else { return }
+            var sum: Float = 0
+            for i in 0..<frameCount {
+                let sample = Float(Int16(littleEndian: source[i])) / 32_768
+                channel[i] = sample
+                sum += sample * sample
+            }
+            let level = sqrt(sum / Float(frameCount))
+            lock.withLock { outputLevel = level }
+        }
+        lock.withLock {
+            captionLedger.enqueueAudio(frames: frameCount)
+            captionPlayhead.enqueue(frames: frameCount, now: ProcessInfo.processInfo.systemUptime)
+        }
+        startCaptionPlayhead()
+        logAudioDelta(deltaFrames: frameCount)
+        player.scheduleBuffer(buffer) { [weak self] in
+            self?.noteAudioBufferFinished(frames: frameCount)
+        }
+    }
+
+    private func startCaptionPlayhead() {
+        lock.withLock {
+            guard captionPlayheadTask == nil else { return }
+            captionPlayheadTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    self?.tickCaptionPlayhead()
+                    try? await Task.sleep(for: .milliseconds(40))
+                }
+            }
+        }
+    }
+
+    private func stopCaptionPlayhead() {
+        let task = lock.withLock { () -> Task<Void, Never>? in
+            let task = captionPlayheadTask
+            captionPlayheadTask = nil
+            return task
+        }
+        task?.cancel()
+    }
+
+    /// Advance captions by how far the current buffer has actually played.
+    private func tickCaptionPlayhead() {
+        let caption: String? = lock.withLock {
+            guard captionPlayhead.isPlaying else { return nil }
+            let heard = captionPlayhead.heardFrames(
+                now: ProcessInfo.processInfo.systemUptime,
+                sampleRate: Self.sampleRate
+            )
+            captionLedger.noteHeard(frames: heard)
+            return captionLedger.revealedCaption()
+        }
+        if let caption {
+            yieldCaptionIfChanged(caption)
+        }
+    }
+
+    private func beginPartnerResponse() {
+        clearCaptionSyncState()
+        captionSync?.noteResponseCreated()
+    }
+
+    private func finishPartnerResponseAudio(seedTranscript: String) {
+        responseTranscript = ""
+        let idle: Bool = lock.withLock {
+            outputLevel = 0
+            captionLedger.seedTranscriptIfEmpty(seedTranscript)
+            drainingAfterDone = true
+            return captionLedger.queuedFrames == 0
+        }
+        logResponseDone(draining: !idle)
+        // Remaining buffers keep advancing the caption as they finish.
+        // If nothing is queued, show the seeded line once.
+        if idle {
+            publishCaptionFromLedger(forceFull: true)
+            clearCaptionSyncState()
+        } else {
+            publishCaptionFromLedger(forceFull: false)
+        }
+    }
+
+    private func clearCaptionSyncState() {
+        let task: Task<Void, Never>? = lock.withLock {
+            responseTranscript = ""
+            captionLedger.reset()
+            captionPlayhead.reset()
+            let task = captionPlayheadTask
+            captionPlayheadTask = nil
+            lastYieldedCaption = ""
+            drainingAfterDone = false
+            emittedPlaybackStart = false
+            return task
+        }
+        task?.cancel()
+    }
+
+    private func noteAudioBufferFinished(frames: Int) {
+        let snapshot = lock.withLock { () -> (before: Int, after: Int, caption: String, pending: Int, queued: Int, completed: Int) in
+            let before = captionLedger.revealedWordCount
+            let pendingBefore = CaptionAudioLedger.splitWords(captionLedger.pendingText).count
+            captionPlayhead.completeCurrent(now: ProcessInfo.processInfo.systemUptime)
+            _ = captionLedger.completeAudio(frames: frames)
+            let caption = captionLedger.revealedCaption()
+            return (
+                before,
+                captionLedger.revealedWordCount,
+                caption,
+                pendingBefore,
+                captionLedger.queuedFrames,
+                captionLedger.completedFrames
+            )
+        }
+        let previousYield = lock.withLock { lastYieldedCaption }
+        yieldCaptionIfChanged(snapshot.caption)
+        let didYield = lock.withLock { lastYieldedCaption != previousYield }
+        captionSync?.noteAudioComplete(
+            deltaFrames: frames,
+            queuedFrames: snapshot.queued,
+            completedFrames: snapshot.completed,
+            pendingWords: snapshot.pending,
+            revealedWordsBefore: snapshot.before,
+            revealedWordsAfter: snapshot.after,
+            yielded: didYield,
+            preview: CaptionSyncDiagnostics.preview(snapshot.caption)
+        )
+
+        let finish = lock.withLock { () -> (clear: Bool, stopClock: Bool) in
+            let clear = drainingAfterDone
+                && captionLedger.queuedFrames > 0
+                && captionLedger.completedFrames >= captionLedger.queuedFrames
+            return (clear, !clear && !captionPlayhead.isPlaying)
+        }
+        if finish.clear {
+            publishCaptionFromLedger(forceFull: true)
+            clearCaptionSyncState()
+        } else if finish.stopClock {
+            stopCaptionPlayhead()
+        }
+    }
+
+    private func publishCaptionFromLedger(forceFull: Bool) {
+        let caption: String = lock.withLock {
+            if forceFull {
+                let remaining = captionLedger.queuedFrames - captionLedger.completedFrames
+                if remaining > 0 {
+                    _ = captionLedger.completeAudio(frames: remaining)
+                }
+                return captionLedger.revealedCaption(forceFull: true)
+            }
+            return captionLedger.revealedCaption()
+        }
+        yieldCaptionIfChanged(caption)
+    }
+
+    /// Yields at most one phrase-sized line per change; never rewinds.
+    private func yieldCaptionIfChanged(_ caption: String) {
+        let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shouldYield = lock.withLock { () -> Bool in
+            guard trimmed != lastYieldedCaption else { return false }
+            lastYieldedCaption = trimmed
+            return !trimmed.isEmpty
+        }
+        guard shouldYield else { return }
+
+        let wordCount = CaptionAudioLedger.splitWords(trimmed).count
+        logCaptionYield(revealedWords: wordCount, preview: trimmed)
+        continuation.yield(.partnerCaption(trimmed))
+    }
+
+    private enum InterruptReason { case cancel, teardown }
+
+    /// Drop unheard audio and freeze caption sync on barge-in / cancel.
+    private func interruptPlaybackAndCaptions(reason: InterruptReason) {
+        if reason == .cancel {
+            let snap = ledgerLogSnapshot()
+            captionSync?.noteCancel(
+                queuedFrames: snap.queued,
+                completedFrames: snap.completed,
+                pendingWords: snap.pendingWords,
+                revealedWords: snap.revealedWords
+            )
+        }
+        player.stop()
+        if engine.isRunning { player.play() }
+        clearCaptionSyncState()
+        lock.withLock { outputLevel = 0 }
+    }
+
+    private func startCaptionSyncLog() {
+        guard captionSync == nil else { return }
+        captionSync = CaptionSyncDiagnostics(conversationID: UUID().uuidString)
+    }
+
+    private func ledgerLogSnapshot() -> (
+        queued: Int,
+        completed: Int,
+        pendingWords: Int,
+        revealedWords: Int
+    ) {
+        lock.withLock {
+            (
+                captionLedger.queuedFrames,
+                captionLedger.completedFrames,
+                CaptionAudioLedger.splitWords(captionLedger.pendingText).count,
+                captionLedger.revealedWordCount
+            )
+        }
+    }
+
+    private func logAudioDelta(deltaFrames: Int) {
+        let snap = ledgerLogSnapshot()
+        captionSync?.noteAudioDelta(
+            deltaFrames: deltaFrames,
+            queuedFrames: snap.queued,
+            completedFrames: snap.completed,
+            pendingWords: snap.pendingWords,
+            revealedWords: snap.revealedWords
+        )
+    }
+
+    private func logTranscriptDelta(deltaChars: Int) {
+        let snap = ledgerLogSnapshot()
+        captionSync?.noteTranscriptDelta(
+            deltaChars: deltaChars,
+            queuedFrames: snap.queued,
+            completedFrames: snap.completed,
+            pendingWords: snap.pendingWords,
+            revealedWords: snap.revealedWords
+        )
+    }
+
+    private func logTranscriptDone() {
+        let snap = ledgerLogSnapshot()
+        captionSync?.noteTranscriptDone(
+            queuedFrames: snap.queued,
+            completedFrames: snap.completed,
+            pendingWords: snap.pendingWords,
+            revealedWords: snap.revealedWords
+        )
+    }
+
+    private func logResponseDone(draining: Bool) {
+        let snap = ledgerLogSnapshot()
+        captionSync?.noteResponseDone(
+            queuedFrames: snap.queued,
+            completedFrames: snap.completed,
+            pendingWords: snap.pendingWords,
+            revealedWords: snap.revealedWords,
+            draining: draining
+        )
+    }
+
+    private func logCaptionYield(revealedWords: Int, preview: String) {
+        let snap = ledgerLogSnapshot()
+        captionSync?.noteCaptionYield(
+            revealedWords: revealedWords,
+            pendingWords: snap.pendingWords,
+            queuedFrames: snap.queued,
+            completedFrames: snap.completed,
+            preview: CaptionSyncDiagnostics.preview(preview)
+        )
     }
 
     private func notePartnerPlaybackStarted() {
@@ -553,149 +772,76 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         return parts.joined()
     }
 
-    private func handleICEConnection(_ state: RTCIceConnectionState) {
-        let isReady = lock.withLock { iceReady && !closed }
-        guard isReady else { return }
-        switch state {
-        case .connected, .completed:
-            iceWasConnected = true
-            disconnectGraceTask?.cancel()
-            disconnectGraceTask = nil
-        case .disconnected:
-            guard iceWasConnected else { return }
-            continuation.yield(.disconnected)
-            disconnectGraceTask?.cancel()
-            disconnectGraceTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(3))
-                guard let self, !Task.isCancelled else { return }
-                self.emitFailed()
+    private func sendEvent(_ body: [String: Any]) throws {
+        let task = lock.withLock { socket }
+        guard let task, task.state == .running else {
+            throw MouthError.connectFailed
+        }
+        guard JSONSerialization.isValidJSONObject(body),
+              let data = try? JSONSerialization.data(withJSONObject: body),
+              let text = String(data: data, encoding: .utf8)
+        else {
+            throw MouthError.connectFailed
+        }
+        task.send(.string(text)) { [weak self] error in
+            if error != nil {
+                self?.emitFailed()
             }
-        case .failed, .closed:
-            emitFailed()
-        default:
-            break
         }
     }
 
+    private func setMicEnabled(_ enabled: Bool) {
+        lock.withLock { micEnabled = enabled }
+    }
+
     private func emitFailed() {
-        let shouldEmit = lock.withLock { () -> Bool in
-            guard !closed, !emittedFailed else { return false }
+        let should = lock.withLock { () -> Bool in
+            guard !emittedFailed else { return false }
             emittedFailed = true
             return true
         }
-        if shouldEmit {
+        if should {
             continuation.yield(.failed)
         }
     }
 
+    private func throwIfClosed() throws {
+        if lock.withLock({ closed }) { throw MouthError.connectFailed }
+    }
+
     private func teardown() {
-        let alreadyClosed = lock.withLock { () -> Bool in
-            if closed { return true }
-            closed = true
-            return false
-        }
-        if alreadyClosed { return }
-
         stopBargeInPoll()
-        disconnectGraceTask?.cancel()
-        disconnectGraceTask = nil
-        prepareTask?.cancel()
-        prepareTask = nil
-        preparedOfferSDP = nil
-        finishICEWait()
-        let waiter = lock.withLock { () -> CheckedContinuation<Void, Never>? in
-            let waiter = dataChannelOpened
-            dataChannelOpened = nil
-            return waiter
+        interruptPlaybackAndCaptions(reason: .teardown)
+        captionSync?.finish()
+        let (task, session, waiter) = lock.withLock { () -> (URLSessionWebSocketTask?, URLSession?, CheckedContinuation<Void, Error>?) in
+            closed = true
+            micEnabled = false
+            let task = socket
+            let session = urlSession
+            let waiter = readyContinuation
+            socket = nil
+            urlSession = nil
+            readyContinuation = nil
+            prepareTask = nil
+            return (task, session, waiter)
         }
-        waiter?.resume()
-
-        dataChannel?.delegate = nil
-        dataChannel?.close()
-        dataChannel = nil
-        peer?.delegate = nil
-        peer?.close()
-        peer = nil
-        localAudioTrack = nil
-
-        let rtc = RTCAudioSession.sharedInstance()
-        rtc.remove(self)
-        rtc.lockForConfiguration()
-        try? rtc.setActive(false)
-        rtc.unlockForConfiguration()
-        rtc.isAudioEnabled = false
-
+        waiter?.resume(throwing: MouthError.connectFailed)
+        task?.cancel(with: .goingAway, reason: nil)
+        session?.invalidateAndCancel()
+        engine.inputNode.removeTap(onBus: 0)
+        player.stop()
+        engine.stop()
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        continuation.yield(.disconnected)
         continuation.finish()
     }
-}
 
-extension LiveConversationMouth: RTCAudioSessionDelegate {
-    func audioSessionDidStartPlayOrRecord(_ session: RTCAudioSession) {
-        DispatchQueue.main.async { [weak self] in
-            self?.preferLoudspeaker()
+    private static func rms(_ samples: [Float]) -> Float {
+        guard !samples.isEmpty else { return 0 }
+        var sum: Float = 0
+        for sample in samples {
+            sum += sample * sample
         }
-    }
-
-    func audioSessionDidChangeRoute(
-        _ session: RTCAudioSession,
-        reason: AVAudioSession.RouteChangeReason,
-        previousRoute: AVAudioSessionRouteDescription
-    ) {
-        // `.override` is the notification from our own speaker switch. Handling it would loop.
-        guard reason != .override else { return }
-        DispatchQueue.main.async { [weak self] in
-            self?.preferLoudspeaker()
-        }
-    }
-}
-
-extension LiveConversationMouth: RTCPeerConnectionDelegate {
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {}
-
-    func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
-        handleICEConnection(newState)
-    }
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {
-        if newState == .complete {
-            finishICEWait()
-        }
-    }
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
-        if Self.isICEOfferReady(peerConnection) {
-            finishICEWait()
-        }
-    }
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {
-        dataChannel.delegate = self
-        self.dataChannel = dataChannel
-        if dataChannel.readyState == .open {
-            noteDataChannelOpen()
-        }
-    }
-}
-
-extension LiveConversationMouth: RTCDataChannelDelegate {
-    func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {
-        if dataChannel.readyState == .open {
-            noteDataChannelOpen()
-        }
-    }
-
-    func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
-        guard let json = try? JSONSerialization.jsonObject(with: buffer.data) as? [String: Any] else {
-            return
-        }
-        handleServerEvent(json)
+        return sqrt(sum / Float(samples.count))
     }
 }

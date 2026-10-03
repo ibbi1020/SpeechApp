@@ -12,6 +12,7 @@ ios/*.xcworkspace/
 
 # Secrets / local signing (never commit a real team id override)
 ios/local.xcconfig
+ios/App/XAISecrets.plist
 server/.env
 server/node_modules/
 

@@ -14,7 +14,6 @@ struct ReadingSessionView: View {
     @State private var isPreparing = false
     @State private var startTask: Task<Void, Never>?
     @State private var startPulse = false
-    @State private var showStopConfirm = false
     @State private var displayIndex = 0
     @State private var caretGeneration = 0
     @State private var layoutReady = false
@@ -68,35 +67,16 @@ struct ReadingSessionView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     bottomChrome
                 }
-                .accessibilityHidden(isFogged || showStopConfirm)
-                .allowsHitTesting(!isFogged && !showStopConfirm)
+                .accessibilityHidden(isFogged)
+                .allowsHitTesting(!isFogged)
 
             if isFogged {
                 ReadingCountdownOverlay(remaining: countdownRemaining)
             }
-
-            if showStopConfirm {
-                SessionStopModal(
-                    title: "Stop this reading?",
-                    confirmTitle: "Stop",
-                    dismissTitle: "Keep reading",
-                    onConfirm: {
-                        showStopConfirm = false
-                        Task { await stopSession() }
-                    },
-                    onDismiss: { showStopConfirm = false }
-                )
-                .transition(.opacity)
-            }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(showStopConfirm ? .hidden : .automatic, for: .navigationBar)
-        .background {
-            NavigationPopLock(isLocked: showStopConfirm)
-        }
         .background {
             CaretClock(
                 wordCount: passage.words.count,
@@ -249,14 +229,14 @@ struct ReadingSessionView: View {
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
         } trailing: {
             Button {
-                showStopConfirm = true
+                Task { await stopSession() }
             } label: {
-                Image(systemName: "stop.fill")
-                    .speechGlassCircle(tint: .red)
+                Image(systemName: "checkmark")
+                    .speechGlassCircle(tint: .accentColor)
             }
             .buttonStyle(.plain)
             .disabled(isFinishing)
-            .accessibilityLabel("Stop")
+            .accessibilityLabel("Done")
         }
         .opacity(isFinishing ? 0.7 : 1)
     }
