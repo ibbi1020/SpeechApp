@@ -15,6 +15,8 @@ struct ReadingSessionView: View {
     @State private var startTask: Task<Void, Never>?
     @State private var startPulse = false
     @State private var showStopConfirm = false
+    @State private var isStopping = false
+    @State private var pauseThrottle = TapThrottle()
 
     private var isLive: Bool {
         session?.phase == .running || session?.phase == .stalled
@@ -28,9 +30,18 @@ struct ReadingSessionView: View {
         session?.phase == .finishing
     }
 
-    /// Fog until listening starts (countdown or engine prep).
+    /// Fog until listening starts (countdown or engine prep), and while the report is built.
+    /// The fog lifts the moment the session is live, so the live controls are never shown
+    /// while the page underneath still refuses touches.
     private var isFogged: Bool {
-        countdownRemaining != nil || isPreparing
+        if isFinishing || isStopping { return true }
+        if isLive || isPaused { return false }
+        return countdownRemaining != nil || isPreparing
+    }
+
+    /// Live controls are visible and tappable only together.
+    private var controlsActive: Bool {
+        (isLive || isPaused) && !isFogged
     }
 
     private var fogBlurRadius: CGFloat {
@@ -71,6 +82,8 @@ struct ReadingSessionView: View {
                     confirmTitle: "Stop",
                     dismissTitle: "Keep reading",
                     onConfirm: {
+                        guard !isStopping else { return }
+                        isStopping = true
                         showStopConfirm = false
                         Task { await stopSession() }
                     },
@@ -83,7 +96,7 @@ struct ReadingSessionView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(showStopConfirm ? .hidden : .automatic, for: .navigationBar)
+        .navigationBarBackButtonHidden(showStopConfirm || isStopping)
         .background {
             NavigationPopLock(isLocked: showStopConfirm)
         }
@@ -107,6 +120,7 @@ struct ReadingSessionView: View {
             startTask = nil
             countdownRemaining = nil
             isPreparing = false
+            isStopping = false
             if let session, session.phase != .idle, session.phase != .finished {
                 Task { _ = await session.stop() }
             }
@@ -180,14 +194,12 @@ struct ReadingSessionView: View {
     private var actionRow: some View {
         if isLive || isPaused || isFinishing || isFogged {
             liveControlRow
-                .opacity(isLive || isPaused || isFinishing ? 1 : 0)
-                .allowsHitTesting(isLive || isPaused || isFinishing)
-                .accessibilityHidden(!(isLive || isPaused || isFinishing))
+                .opacity(controlsActive ? 1 : 0)
+                .allowsHitTesting(controlsActive && !showStopConfirm)
+                .accessibilityHidden(!controlsActive || showStopConfirm)
         } else {
             Button("Start") {
-                startPulse.toggle()
-                startTask?.cancel()
-                startTask = Task { await beginStart() }
+                startTapped()
             }
             .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
             .sensoryFeedback(.impact(flexibility: .soft), trigger: startPulse)
@@ -201,6 +213,7 @@ struct ReadingSessionView: View {
             animating: isLive
         ) {
             Button {
+                guard pauseThrottle.allow() else { return }
                 if isPaused {
                     session?.resume()
                 } else {
@@ -211,7 +224,7 @@ struct ReadingSessionView: View {
                     .speechGlassCircle()
             }
             .buttonStyle(.plain)
-            .disabled(isFinishing)
+            .sensoryFeedback(.selection, trigger: isPaused)
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
         } trailing: {
             Button {
@@ -221,17 +234,37 @@ struct ReadingSessionView: View {
                     .speechGlassCircle(tint: .red)
             }
             .buttonStyle(.plain)
-            .disabled(isFinishing)
             .accessibilityLabel("Stop")
         }
-        .opacity(isFinishing ? 0.7 : 1)
+    }
+
+    /// Fog and the first countdown digit go up on the tap itself; permission and engine
+    /// set-up happen behind it. A second tap while a start is in flight is ignored.
+    private func startTapped() {
+        guard startTask == nil else { return }
+        startPulse.toggle()
+        errorMessage = nil
+        #if os(iOS)
+        guard ProviderKeys.xai != nil else {
+            errorMessage = "Reading transcription isn’t set up in this build."
+            return
+        }
+        #endif
+        isPreparing = true
+        countdownRemaining = 3
+        startTask = Task {
+            await beginStart()
+            startTask = nil
+        }
     }
 
     private func beginStart() async {
-        errorMessage = nil
-
         #if os(iOS)
-        let granted = await requestMic()
+        defer {
+            isPreparing = false
+            countdownRemaining = nil
+        }
+        let granted = await micGranted()
         guard granted else {
             errorMessage = "Microphone permission is required."
             return
@@ -241,13 +274,7 @@ struct ReadingSessionView: View {
             return
         }
 
-        isPreparing = true
-        countdownRemaining = 3
         VoiceOrbPreloader.warmup()
-        defer {
-            isPreparing = false
-            countdownRemaining = nil
-        }
 
         let engine = GrokTranscriptionEngine(xaiAPIKey: xaiKey)
         model.speechEngineKind = .grokVoiceTranscribe
@@ -284,12 +311,22 @@ struct ReadingSessionView: View {
 
     private func stopSession() async {
         startTask?.cancel()
-        guard let session else { return }
+        startTask = nil
+        guard let session else {
+            isStopping = false
+            return
+        }
         let report = await session.stop()
         model.finish(report: report)
     }
 
     #if os(iOS)
+    /// Skips the permission round trip when access is already granted.
+    private func micGranted() async -> Bool {
+        if AVAudioApplication.shared.recordPermission == .granted { return true }
+        return await requestMic()
+    }
+
     private func requestMic() async -> Bool {
         await withCheckedContinuation { continuation in
             AVAudioApplication.requestRecordPermission { granted in
