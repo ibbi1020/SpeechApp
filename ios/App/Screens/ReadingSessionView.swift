@@ -66,11 +66,14 @@ struct ReadingSessionView: View {
                     Color.black.opacity(fogWashOpacity)
                         .allowsHitTesting(false)
                 }
+                // Only the passage goes untouchable under the fog. The stop card's backdrop
+                // already blocks touches, and toggling hit testing on the scroll view's bottom
+                // inset left the live Stop dead for seconds after "Keep reading".
+                .allowsHitTesting(!isFogged)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     bottomChrome
                 }
                 .accessibilityHidden(isFogged || showStopConfirm)
-                .allowsHitTesting(!isFogged && !showStopConfirm)
 
             if isFogged {
                 ReadingCountdownOverlay(remaining: countdownRemaining)
@@ -97,8 +100,7 @@ struct ReadingSessionView: View {
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
         // Own back button that stays in the bar, unchanged, while the stop card is up: removing
-        // or hiding the only bar item collapses the bar and shifts the page up, and toggling it
-        // disabled left the next tap on the live Stop dead. The card guards it instead.
+        // or hiding the only bar item collapses the bar and shifts the page up. The card guards it.
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -212,7 +214,6 @@ struct ReadingSessionView: View {
     private var actionRow: some View {
         if controlsActive {
             liveControlRow
-                .allowsHitTesting(!showStopConfirm)
                 .accessibilityHidden(showStopConfirm)
         } else if isLive || isPaused || isFinishing || isFogged {
             // Hold the bar's height under the fog so nothing moves when it lifts, but render no
