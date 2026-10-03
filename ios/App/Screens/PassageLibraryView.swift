@@ -7,6 +7,11 @@ struct PassageLibraryView: View {
 
     var body: some View {
         List {
+            if !model.isLoaded {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+            }
             ForEach(model.catalog.pickerPassages) { passage in
                 PassageLibraryRow(passage: passage) {
                     select(passage)

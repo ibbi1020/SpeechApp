@@ -60,31 +60,64 @@ struct SpeechPrimaryButtonStyle: ButtonStyle {
     var showsTint: Bool = false
 
     func makeBody(configuration: Configuration) -> some View {
-        let glass: Glass = showsTint
-            ? .regular.tint(isDestructive ? .red : tint).interactive()
-            : .regular.interactive()
-        configuration.label
-            .font(.headline)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .foregroundStyle(showsTint ? AnyShapeStyle(.white) : AnyShapeStyle(isDestructive ? Color.red : Color.primary))
-            .glassEffect(glass, in: .rect(cornerRadius: 14))
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .opacity(configuration.isPressed ? 0.92 : 1)
-            .animation(SpeechMotion.press, value: configuration.isPressed)
+        SpeechPillBody(
+            configuration: configuration,
+            font: .headline,
+            verticalPadding: 16,
+            foreground: showsTint ? AnyShapeStyle(.white) : AnyShapeStyle(isDestructive ? Color.red : Color.primary),
+            tint: showsTint ? (isDestructive ? .red : tint) : nil
+        )
     }
 }
 
 struct SpeechSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
+        SpeechPillBody(
+            configuration: configuration,
+            font: .body.weight(.semibold),
+            verticalPadding: 14,
+            foreground: AnyShapeStyle(.primary),
+            tint: nil
+        )
+    }
+}
+
+/// Full-width glass pill shared by the primary and secondary styles.
+/// - The whole pill is the hit area (`contentShape`), not just the label glyphs.
+/// - Press feedback comes only from interactive glass, so there is one press effect.
+/// - Disabled reads as disabled: dimmed, and the glass stops reacting.
+private struct SpeechPillBody: View {
+    @Environment(\.isEnabled) private var isEnabled
+    let configuration: ButtonStyleConfiguration
+    let font: Font
+    let verticalPadding: CGFloat
+    let foreground: AnyShapeStyle
+    let tint: Color?
+
+    private static var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 14, style: .continuous) }
+
+    var body: some View {
+        let base: Glass = if let tint { .regular.tint(tint) } else { .regular }
         configuration.label
-            .font(.body.weight(.semibold))
+            .font(font)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .foregroundStyle(.primary)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(SpeechMotion.press, value: configuration.isPressed)
+            .padding(.vertical, verticalPadding)
+            .foregroundStyle(foreground)
+            .contentShape(Self.shape)
+            .glassEffect(isEnabled ? base.interactive() : base, in: Self.shape)
+            .opacity(isEnabled ? 1 : 0.45)
+    }
+}
+
+/// Drops a second activation that lands within `interval` of the last accepted one.
+/// Used on toggles (Pause / Resume, Change topic) so a double tap does not undo itself.
+struct TapThrottle {
+    private var last: Date = .distantPast
+
+    mutating func allow(interval: TimeInterval = 0.35, now: Date = .now) -> Bool {
+        guard now.timeIntervalSince(last) >= interval else { return false }
+        last = now
+        return true
     }
 }
 
@@ -292,6 +325,8 @@ enum VoiceOrbPreloader {
 
         func park(_ webView: WKWebView) {
             guard webView === self.webView else { return }
+            // Stop the page's animation loops while it sits off screen; the borrower un-parks on its first push.
+            webView.evaluateJavaScript("window.orbSetParked&&window.orbSetParked(true);")
             attachPark()
             if webView.superview !== parkView {
                 parkView.addSubview(webView)
@@ -411,26 +446,21 @@ private struct OrbWebView: UIViewRepresentable {
             reloadOrb(in: webView, force: true)
         }
 
-        /// Pushes the latest signal once the page is ready.
-        /// Skips identical scripts; reloads at most once if WebGL reports a lost context.
+        /// Pushes the latest signal once the page is ready, in one script call.
+        /// Skips identical scripts; the same call reports a lost WebGL context, and the orb
+        /// reloads at most once for it.
         func push(to webView: WKWebView) {
             guard pageReady, !isReloading else { return }
-            webView.evaluateJavaScript("!!window.orbContextLost") { [weak self] result, _ in
-                guard let self else { return }
-                let contextLost = result as? Bool == true
-                if contextLost, !self.didReloadForContextLoss {
-                    self.reloadOrb(in: webView, force: false)
-                } else {
-                    self.applySignal(to: webView)
-                }
-            }
-        }
-
-        private func applySignal(to webView: WKWebView) {
             let script = makeScript()
             guard script != lastScript else { return }
             lastScript = script
-            webView.evaluateJavaScript(script)
+            let wrapped = "(function(){if(window.orbContextLost){return true;}window.orbSetParked&&window.orbSetParked(false);\(script)return false;})()"
+            webView.evaluateJavaScript(wrapped) { [weak self] result, _ in
+                guard let self else { return }
+                if result as? Bool == true, !self.didReloadForContextLoss {
+                    self.reloadOrb(in: webView, force: false)
+                }
+            }
         }
 
         private func reloadOrb(in webView: WKWebView, force: Bool) {

@@ -25,8 +25,13 @@ final class AppModel {
     var hostedFormat: HostedFormat = .conversation
 
     var route: Route = .home
-    var catalog = PassageCatalog.loadBundled()
-    var ledger = StruggleLedgerStore.loadOrCreate()
+    /// Filled off the main thread right after launch (JSON decode + file read), so the
+    /// first frame and the first taps never wait on disk.
+    var catalog = PassageCatalog(passages: [])
+    var ledger = StruggleLedger()
+    private(set) var isLoaded = false
+    private var ledgerChangedBeforeLoad = false
+    private var ledgerSave: Task<Void, Never>?
     var currentPassage: Passage?
     var speechEngineKind: LiveTranscriptionEngine.EngineKind = .unknown
     var account = AccountStore()
@@ -35,6 +40,21 @@ final class AppModel {
         used: 0,
         month: currentCalendarMonth()
     )
+
+    init() {
+        Task { await loadStores() }
+    }
+
+    private func loadStores() async {
+        let loaded = await Task.detached(priority: .userInitiated) {
+            (PassageCatalog.loadBundled(), StruggleLedgerStore.loadOrCreate())
+        }.value
+        catalog = loaded.0
+        if !ledgerChangedBeforeLoad {
+            ledger = loaded.1
+        }
+        isLoaded = true
+    }
 
     var featuredPassage: Passage? {
         NextPassagePicker.pick(catalog: catalog, ledger: ledger)
@@ -52,8 +72,15 @@ final class AppModel {
 
     func finish(report: SessionReport) {
         ledger.record(report: report)
-        StruggleLedgerStore.save(ledger)
+        if !isLoaded { ledgerChangedBeforeLoad = true }
         route = .report(report)
+        // Write the ledger off the main thread, one save after another.
+        let snapshot = ledger
+        let previous = ledgerSave
+        ledgerSave = Task.detached(priority: .utility) {
+            await previous?.value
+            StruggleLedgerStore.save(snapshot)
+        }
     }
 
     func finishConversation(report: ConversationReport, possibleMinorFlag: Bool = false) {

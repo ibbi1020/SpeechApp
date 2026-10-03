@@ -23,6 +23,8 @@ struct ConversationSessionView: View {
     @State private var canRetry = true
     @State private var countdownRemaining: Int?
     @State private var showStopConfirm = false
+    @State private var isStopping = false
+    @State private var pauseThrottle = TapThrottle()
     @State private var didRouteFinish = false
     @State private var eventPump: Task<Void, Never>?
     @State private var debugLoop: Task<Void, Never>?
@@ -118,6 +120,8 @@ struct ConversationSessionView: View {
                     confirmTitle: "Stop",
                     dismissTitle: "Keep talking",
                     onConfirm: {
+                        guard !isStopping else { return }
+                        isStopping = true
                         showStopConfirm = false
                         Task { await confirmStop() }
                     },
@@ -133,7 +137,9 @@ struct ConversationSessionView: View {
         .navigationTitle("Conversation")
         .navigationSubtitle("\(model.budget.label) used this month")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(showStopConfirm || showsFailure ? .hidden : .automatic, for: .navigationBar)
+        // Keep the bar during the stop modal (hiding it shifts the page); only the back button goes.
+        .toolbar(showsFailure ? .hidden : .automatic, for: .navigationBar)
+        .navigationBarBackButtonHidden(showStopConfirm || isStopping)
         .background {
             NavigationPopLock(isLocked: showStopConfirm)
         }
@@ -236,6 +242,7 @@ struct ConversationSessionView: View {
             animating: !isPaused
         ) {
             Button {
+                guard pauseThrottle.allow() else { return }
                 if isPaused {
                     session?.resume()
                 } else {
@@ -249,9 +256,11 @@ struct ConversationSessionView: View {
             .opacity(showPauseControl ? 1 : 0)
             .allowsHitTesting(showPauseControl)
             .accessibilityHidden(!showPauseControl)
+            .sensoryFeedback(.selection, trigger: isPaused)
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
         } trailing: {
             Button {
+                guard !isStopping else { return }
                 session?.requestStop()
                 showStopConfirm = true
             } label: {
@@ -261,6 +270,9 @@ struct ConversationSessionView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Stop")
         }
+        // While the stop card is up, only its two buttons exist for VoiceOver and UI tests.
+        .accessibilityHidden(showStopConfirm)
+        .allowsHitTesting(!showStopConfirm && !isStopping)
     }
 
     private func beginSession() async {
@@ -549,6 +561,7 @@ struct ConversationSessionView: View {
         debugLoop?.cancel()
         await session?.confirmStop()
         routeIfFinished()
+        if !didRouteFinish { isStopping = false }
     }
 
     private func routeIfFinished() {

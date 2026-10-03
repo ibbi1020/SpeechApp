@@ -38,6 +38,35 @@
       window.orbContextLost = false;
     }, true);
   </script>
+  <script>
+    // Parked off screen (between sessions) the page holds every animation frame so the
+    // WebGL loops stop drawing. Swift un-parks on its first signal push.
+    (function () {
+      var raf = window.requestAnimationFrame.bind(window);
+      var caf = window.cancelAnimationFrame.bind(window);
+      var held = new Map();
+      var nextHeld = -1;
+      window.orbParked = true;
+      window.requestAnimationFrame = function (cb) {
+        if (window.orbParked) { var id = nextHeld--; held.set(id, cb); return id; }
+        return raf(cb);
+      };
+      window.cancelAnimationFrame = function (id) {
+        if (id < 0) { held.delete(id); return; }
+        caf(id);
+      };
+      window.orbSetParked = function (parked) {
+        parked = !!parked;
+        if (window.orbParked === parked) return;
+        window.orbParked = parked;
+        if (!parked) {
+          var pending = Array.from(held.values());
+          held.clear();
+          pending.forEach(function (cb) { raf(cb); });
+        }
+      };
+    })();
+  </script>
   <script src="voice-orb.js"></script>
 </body>
 </html>

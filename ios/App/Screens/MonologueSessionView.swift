@@ -25,6 +25,11 @@ struct MonologueSessionView: View {
     @State private var audioTask: Task<Void, Never>?
     @State private var speechEnergy: Float = 0
     @State private var isStartingListen = false
+    /// Background engine / mic shutdown after Done or Leave. The next take waits on it.
+    @State private var pendingStop: Task<Void, Never>?
+    @State private var isEnding = false
+    @State private var pauseThrottle = TapThrottle()
+    @State private var topicThrottle = TapThrottle()
     @State private var notes: [SpokenNote] = []
     @State private var noteDraft = ""
     @State private var isAddingNote = false
@@ -68,12 +73,14 @@ struct MonologueSessionView: View {
                     confirmTitle: "Leave",
                     dismissTitle: "Keep going",
                     onConfirm: {
+                        guard !isEnding else { return }
+                        isEnding = true
                         showLeaveConfirm = false
-                        Task {
-                            await stopListen()
-                            session?.confirmLeave()
-                            routeIfFinished()
-                        }
+                        // Route first; the engine and mic wind down behind the next screen.
+                        detachListen()
+                        session?.confirmLeave()
+                        routeIfFinished()
+                        isEnding = false
                     },
                     onDismiss: { showLeaveConfirm = false }
                 )
@@ -86,15 +93,19 @@ struct MonologueSessionView: View {
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .toolbar(showLeaveConfirm ? .hidden : .automatic, for: .navigationBar)
+        // The bar stays up during the leave card (hiding it shifts the page); only Back goes.
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    handleBack()
-                } label: {
-                    Image(systemName: "chevron.left")
+            if !showLeaveConfirm {
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        handleBack()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Back")
                 }
-                .accessibilityLabel("Back")
             }
         }
         .background {
@@ -109,7 +120,7 @@ struct MonologueSessionView: View {
                 let wasTaking = session?.phase == .taking
                 await session?.tick()
                 if wasTaking, session?.phase != .taking {
-                    await stopListen()
+                    detachListen()
                 }
                 routeIfFinished()
             }
@@ -126,7 +137,7 @@ struct MonologueSessionView: View {
             startTask?.cancel()
             startTask = nil
             // Swipe-back still pops the screen even with the back button hidden.
-            Task { await stopListen() }
+            detachListen()
         }
     }
 
@@ -202,13 +213,17 @@ struct MonologueSessionView: View {
                         .textSelection(.enabled)
 
                     if session.phase == .planning {
-                        Button("Change topic") {
+                        Button {
+                            guard topicThrottle.allow() else { return }
                             session.skipTopic()
+                        } label: {
+                            Text("Change topic")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .frame(minHeight: 44, alignment: .leading)
                     }
                 }
 
@@ -263,6 +278,7 @@ struct MonologueSessionView: View {
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Remove note")
@@ -284,6 +300,7 @@ struct MonologueSessionView: View {
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -329,12 +346,9 @@ struct MonologueSessionView: View {
                 .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
             } else {
                 Button("I’m ready") {
-                    dismissKeyboardImmediately()
-                    startTask?.cancel()
-                    startTask = Task { await beginListen(session) }
+                    readyTapped(session)
                 }
                 .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
-                .disabled(isStartingListen)
             }
         }
         .padding(.horizontal, SpeechSpacing.page)
@@ -396,6 +410,7 @@ struct MonologueSessionView: View {
             animating: session.phase == .taking
         ) {
             Button {
+                guard pauseThrottle.allow() else { return }
                 if session.phase == .paused {
                     session.resume()
                 } else {
@@ -406,14 +421,17 @@ struct MonologueSessionView: View {
                     .speechGlassCircle()
             }
             .buttonStyle(.plain)
+            .sensoryFeedback(.selection, trigger: session.phase == .paused)
             .accessibilityLabel(session.phase == .paused ? "Resume" : "Pause")
         } trailing: {
             Button {
-                Task {
-                    await stopListen()
-                    session.done()
-                    routeIfFinished()
-                }
+                guard !isEnding else { return }
+                isEnding = true
+                // Stop feeding the take, move on, and let the engine and mic close in the background.
+                detachListen()
+                session.done()
+                routeIfFinished()
+                isEnding = false
             } label: {
                 Image(systemName: "checkmark")
                     .speechGlassCircle(tint: .accentColor)
@@ -421,6 +439,8 @@ struct MonologueSessionView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Done")
         }
+        .accessibilityHidden(showLeaveConfirm)
+        .allowsHitTesting(!showLeaveConfirm)
         .padding(.horizontal, SpeechSpacing.page)
         .padding(.top, 12)
         .padding(.bottom, 16)
@@ -436,7 +456,9 @@ struct MonologueSessionView: View {
                 .foregroundStyle(.secondary)
 
             Button("Back to home") {
-                model.goHome()
+                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
+                    model.goHome()
+                }
             }
             .buttonStyle(SpeechSecondaryButtonStyle())
         }
@@ -482,12 +504,34 @@ struct MonologueSessionView: View {
 
     // MARK: - Live capture
 
+    /// Fog and the first digit go up on the tap; the previous take's shutdown, permission and
+    /// engine set-up run behind it. A second tap while a start is in flight is ignored.
+    private func readyTapped(_ session: MonologueSession) {
+        dismissKeyboardImmediately()
+        guard startTask == nil, !isStartingListen else { return }
+        listenError = nil
+        #if os(iOS)
+        guard ProviderKeys.xai != nil else {
+            listenError = "Topic-talk transcription isn’t set up in this build."
+            return
+        }
+        #endif
+        isStartingListen = true
+        isPreparing = true
+        countdownRemaining = 3
+        startTask = Task {
+            await beginListen(session)
+            startTask = nil
+        }
+    }
+
     /// A 3-2-1 plays after the Grok relay is ready, then `session.ready()` starts the take clock.
     private func beginListen(_ session: MonologueSession) async {
-        dismissKeyboardImmediately()
-        guard !isStartingListen else { return }
-        isStartingListen = true
-        defer { isStartingListen = false }
+        defer {
+            isStartingListen = false
+            isPreparing = false
+            countdownRemaining = nil
+        }
 
         listenError = nil
         // New take — reset accumulation so take-1 speech never leaks into take 2/3.
@@ -497,7 +541,7 @@ struct MonologueSessionView: View {
         await stopListen()
 
         #if os(iOS)
-        let granted = await requestMic()
+        let granted = await micGranted()
         guard granted else {
             listenError = "Microphone permission is required."
             return
@@ -507,13 +551,7 @@ struct MonologueSessionView: View {
             return
         }
 
-        isPreparing = true
-        countdownRemaining = 3
         VoiceOrbPreloader.warmup()
-        defer {
-            isPreparing = false
-            countdownRemaining = nil
-        }
 
         let engine = GrokTranscriptionEngine(xaiAPIKey: xaiKey)
         engine.setContextualPhrases(Self.keyterms(prompt: session.prompt, reuseLine: session.reuseLine))
@@ -577,7 +615,7 @@ struct MonologueSessionView: View {
 
                 if session.phase == .crisis {
                     // Don't wait for the next timer tick — stop and route now.
-                    await stopListen()
+                    detachListen()
                     routeIfFinished()
                     break
                 }
@@ -607,18 +645,38 @@ struct MonologueSessionView: View {
     /// Cancels the pump Tasks and stops engine/source. Never stopped on user Pause —
     /// resume continues the same engine.
     private func stopListen() async {
+        detachListen()
+        await pendingStop?.value
+    }
+
+    /// Cuts the take off right away (no more words or levels reach the session), then closes
+    /// the engine and mic in the background so Done / Leave can move on this frame.
+    private func detachListen() {
         audioTask?.cancel()
         audioTask = nil
         transcriptTask?.cancel()
         transcriptTask = nil
-        await liveEngine?.stop()
-        await liveSource?.stop()
+        let engine = liveEngine
+        let source = liveSource
         liveEngine = nil
         liveSource = nil
         speechEnergy = 0
+        guard engine != nil || source != nil else { return }
+        let previous = pendingStop
+        pendingStop = Task {
+            await previous?.value
+            await engine?.stop()
+            await source?.stop()
+        }
     }
 
     #if os(iOS)
+    /// Skips the permission round trip when access is already granted.
+    private func micGranted() async -> Bool {
+        if AVAudioApplication.shared.recordPermission == .granted { return true }
+        return await requestMic()
+    }
+
     private func requestMic() async -> Bool {
         await withCheckedContinuation { continuation in
             AVAudioApplication.requestRecordPermission { granted in
