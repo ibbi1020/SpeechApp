@@ -96,7 +96,25 @@ struct ReadingSessionView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(showStopConfirm || isStopping)
+        // Own back button so the stop card can take it away without the empty bar collapsing
+        // (hiding the system one shifted the page up). Swipe-back stays on via NavigationPopLock.
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            if !showStopConfirm && !isStopping {
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
+                            model.chooseAnotherPassage()
+                        }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Back")
+                }
+            }
+        }
         .background {
             NavigationPopLock(isLocked: showStopConfirm)
         }
