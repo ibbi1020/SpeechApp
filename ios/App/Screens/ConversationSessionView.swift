@@ -98,7 +98,7 @@ struct ConversationSessionView: View {
                         Color.black.opacity(fogWashOpacity)
                             .allowsHitTesting(false)
                     }
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                    .safeAreaBar(edge: .bottom, spacing: 0) {
                         bottomChrome
                     }
                     .accessibilityHidden(isFogged || showStopConfirm)
@@ -130,9 +130,9 @@ struct ConversationSessionView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: phase)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
-        .navigationTitle("Conversation")
+        .speechPageTitle("Conversation")
+        .speechBottomBlur(bar: false)
         .navigationSubtitle("\(model.budget.label) used this month")
-        .navigationBarTitleDisplayMode(.inline)
         .toolbar(showStopConfirm || showsFailure ? .hidden : .automatic, for: .navigationBar)
         .background {
             NavigationPopLock(isLocked: showStopConfirm)

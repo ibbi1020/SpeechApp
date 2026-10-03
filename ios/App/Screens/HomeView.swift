@@ -28,8 +28,8 @@ struct HomeView: View {
                 .padding(.bottom, 40)
             }
         }
-        .navigationTitle("Orator")
-        .navigationBarTitleDisplayMode(.large)
+        .speechPageTitle("Orator", large: true)
+        .speechBottomBlur()
     }
 
     private func formatRow(
@@ -51,6 +51,6 @@ struct HomeView: View {
         .buttonStyle(.plain)
         .disabled(disabled)
         .opacity(disabled ? 0.45 : 1)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 }

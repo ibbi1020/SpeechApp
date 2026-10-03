@@ -36,8 +36,8 @@ struct ConversationReportView: View {
                 .padding(.top, 20)
             }
         }
-        .navigationTitle("Your conversation")
-        .navigationBarTitleDisplayMode(.inline)
+        .speechPageTitle("Your conversation")
+        .speechBottomBlur()
     }
 
     private var linesCard: some View {
@@ -67,10 +67,9 @@ struct ConversationReportView: View {
         let url = URL(fileURLWithPath: path)
         VStack(alignment: .leading, spacing: 12) {
             Text("Diagnostics")
-                .font(.footnote.weight(.semibold))
+                .speechType(.label)
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
-                .tracking(0.6)
 
             DisclosureGroup {
                 VStack(alignment: .leading, spacing: 12) {

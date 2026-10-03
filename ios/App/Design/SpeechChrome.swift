@@ -51,6 +51,60 @@ struct SpeechScreenBackground: View {
     }
 }
 
+/// Soft Gaussian where content meets the bottom edge.
+/// `ScrollEdgeEffectStyle.soft` is the system effect: sharper farther up,
+/// blurrier at the edge. Pass `bar: false` when the screen already has a bottom bar.
+struct SpeechSoftEdge: ViewModifier {
+    var showsBar: Bool
+
+    func body(content: Content) -> some View {
+        if showsBar {
+            content
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
+                .safeAreaBar(edge: .bottom, spacing: 0) {
+                    Color.clear
+                        .frame(height: 12)
+                        .accessibilityHidden(true)
+                }
+        } else {
+            content.scrollEdgeEffectStyle(.soft, for: .bottom)
+        }
+    }
+}
+
+extension View {
+    func speechBottomBlur(bar: Bool = true) -> some View {
+        modifier(SpeechSoftEdge(showsBar: bar))
+    }
+}
+
+/// White pill used to start an exercise. Measured from the reference:
+/// 61pt tall, capsule ends, black SF Pro at 17pt medium.
+enum SpeechStartMetrics {
+    static let height: CGFloat = 61
+    static let labelSize: CGFloat = 17
+    /// Reference sits 36pt from the screen edge. Page chrome is already 24pt.
+    static let extraInset: CGFloat = 12
+}
+
+struct SpeechStartButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: SpeechStartMetrics.labelSize, weight: .medium))
+            .foregroundStyle(Color.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: SpeechStartMetrics.height)
+            .background(Color.white, in: Capsule())
+            .padding(.horizontal, SpeechStartMetrics.extraInset)
+            .contentShape(Capsule())
+            .opacity(isEnabled ? (configuration.isPressed ? 0.92 : 1) : 0.45)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
+            .animation(SpeechMotion.press, value: configuration.isPressed)
+    }
+}
+
 struct SpeechPrimaryButtonStyle: ButtonStyle {
     var tint: Color = .accentColor
     var isDestructive: Bool = false
@@ -66,7 +120,7 @@ struct SpeechPrimaryButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .foregroundStyle(showsTint ? AnyShapeStyle(.white) : AnyShapeStyle(isDestructive ? Color.red : Color.primary))
-            .glassEffect(glass, in: .rect(cornerRadius: 14))
+            .glassEffect(glass, in: .capsule)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .opacity(configuration.isPressed ? 0.92 : 1)
             .animation(SpeechMotion.press, value: configuration.isPressed)
@@ -80,7 +134,7 @@ struct SpeechSecondaryButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .foregroundStyle(.primary)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+            .glassEffect(.regular.interactive(), in: .capsule)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(SpeechMotion.press, value: configuration.isPressed)
     }
@@ -256,12 +310,14 @@ enum VoiceOrbPreloader {
         Host.shared.warmup()
     }
 
-    fileprivate static func borrow() -> WKWebView {
+    fileprivate static func borrow() -> (webView: WKWebView, generation: Int) {
         Host.shared.borrow()
     }
 
-    fileprivate static func park(_ webView: WKWebView) {
-        Host.shared.park(webView)
+    /// Parks only if `generation` is still the latest borrow. A stale dismantle
+    /// must not pull the web view off screen after a newer orb has taken it.
+    fileprivate static func park(_ webView: WKWebView, generation: Int) {
+        Host.shared.park(webView, generation: generation)
     }
 
     fileprivate static func loadOrbHTML(into webView: WKWebView) {
@@ -277,6 +333,7 @@ enum VoiceOrbPreloader {
             frame: CGRect(x: 0, y: 0, width: VoiceOrb.box, height: VoiceOrb.box)
         )
         private var webView: WKWebView?
+        private var generation = 0
 
         func warmup() {
             _ = preparedWebView()
@@ -287,14 +344,19 @@ enum VoiceOrbPreloader {
             }
         }
 
-        func borrow() -> WKWebView {
+        func borrow() -> (webView: WKWebView, generation: Int) {
             let webView = preparedWebView()
             webView.removeFromSuperview()
-            return webView
+            generation += 1
+            return (webView, generation)
         }
 
-        func park(_ webView: WKWebView) {
-            guard webView === self.webView else { return }
+        func park(_ webView: WKWebView, generation: Int) {
+            // SwiftUI can dismantle the previous representable after the next
+            // one has already borrowed this view. Parking then hides the orb
+            // for the rest of the take, and a reload only updates the parked copy.
+            guard webView === self.webView, generation == self.generation else { return }
+            webView.navigationDelegate = nil
             attachPark()
             if webView.superview !== parkView {
                 parkView.addSubview(webView)
@@ -366,7 +428,9 @@ private struct OrbWebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let webView = VoiceOrbPreloader.borrow()
+        let borrowed = VoiceOrbPreloader.borrow()
+        context.coordinator.borrowGeneration = borrowed.generation
+        let webView = borrowed.webView
         webView.navigationDelegate = context.coordinator
         if webView.url != nil, !webView.isLoading {
             context.coordinator.markReady()
@@ -384,8 +448,7 @@ private struct OrbWebView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
-        webView.navigationDelegate = nil
-        VoiceOrbPreloader.park(webView)
+        VoiceOrbPreloader.park(webView, generation: coordinator.borrowGeneration)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
@@ -393,11 +456,16 @@ private struct OrbWebView: UIViewRepresentable {
         var inputVolume = 0.0
         var outputVolume = 0.0
         var paused = false
+        var borrowGeneration = 0
         private var pageReady = false
         private var lastScript: String?
         private var isReloading = false
-        /// One HTML reload after WebGL dies (often when the WebRTC audio unit starts).
-        private var didReloadForContextLoss = false
+        /// How many times this appearance has reloaded after WebGL died.
+        /// A take loses the context twice: once when the shared web view is
+        /// mounted for the countdown, again when the mic audio session starts.
+        /// One reload left the orb blank for the rest of the round.
+        private var contextLossReloads = 0
+        private static let maxContextLossReloads = 3
 
         func markReady() {
             pageReady = true
@@ -415,13 +483,14 @@ private struct OrbWebView: UIViewRepresentable {
         }
 
         /// Pushes the latest signal once the page is ready.
-        /// Skips identical scripts; reloads at most once if WebGL reports a lost context.
+        /// Skips identical scripts. Reloads a few times if WebGL reports a lost
+        /// context, then stops so a dead canvas cannot reload forever.
         func push(to webView: WKWebView) {
             guard pageReady, !isReloading else { return }
             webView.evaluateJavaScript("!!window.orbContextLost") { [weak self] result, _ in
                 guard let self else { return }
                 let contextLost = result as? Bool == true
-                if contextLost, !self.didReloadForContextLoss {
+                if contextLost, self.contextLossReloads < Self.maxContextLossReloads {
                     self.reloadOrb(in: webView, force: false)
                 } else {
                     self.applySignal(to: webView)
@@ -438,11 +507,11 @@ private struct OrbWebView: UIViewRepresentable {
 
         private func reloadOrb(in webView: WKWebView, force: Bool) {
             guard !isReloading else { return }
-            guard force || !didReloadForContextLoss else { return }
+            guard force || contextLossReloads < Self.maxContextLossReloads else { return }
             isReloading = true
             pageReady = false
             lastScript = nil
-            if !force { didReloadForContextLoss = true }
+            if !force { contextLossReloads += 1 }
             VoiceOrbPreloader.loadOrbHTML(into: webView)
         }
 

@@ -22,6 +22,8 @@ targets:
     platform: iOS
     sources:
       - path: App
+      - path: ../font/InstrumentSerif-Regular.ttf
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.speechapp.prototype.format1
@@ -48,6 +50,8 @@ targets:
         NSLocalNetworkUsageDescription: Orator connects to your Mac on the local network to transcribe reading and topic talks.
         UIBackgroundModes:
           - audio
+        UIAppFonts:
+          - InstrumentSerif-Regular.ttf
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

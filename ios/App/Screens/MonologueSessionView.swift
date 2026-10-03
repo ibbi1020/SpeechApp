@@ -58,33 +58,39 @@ struct MonologueSessionView: View {
             SpeechScreenBackground()
             content
 
-            if isFogged {
-                ReadingCountdownOverlay(remaining: countdownRemaining, instruction: "")
-            }
+            // Fog and the leave modal animate on their own. A spring on the
+            // whole screen also springs the orb bar, and a WebGL view laid out
+            // at zero height stays blank for the rest of the take.
+            ZStack {
+                if isFogged {
+                    ReadingCountdownOverlay(remaining: countdownRemaining, instruction: "")
+                }
 
-            if showLeaveConfirm {
-                SessionStopModal(
-                    title: "Leave this talk?",
-                    confirmTitle: "Leave",
-                    dismissTitle: "Keep going",
-                    onConfirm: {
-                        showLeaveConfirm = false
-                        Task {
-                            await stopListen()
-                            session?.confirmLeave()
-                            routeIfFinished()
-                        }
-                    },
-                    onDismiss: { showLeaveConfirm = false }
-                )
-                .transition(.opacity)
+                if showLeaveConfirm {
+                    SessionStopModal(
+                        title: "Leave this talk?",
+                        confirmTitle: "Leave",
+                        dismissTitle: "Keep going",
+                        onConfirm: {
+                            showLeaveConfirm = false
+                            Task {
+                                await stopListen()
+                                session?.confirmLeave()
+                                routeIfFinished()
+                            }
+                        },
+                        onDismiss: { showLeaveConfirm = false }
+                    )
+                    .transition(.opacity)
+                }
             }
+            .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
+            .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showLeaveConfirm)
+            .allowsHitTesting(isFogged || showLeaveConfirm)
         }
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: session?.phase)
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showLeaveConfirm)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
+        .speechBottomBlur(bar: false)
         .navigationBarBackButtonHidden(true)
         .toolbar(showLeaveConfirm ? .hidden : .automatic, for: .navigationBar)
         .toolbar {
@@ -152,7 +158,9 @@ struct MonologueSessionView: View {
                 Color.black.opacity(fogWashOpacity)
                     .allowsHitTesting(false)
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: session.phase)
+            .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
+            .safeAreaBar(edge: .bottom, spacing: 0) {
                 sessionChrome(session, live: live)
             }
             .accessibilityHidden(isFogged || showLeaveConfirm)
@@ -173,12 +181,11 @@ struct MonologueSessionView: View {
 
     @ViewBuilder
     private func sessionChrome(_ session: MonologueSession, live: Bool) -> some View {
-        // Mount the orb during the 3-2-1, same as Reading, so the WebGL view
-        // has a real frame before the take. Opacity 0 drops the context.
-        if live || isFogged {
-            liveChrome(session, live: live)
-                .allowsHitTesting(live)
-                .accessibilityHidden(!live)
+        // Mount the orb only once the take is up. The 3-2-1 still shows the
+        // planning page; swapping that page out from under a live WebGL view
+        // is what blanks the orb. Format 2 inserts the orb once, after the countdown.
+        if live {
+            liveChrome(session, live: true)
         } else if session.phase == .planning || session.phase == .between {
             planningChrome(session)
                 .blur(radius: fogBlurRadius)
@@ -230,17 +237,17 @@ struct MonologueSessionView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollDismissesKeyboard(.interactively)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
     }
 
     private func stageDuration(_ minutes: Int) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text("\(minutes)")
-                .font(.system(size: stageDurationSize, weight: .semibold))
+                .font(.custom(SpeechType.instrumentSerif, size: stageDurationSize))
+                .tracking(stageDurationSize * SpeechType.metrics(.h1).trackingEm)
                 .monospacedDigit()
                 .contentTransition(reduceMotion ? .opacity : .numericText(countsDown: true))
             Text(minutes == 1 ? "minute" : "minutes")
-                .font(.title3.weight(.medium))
+                .speechType(.h3)
                 .foregroundStyle(.secondary)
         }
         .foregroundStyle(.primary)
@@ -337,7 +344,7 @@ struct MonologueSessionView: View {
                     startTask?.cancel()
                     startTask = Task { await beginListen(session) }
                 }
-                .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
+                .buttonStyle(SpeechStartButtonStyle())
                 .disabled(isStartingListen)
             }
         }
@@ -389,7 +396,7 @@ struct MonologueSessionView: View {
         .padding(.bottom, 16)
     }
 
-    /// Phase springs shrink this bar to zero and leave the WebGL orb blank.
+    /// Keep this bar at its real size. A phase spring that shrinks it leaves the WebGL orb blank.
     private func orbBar(session: MonologueSession, live: Bool) -> some View {
         SessionOrbBar(
             phase: .monologue(isPreparing: !live, phase: session.phase),
@@ -422,6 +429,7 @@ struct MonologueSessionView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Done")
         }
+        .fixedSize(horizontal: false, vertical: true)
         .transaction { $0.disablesAnimations = true }
     }
 

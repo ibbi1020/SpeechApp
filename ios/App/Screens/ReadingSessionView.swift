@@ -58,13 +58,12 @@ struct ReadingSessionView: View {
             SpeechScreenBackground()
 
             passageScroll
-                .scrollEdgeEffectStyle(.soft, for: .bottom)
                 .blur(radius: fogBlurRadius)
                 .overlay {
                     Color.black.opacity(fogWashOpacity)
                         .allowsHitTesting(false)
                 }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
+                .safeAreaBar(edge: .bottom, spacing: 0) {
                     bottomChrome
                 }
                 .accessibilityHidden(isFogged)
@@ -77,6 +76,7 @@ struct ReadingSessionView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
+        .speechBottomBlur(bar: false)
         .background {
             CaretClock(
                 wordCount: passage.words.count,
@@ -153,7 +153,7 @@ struct ReadingSessionView: View {
         VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(passage.title)
-                        .font(.system(.title2, design: .serif).weight(.semibold))
+                        .speechType(.h2)
                         .foregroundStyle(isFogged ? .tertiary : .primary)
 
                     Text(passage.durationLabel)
@@ -203,7 +203,7 @@ struct ReadingSessionView: View {
                 startTask?.cancel()
                 startTask = Task { await beginStart() }
             }
-            .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
+            .buttonStyle(SpeechStartButtonStyle())
             .sensoryFeedback(.impact(flexibility: .soft), trigger: startPulse)
         }
     }
@@ -327,7 +327,8 @@ private struct ReadingFollowAlong: View {
     let dimmed: Bool
 
     var body: some View {
-        WordWrapLayout(spacing: 8, lineSpacing: 14) {
+        // Was 14. About 20% less gap between lines. The 22pt face is unchanged.
+        WordWrapLayout(spacing: 8, lineSpacing: 11) {
             ForEach(words) { word in
                 let isCurrent = word.id == currentWordID
                 Text(word.surface)
