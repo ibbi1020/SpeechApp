@@ -9,8 +9,6 @@ enum SpeechMotion {
     static let settle = Animation.spring(response: 0.35, dampingFraction: 1.0)
     /// Slightly snappier press / highlight.
     static let press = Animation.spring(response: 0.22, dampingFraction: 1.0)
-    /// Karaoke cursor handoff — short ease, not a bouncy spring (CHI flicker risk).
-    static let follow = Animation.easeOut(duration: 0.08)
     /// Passage auto-scroll — reading-app ease, not a snap.
     static let scroll = Animation.easeInOut(duration: 0.45)
 }

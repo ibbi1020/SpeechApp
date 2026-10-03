@@ -25,6 +25,8 @@ public final class ReadingSession {
     public private(set) var phase: Phase = .idle
     public private(set) var registrationHealth: RegistrationHealth = .idle
     public private(set) var currentWordID: String?
+    /// Latest aligner index for the live underline. The report still uses `currentWordID`.
+    public private(set) var caretAnchor = CaretAnchor(index: 0, speechEnd: nil, hostTime: 0)
     /// Script words matched by the latest volatile hypothesis (not yet finalized).
     public private(set) var provisionalMatchedIDs: [String] = []
     /// Committed matches — persistent “optimistic success” trail behind the caret.
@@ -136,6 +138,7 @@ public final class ReadingSession {
         lastRawHypothesis = ""
         let firstID = passage.words.first?.id
         currentWordID = firstID
+        caretAnchor = CaretAnchor(index: 0, speechEnd: nil, hostTime: 0)
         let diag = SessionDiagnostics(passageID: passage.id)
         diagnostics = diag
         diagnosticsLogURL = diag.logFileURL
@@ -421,6 +424,8 @@ public final class ReadingSession {
             noteOccupancyAdvance()
         }
 
+        publishFollowAnchor(tokens: update.tokens)
+
         diagnostics?.noteASRUpdate(
             engineKind: update.engineKind.rawValue,
             finalCount: finals.count,
@@ -506,6 +511,18 @@ public final class ReadingSession {
     private func refreshContextWindow() {
         engine?.setContextualPhrases(
             Self.contextualPhrases(for: passage, fromIndex: aligner.scriptCursor)
+        )
+    }
+
+    /// Hand the underline a newer script index. A lower index is ignored.
+    private func publishFollowAnchor(tokens: [SpokenToken]) {
+        guard let id = currentWordID,
+              let index = passage.words.firstIndex(where: { $0.id == id }) else { return }
+        guard index > caretAnchor.index else { return }
+        caretAnchor = CaretAnchor(
+            index: index,
+            speechEnd: tokens.compactMap(\.endTime).max(),
+            hostTime: ProcessInfo.processInfo.systemUptime
         )
     }
 

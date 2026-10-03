@@ -15,6 +15,10 @@ struct ReadingSessionView: View {
     @State private var startTask: Task<Void, Never>?
     @State private var startPulse = false
     @State private var showStopConfirm = false
+    @State private var followDriver = LiveCaretDriver()
+    @State private var displayIndex = 0
+    @State private var wordTops: [String: CGFloat] = [:]
+    @State private var lastScrolledLine: CGFloat?
 
     private var isLive: Bool {
         session?.phase == .running || session?.phase == .stalled
@@ -35,6 +39,11 @@ struct ReadingSessionView: View {
 
     private var fogBlurRadius: CGFloat {
         isFogged && !reduceTransparency ? SpeechCountdown.fogBlurRadius : 0
+    }
+
+    private var displayWordID: String? {
+        guard isLive, passage.words.indices.contains(displayIndex) else { return nil }
+        return passage.words[displayIndex].id
     }
 
     private var fogWashOpacity: Double {
@@ -87,7 +96,18 @@ struct ReadingSessionView: View {
         .background {
             NavigationPopLock(isLocked: showStopConfirm)
         }
+        .background {
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isLive)) { context in
+                Color.clear
+                    .onChange(of: context.date) { _, _ in
+                        stepFollowCaret()
+                    }
+            }
+        }
         .onAppear {
+            if followDriver.follow.wordCount != passage.words.count {
+                followDriver.reset(wordCount: passage.words.count)
+            }
             VoiceOrbPreloader.warmup()
             if session == nil {
                 session = ReadingSession(
@@ -118,18 +138,43 @@ struct ReadingSessionView: View {
             ScrollView {
                 passageBody
             }
-            .onChange(of: session?.currentWordID) { _, wordID in
-                guard isLive, let wordID else { return }
-                guard let index = passage.words.firstIndex(where: { $0.id == wordID }), index >= 12 else {
-                    return
-                }
-                if reduceMotion {
-                    proxy.scrollTo(wordID, anchor: .center)
-                } else {
-                    withAnimation(SpeechMotion.scroll) {
-                        proxy.scrollTo(wordID, anchor: .center)
-                    }
-                }
+            .coordinateSpace(.named("reading-passage"))
+            .onPreferenceChange(WordLineTops.self) { tops in
+                guard tops != wordTops else { return }
+                wordTops = tops
+                scrollIfLineChanged(proxy: proxy)
+            }
+            .onChange(of: displayIndex) { _, _ in
+                scrollIfLineChanged(proxy: proxy)
+            }
+        }
+    }
+
+    private func stepFollowCaret() {
+        guard isLive, let session else { return }
+        let index = followDriver.step(
+            anchor: session.caretAnchor,
+            speaking: session.isHearingSpeech,
+            reduceMotion: reduceMotion
+        )
+        if index != displayIndex {
+            displayIndex = index
+        }
+    }
+
+    /// Scroll when the underlined word moves to another line, not on every word.
+    private func scrollIfLineChanged(proxy: ScrollViewProxy) {
+        guard isLive, passage.words.indices.contains(displayIndex), displayIndex >= 12 else { return }
+        let id = passage.words[displayIndex].id
+        guard let top = wordTops[id] else { return }
+        let line = (top / 8).rounded()
+        guard line != lastScrolledLine else { return }
+        lastScrolledLine = line
+        if reduceMotion {
+            proxy.scrollTo(id, anchor: .center)
+        } else {
+            withAnimation(SpeechMotion.scroll) {
+                proxy.scrollTo(id, anchor: .center)
             }
         }
     }
@@ -148,8 +193,7 @@ struct ReadingSessionView: View {
 
                 ReadingFollowAlong(
                     words: passage.words,
-                    currentWordID: isLive ? session?.currentWordID : nil,
-                    reduceMotion: reduceMotion,
+                    currentWordID: displayWordID,
                     dimmed: isFogged
                 )
                 .padding(.top, 28)
@@ -268,6 +312,9 @@ struct ReadingSessionView: View {
             countdownRemaining = nil
             try await prepareTask.value
             try Task.checkCancellation()
+            followDriver.reset(wordCount: passage.words.count)
+            displayIndex = 0
+            lastScrolledLine = nil
             let source = MicAudioSource()
             try await session?.start(
                 audioSource: source,
@@ -307,7 +354,6 @@ struct ReadingSessionView: View {
 private struct ReadingFollowAlong: View {
     let words: [ScriptWord]
     let currentWordID: String?
-    let reduceMotion: Bool
     let dimmed: Bool
 
     var body: some View {
@@ -315,17 +361,59 @@ private struct ReadingFollowAlong: View {
             ForEach(words) { word in
                 let isCurrent = word.id == currentWordID
                 Text(word.surface)
-                    .font(.system(size: 22, weight: isCurrent ? .semibold : .regular, design: .serif))
+                    .font(.system(size: 22, weight: .regular, design: .serif))
                     .foregroundStyle(dimmed ? .tertiary : .primary)
                     .underline(isCurrent, color: dimmed ? Color.secondary : Color.primary)
                     .id(word.id)
                     .accessibilityAddTraits(isCurrent ? .isSelected : [])
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: WordLineTops.self,
+                                value: [word.id: proxy.frame(in: .named("reading-passage")).minY]
+                            )
+                        }
+                    }
             }
         }
-        .animation(reduceMotion ? nil : SpeechMotion.follow, value: currentWordID)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(words.map(\.surface).joined(separator: " "))
+    }
+}
+
+/// Y position of each passage word, so scroll runs when the underline changes line.
+private struct WordLineTops: PreferenceKey {
+    static var defaultValue: [String: CGFloat] { [:] }
+
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
+/// Holds the follow clock without publishing a new view value on every frame.
+@MainActor
+private final class LiveCaretDriver {
+    var follow = CaretFollow()
+
+    func reset(wordCount: Int) {
+        follow = CaretFollow(wordCount: wordCount)
+    }
+
+    func step(anchor: CaretAnchor, speaking: Bool, reduceMotion: Bool) -> Int {
+        if anchor.hostTime > 0 {
+            follow.noteAnchor(
+                index: anchor.index,
+                speechEnd: anchor.speechEnd,
+                hostNow: anchor.hostTime
+            )
+        }
+        follow.tick(
+            hostNow: ProcessInfo.processInfo.systemUptime,
+            speaking: speaking,
+            reduceMotion: reduceMotion
+        )
+        return follow.displayWordIndex
     }
 }
 
