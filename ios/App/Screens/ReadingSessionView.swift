@@ -192,11 +192,16 @@ struct ReadingSessionView: View {
 
     @ViewBuilder
     private var actionRow: some View {
-        if isLive || isPaused || isFinishing || isFogged {
+        if controlsActive {
             liveControlRow
-                .opacity(controlsActive ? 1 : 0)
-                .allowsHitTesting(controlsActive && !showStopConfirm)
-                .accessibilityHidden(!controlsActive || showStopConfirm)
+                .allowsHitTesting(!showStopConfirm)
+                .accessibilityHidden(showStopConfirm)
+        } else if isLive || isPaused || isFinishing || isFogged {
+            // Hold the bar's height under the fog so nothing moves when it lifts, but render no
+            // controls: nothing visible, hittable, or reachable by VoiceOver until they work.
+            Color.clear
+                .frame(height: VoiceOrb.box)
+                .accessibilityHidden(true)
         } else {
             Button("Start") {
                 startTapped()
@@ -264,6 +269,8 @@ struct ReadingSessionView: View {
             isPreparing = false
             countdownRemaining = nil
         }
+        // Let the fog frame commit before audio-session and engine set-up touch the main thread.
+        await SpeechFrame.yieldForRender()
         let granted = await micGranted()
         guard granted else {
             errorMessage = "Microphone permission is required."

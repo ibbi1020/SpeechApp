@@ -109,6 +109,14 @@ private struct SpeechPillBody: View {
     }
 }
 
+enum SpeechFrame {
+    /// Suspends long enough for the run loop to commit the current SwiftUI frame, so state set
+    /// in a button action is on screen before follow-up work runs on the main actor.
+    static func yieldForRender() async {
+        try? await Task.sleep(for: .milliseconds(20))
+    }
+}
+
 /// Drops a second activation that lands within `interval` of the last accepted one.
 /// Used on toggles (Pause / Resume, Change topic) so a double tap does not undo itself.
 struct TapThrottle {
