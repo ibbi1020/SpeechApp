@@ -532,6 +532,8 @@ struct MonologueSessionView: View {
             isPreparing = false
             countdownRemaining = nil
         }
+        // Let the fog frame commit before audio-session and engine set-up touch the main thread.
+        await SpeechFrame.yieldForRender()
 
         listenError = nil
         // New take — reset accumulation so take-1 speech never leaks into take 2/3.
