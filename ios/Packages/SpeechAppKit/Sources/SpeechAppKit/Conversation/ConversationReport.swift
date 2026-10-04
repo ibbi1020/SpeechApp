@@ -18,6 +18,8 @@ public struct ConversationReport: Equatable, Sendable, Identifiable {
     public let userTurns: Int
     public let lines: [Line]
     public let limitedAnalysis: Bool
+    /// Caption↔audio JSONL from this hang-up, if the live mouth wrote one.
+    public let captionSyncLogPath: String?
 
     public init(
         id: UUID = UUID(),
@@ -26,7 +28,8 @@ public struct ConversationReport: Equatable, Sendable, Identifiable {
         userSpeechSeconds: TimeInterval,
         userTurns: Int,
         lines: [Line],
-        limitedAnalysis: Bool = false
+        limitedAnalysis: Bool = false,
+        captionSyncLogPath: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -35,6 +38,7 @@ public struct ConversationReport: Equatable, Sendable, Identifiable {
         self.userTurns = userTurns
         self.lines = lines
         self.limitedAnalysis = limitedAnalysis
+        self.captionSyncLogPath = captionSyncLogPath
     }
 }
 
@@ -47,7 +51,8 @@ public enum ConversationReportBuilder {
         userTurns: Int,
         endReason: ConversationEndReason,
         extraFullLines: [ConversationReport.Line] = [],
-        limitedAnalysis: Bool = false
+        limitedAnalysis: Bool = false,
+        captionSyncLogPath: String? = nil
     ) -> ConversationReport {
         if endReason == .crisisReferral {
             return ConversationReport(
@@ -55,7 +60,8 @@ public enum ConversationReportBuilder {
                 endReason: endReason,
                 userSpeechSeconds: userSpeechSeconds,
                 userTurns: userTurns,
-                lines: []
+                lines: [],
+                captionSyncLogPath: captionSyncLogPath
             )
         }
         let timeValue = limitedAnalysis
@@ -77,7 +83,8 @@ public enum ConversationReportBuilder {
                 userSpeechSeconds: userSpeechSeconds,
                 userTurns: userTurns,
                 lines: [time, turns],
-                limitedAnalysis: limitedAnalysis
+                limitedAnalysis: limitedAnalysis,
+                captionSyncLogPath: captionSyncLogPath
             )
         }
         return ConversationReport(
@@ -86,7 +93,8 @@ public enum ConversationReportBuilder {
             userSpeechSeconds: userSpeechSeconds,
             userTurns: userTurns,
             lines: [time, turns] + extraFullLines,
-            limitedAnalysis: limitedAnalysis
+            limitedAnalysis: limitedAnalysis,
+            captionSyncLogPath: captionSyncLogPath
         )
     }
 

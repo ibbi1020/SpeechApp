@@ -39,8 +39,8 @@ struct MonologueReportView: View {
                 .padding(.top, 20)
             }
         }
-        .navigationTitle("Your talk")
-        .navigationBarTitleDisplayMode(.inline)
+        .speechPageTitle("Your talk")
+        .speechBottomBlur()
     }
 
     private var linesCard: some View {

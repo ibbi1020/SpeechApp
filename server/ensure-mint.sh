@@ -98,6 +98,9 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 0
 fi
 
+# Format 2 testing talks to xAI directly; keep the key off git.
+/bin/bash "$ROOT/sync-xai-secret.sh" || true
+
 cd "$ROOT"
 nohup "$NODE" --env-file="$ENV_FILE" "$MINT" >>"$LOG" 2>&1 &
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) started mint pid $! on port $PORT" >>"$LOG"

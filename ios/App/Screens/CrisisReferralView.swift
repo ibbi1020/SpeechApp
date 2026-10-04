@@ -12,7 +12,7 @@ struct CrisisReferralView: View {
                 Spacer()
 
                 Text("Call or text 988")
-                    .font(.system(.title2, design: .serif).weight(.semibold))
+                    .speechType(.h1)
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -39,6 +39,7 @@ struct CrisisReferralView: View {
             .padding(.horizontal, SpeechSpacing.page)
         }
         .navigationBarTitleDisplayMode(.inline)
+        .speechBottomBlur()
         .onAppear(perform: pingCrisisIfConfigured)
     }
 

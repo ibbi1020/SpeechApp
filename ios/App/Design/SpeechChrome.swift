@@ -9,8 +9,6 @@ enum SpeechMotion {
     static let settle = Animation.spring(response: 0.35, dampingFraction: 1.0)
     /// Slightly snappier press / highlight.
     static let press = Animation.spring(response: 0.22, dampingFraction: 1.0)
-    /// Karaoke cursor handoff — short ease, not a bouncy spring (CHI flicker risk).
-    static let follow = Animation.easeOut(duration: 0.08)
     /// Passage auto-scroll — reading-app ease, not a snap.
     static let scroll = Animation.easeInOut(duration: 0.45)
 }
@@ -50,6 +48,60 @@ struct SpeechScreenBackground: View {
             endPoint: .bottom
         )
         .ignoresSafeArea()
+    }
+}
+
+/// Soft Gaussian where content meets the bottom edge.
+/// `ScrollEdgeEffectStyle.soft` is the system effect: sharper farther up,
+/// blurrier at the edge. Pass `bar: false` when the screen already has a bottom bar.
+struct SpeechSoftEdge: ViewModifier {
+    var showsBar: Bool
+
+    func body(content: Content) -> some View {
+        if showsBar {
+            content
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
+                .safeAreaBar(edge: .bottom, spacing: 0) {
+                    Color.clear
+                        .frame(height: 12)
+                        .accessibilityHidden(true)
+                }
+        } else {
+            content.scrollEdgeEffectStyle(.soft, for: .bottom)
+        }
+    }
+}
+
+extension View {
+    func speechBottomBlur(bar: Bool = true) -> some View {
+        modifier(SpeechSoftEdge(showsBar: bar))
+    }
+}
+
+/// White pill used to start an exercise. Measured from the reference:
+/// 61pt tall, capsule ends, black SF Pro at 17pt medium.
+enum SpeechStartMetrics {
+    static let height: CGFloat = 61
+    static let labelSize: CGFloat = 17
+    /// Reference sits 36pt from the screen edge. Page chrome is already 24pt.
+    static let extraInset: CGFloat = 12
+}
+
+struct SpeechStartButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: SpeechStartMetrics.labelSize, weight: .medium))
+            .foregroundStyle(Color.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: SpeechStartMetrics.height)
+            .background(Color.white, in: Capsule())
+            .padding(.horizontal, SpeechStartMetrics.extraInset)
+            .contentShape(Capsule())
+            .opacity(isEnabled ? (configuration.isPressed ? 0.92 : 1) : 0.45)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
+            .animation(SpeechMotion.press, value: configuration.isPressed)
     }
 }
 
@@ -94,7 +146,7 @@ private struct SpeechPillBody: View {
     let foreground: AnyShapeStyle
     let tint: Color?
 
-    private static var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 14, style: .continuous) }
+    private static var shape: Capsule { Capsule() }
 
     var body: some View {
         let base: Glass = if let tint { .regular.tint(tint) } else { .regular }
@@ -173,7 +225,7 @@ struct ReadingCountdownOverlay: View {
     }
 
     var body: some View {
-        VStack(spacing: showsInstruction ? 14 : 0) {
+        ZStack {
             if let remaining {
                 Text("\(remaining)")
                     .font(.system(size: SpeechCountdown.digitSize, weight: .semibold))
@@ -196,6 +248,7 @@ struct ReadingCountdownOverlay: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 260)
+                    .offset(y: SpeechCountdown.digitSize / 2 + 22)
                     .transition(.opacity)
             }
         }
@@ -204,7 +257,7 @@ struct ReadingCountdownOverlay: View {
             value: remaining == nil
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .offset(y: -12)
+        .ignoresSafeArea()
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.updatesFrequently)
         .accessibilityLabel(accessibilityText)
@@ -228,7 +281,7 @@ struct VoiceOrb: View {
     /// orb-ui cloud theme draws the sphere at this fraction of `box`.
     private static let diameterRatio: CGFloat = 0.55
     /// Clear space between each glass button and the drawn sphere.
-    private static let controlGap: CGFloat = 16
+    private static let controlGap: CGFloat = 28
 
     /// HStack spacing that leaves `controlGap` between the buttons and the cloud.
     /// The web view is wider than the sphere, so this is negative without overlapping it.
@@ -298,12 +351,14 @@ enum VoiceOrbPreloader {
         Host.shared.warmup()
     }
 
-    fileprivate static func borrow() -> WKWebView {
+    fileprivate static func borrow() -> (webView: WKWebView, generation: Int) {
         Host.shared.borrow()
     }
 
-    fileprivate static func park(_ webView: WKWebView) {
-        Host.shared.park(webView)
+    /// Parks only if `generation` is still the latest borrow. A stale dismantle
+    /// must not pull the web view off screen after a newer orb has taken it.
+    fileprivate static func park(_ webView: WKWebView, generation: Int) {
+        Host.shared.park(webView, generation: generation)
     }
 
     fileprivate static func loadOrbHTML(into webView: WKWebView) {
@@ -319,20 +374,30 @@ enum VoiceOrbPreloader {
             frame: CGRect(x: 0, y: 0, width: VoiceOrb.box, height: VoiceOrb.box)
         )
         private var webView: WKWebView?
+        private var generation = 0
 
         func warmup() {
             _ = preparedWebView()
-            attachPark()
+            // Inserting into the window during its open transition throws
+            // "Failed to preempt running transition" and the first frame stays black.
+            DispatchQueue.main.async {
+                self.attachPark()
+            }
         }
 
-        func borrow() -> WKWebView {
+        func borrow() -> (webView: WKWebView, generation: Int) {
             let webView = preparedWebView()
             webView.removeFromSuperview()
-            return webView
+            generation += 1
+            return (webView, generation)
         }
 
-        func park(_ webView: WKWebView) {
-            guard webView === self.webView else { return }
+        func park(_ webView: WKWebView, generation: Int) {
+            // SwiftUI can dismantle the previous representable after the next
+            // one has already borrowed this view. Parking then hides the orb
+            // for the rest of the take, and a reload only updates the parked copy.
+            guard webView === self.webView, generation == self.generation else { return }
+            webView.navigationDelegate = nil
             // Stop the page's animation loops while it sits off screen; the borrower un-parks on its first push.
             webView.evaluateJavaScript("window.orbSetParked&&window.orbSetParked(true);")
             attachPark()
@@ -406,7 +471,9 @@ private struct OrbWebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
-        let webView = VoiceOrbPreloader.borrow()
+        let borrowed = VoiceOrbPreloader.borrow()
+        context.coordinator.borrowGeneration = borrowed.generation
+        let webView = borrowed.webView
         webView.navigationDelegate = context.coordinator
         if webView.url != nil, !webView.isLoading {
             context.coordinator.markReady()
@@ -424,8 +491,7 @@ private struct OrbWebView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
-        webView.navigationDelegate = nil
-        VoiceOrbPreloader.park(webView)
+        VoiceOrbPreloader.park(webView, generation: coordinator.borrowGeneration)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
@@ -433,11 +499,16 @@ private struct OrbWebView: UIViewRepresentable {
         var inputVolume = 0.0
         var outputVolume = 0.0
         var paused = false
+        var borrowGeneration = 0
         private var pageReady = false
         private var lastScript: String?
         private var isReloading = false
-        /// One HTML reload after WebGL dies (often when the WebRTC audio unit starts).
-        private var didReloadForContextLoss = false
+        /// How many times this appearance has reloaded after WebGL died.
+        /// A take loses the context twice: once when the shared web view is
+        /// mounted for the countdown, again when the mic audio session starts.
+        /// One reload left the orb blank for the rest of the round.
+        private var contextLossReloads = 0
+        private static let maxContextLossReloads = 3
 
         func markReady() {
             pageReady = true
@@ -456,7 +527,7 @@ private struct OrbWebView: UIViewRepresentable {
 
         /// Pushes the latest signal once the page is ready, in one script call.
         /// Skips identical scripts; the same call reports a lost WebGL context, and the orb
-        /// reloads at most once for it.
+        /// reloads a few times for it, then stops so a dead canvas cannot reload forever.
         func push(to webView: WKWebView) {
             guard pageReady, !isReloading else { return }
             let script = makeScript()
@@ -465,7 +536,7 @@ private struct OrbWebView: UIViewRepresentable {
             let wrapped = "(function(){if(window.orbContextLost){return true;}window.orbSetParked&&window.orbSetParked(false);\(script)return false;})()"
             webView.evaluateJavaScript(wrapped) { [weak self] result, _ in
                 guard let self else { return }
-                if result as? Bool == true, !self.didReloadForContextLoss {
+                if result as? Bool == true, self.contextLossReloads < Self.maxContextLossReloads {
                     self.reloadOrb(in: webView, force: false)
                 }
             }
@@ -473,11 +544,11 @@ private struct OrbWebView: UIViewRepresentable {
 
         private func reloadOrb(in webView: WKWebView, force: Bool) {
             guard !isReloading else { return }
-            guard force || !didReloadForContextLoss else { return }
+            guard force || contextLossReloads < Self.maxContextLossReloads else { return }
             isReloading = true
             pageReady = false
             lastScript = nil
-            if !force { didReloadForContextLoss = true }
+            if !force { contextLossReloads += 1 }
             VoiceOrbPreloader.loadOrbHTML(into: webView)
         }
 

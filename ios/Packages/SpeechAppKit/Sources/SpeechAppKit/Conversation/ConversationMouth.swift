@@ -23,6 +23,8 @@ public enum MouthEvent: Equatable, Sendable {
 
 public protocol ConversationMouth: AnyObject, Sendable {
     var events: AsyncStream<MouthEvent> { get }
+    /// Caption↔audio JSONL for this live mouth, if instrumentation is on.
+    var captionSyncLogURL: URL? { get }
     /// Warm audio session, peer connection, and ICE during the countdown. No-op by default.
     func prepare() async throws
     func connect(ephemeralKey: String) async throws
@@ -38,6 +40,7 @@ public protocol ConversationMouth: AnyObject, Sendable {
 }
 
 extension ConversationMouth {
+    public var captionSyncLogURL: URL? { nil }
     public func prepare() async throws {}
     public func currentInputLevel() async -> Float { 0 }
     public func currentOutputLevel() async -> Float { 0 }

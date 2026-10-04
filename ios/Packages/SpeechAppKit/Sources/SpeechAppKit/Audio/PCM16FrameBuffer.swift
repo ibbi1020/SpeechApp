@@ -1,15 +1,21 @@
 import Foundation
 
-/// Turns mic float chunks into 100 ms PCM16 little-endian frames at 16 kHz.
-/// 100 ms at 16 kHz is 1,600 samples, which is 3,200 bytes.
+/// Turns mic float chunks into 100 ms PCM16 little-endian frames.
+/// Default is 16 kHz (STT). Pass `rate: 24_000` for Grok speech-to-speech.
 public struct PCM16FrameBuffer: Sendable {
     public static let targetRate: Double = 16_000
     public static let samplesPerFrame = 1_600
     public static let bytesPerFrame = 3_200
+    private static let frameDurationSeconds = 0.1
 
+    private let rate: Double
+    private let frameSamples: Int
     private var pending: [Float] = []
 
-    public init() {}
+    public init(rate: Double = Self.targetRate) {
+        self.rate = rate
+        frameSamples = max(1, Int((rate * Self.frameDurationSeconds).rounded()))
+    }
 
     public mutating func append(samples: [Float], sampleRate: Double) -> [Data] {
         guard sampleRate > 0, !samples.isEmpty else { return [] }
@@ -24,9 +30,9 @@ public struct PCM16FrameBuffer: Sendable {
 
     private mutating func drain(partial: Bool) -> [Data] {
         var frames: [Data] = []
-        while pending.count >= Self.samplesPerFrame {
-            let slice = pending.prefix(Self.samplesPerFrame)
-            pending.removeFirst(Self.samplesPerFrame)
+        while pending.count >= frameSamples {
+            let slice = pending.prefix(frameSamples)
+            pending.removeFirst(frameSamples)
             frames.append(Self.pcm16(slice))
         }
         if partial, !pending.isEmpty {
@@ -37,14 +43,14 @@ public struct PCM16FrameBuffer: Sendable {
     }
 
     private func resample(_ samples: [Float], from sampleRate: Double) -> [Float] {
-        if abs(sampleRate - Self.targetRate) < 1 {
+        if abs(sampleRate - rate) < 1 {
             return samples
         }
-        let outCount = Int((Double(samples.count) * Self.targetRate / sampleRate).rounded(.down))
+        let outCount = Int((Double(samples.count) * rate / sampleRate).rounded(.down))
         guard outCount > 0 else { return [] }
         var output = [Float]()
         output.reserveCapacity(outCount)
-        let step = sampleRate / Self.targetRate
+        let step = sampleRate / rate
         for index in 0..<outCount {
             let position = Double(index) * step
             let left = Int(position)

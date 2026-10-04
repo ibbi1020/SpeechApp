@@ -36,7 +36,8 @@ public final class SessionDiagnostics: @unchecked Sendable {
         let dir = Self.logsDirectory(fileManager: fileManager)
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        let url = dir.appendingPathComponent("session-\(stamp).jsonl")
+        let unique = UUID().uuidString.prefix(8)
+        let url = dir.appendingPathComponent("session-\(stamp)-\(unique).jsonl")
         fileManager.createFile(atPath: url.path, contents: nil)
         fileHandle = try? FileHandle(forWritingTo: url)
         logFileURL = url

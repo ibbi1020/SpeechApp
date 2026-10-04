@@ -3,7 +3,6 @@ import SpeechAppKit
 
 struct HomeView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -29,8 +28,8 @@ struct HomeView: View {
                 .padding(.bottom, 40)
             }
         }
-        .navigationTitle("Orator")
-        .navigationBarTitleDisplayMode(.large)
+        .speechPageTitle("Orator", large: true)
+        .speechBottomBlur()
     }
 
     private func formatRow(
@@ -38,11 +37,7 @@ struct HomeView: View {
         disabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        Button {
-            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                action()
-            }
-        } label: {
+        Button(action: action) {
             Text(title)
                 .font(.body)
                 .foregroundStyle(.primary)
@@ -56,6 +51,6 @@ struct HomeView: View {
         .buttonStyle(.plain)
         .disabled(disabled)
         .opacity(disabled ? 0.45 : 1)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 }

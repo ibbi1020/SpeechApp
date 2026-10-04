@@ -63,35 +63,41 @@ struct MonologueSessionView: View {
             SpeechScreenBackground()
             content
 
-            if isFogged {
-                ReadingCountdownOverlay(remaining: countdownRemaining, instruction: "")
-            }
+            // Fog and the leave modal animate on their own. A spring on the
+            // whole screen also springs the orb bar, and a WebGL view laid out
+            // at zero height stays blank for the rest of the take.
+            ZStack {
+                if isFogged {
+                    ReadingCountdownOverlay(remaining: countdownRemaining, instruction: "")
+                }
 
-            if showLeaveConfirm {
-                SessionStopModal(
-                    title: "Leave this talk?",
-                    confirmTitle: "Leave",
-                    dismissTitle: "Keep going",
-                    onConfirm: {
-                        guard !isEnding else { return }
-                        isEnding = true
-                        showLeaveConfirm = false
-                        // Route first; the engine and mic wind down behind the next screen.
-                        detachListen()
-                        session?.confirmLeave()
-                        routeIfFinished()
-                        isEnding = false
-                    },
-                    onDismiss: { showLeaveConfirm = false }
-                )
-                .transition(.opacity)
+                if showLeaveConfirm {
+                    SessionStopModal(
+                        title: "Leave this talk?",
+                        confirmTitle: "Leave",
+                        dismissTitle: "Keep going",
+                        onConfirm: {
+                            guard !isEnding else { return }
+                            isEnding = true
+                            showLeaveConfirm = false
+                            // Route first; the engine and mic wind down behind the next screen.
+                            detachListen()
+                            session?.confirmLeave()
+                            routeIfFinished()
+                            isEnding = false
+                        },
+                        onDismiss: { showLeaveConfirm = false }
+                    )
+                    .transition(.opacity)
+                }
             }
+            .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
+            .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showLeaveConfirm)
+            .allowsHitTesting(isFogged || showLeaveConfirm)
         }
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: session?.phase)
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showLeaveConfirm)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
+        .speechBottomBlur(bar: false)
         .navigationBarBackButtonHidden(true)
         // Back stays in the bar, unchanged, while the leave card is up (like Reading): removing
         // the only bar item collapses the bar and shifts the page up. The card guards it instead.
@@ -163,7 +169,9 @@ struct MonologueSessionView: View {
                 Color.black.opacity(fogWashOpacity)
                     .allowsHitTesting(false)
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: session.phase)
+            .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
+            .safeAreaBar(edge: .bottom, spacing: 0) {
                 sessionChrome(session, live: live)
             }
             .accessibilityHidden(isFogged || showLeaveConfirm)
@@ -184,8 +192,11 @@ struct MonologueSessionView: View {
 
     @ViewBuilder
     private func sessionChrome(_ session: MonologueSession, live: Bool) -> some View {
+        // Mount the orb only once the take is up. The 3-2-1 still shows the
+        // planning page; swapping that page out from under a live WebGL view
+        // is what blanks the orb. Format 2 inserts the orb once, after the countdown.
         if live {
-            liveChrome(session)
+            liveChrome(session, live: true)
         } else if session.phase == .planning || session.phase == .between {
             planningChrome(session)
                 .blur(radius: fogBlurRadius)
@@ -241,17 +252,17 @@ struct MonologueSessionView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollDismissesKeyboard(.interactively)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
     }
 
     private func stageDuration(_ minutes: Int) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text("\(minutes)")
-                .font(.system(size: stageDurationSize, weight: .semibold))
+                .font(.custom(SpeechType.instrumentSerif, size: stageDurationSize))
+                .tracking(stageDurationSize * SpeechType.metrics(.h1).trackingEm)
                 .monospacedDigit()
                 .contentTransition(reduceMotion ? .opacity : .numericText(countsDown: true))
             Text(minutes == 1 ? "minute" : "minutes")
-                .font(.title3.weight(.medium))
+                .speechType(.h3)
                 .foregroundStyle(.secondary)
         }
         .foregroundStyle(.primary)
@@ -348,7 +359,8 @@ struct MonologueSessionView: View {
                 Button("I’m ready") {
                     readyTapped(session)
                 }
-                .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
+                .buttonStyle(SpeechStartButtonStyle())
+                .disabled(isStartingListen)
             }
         }
         .padding(.horizontal, SpeechSpacing.page)
@@ -359,8 +371,7 @@ struct MonologueSessionView: View {
     // MARK: - Taking / paused
 
     private func liveCanvas(_ session: MonologueSession) -> some View {
-        let line = subtitleLine(hypothesis)
-        return ZStack {
+        ZStack {
             Text(session.prompt)
                 .font(.system(.subheadline, design: .serif))
                 .foregroundStyle(.secondary)
@@ -383,19 +394,6 @@ struct MonologueSessionView: View {
                         .font(.title3.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
-
-                if !line.isEmpty {
-                    Text(line)
-                        .font(.system(size: 22, weight: .regular, design: .serif))
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(6)
-                        .foregroundStyle(.primary)
-                        .lineLimit(4)
-                        .truncationMode(.head)
-                        .frame(maxWidth: .infinity)
-                        .accessibilityLabel(line)
-                        .accessibilityAddTraits(.updatesFrequently)
-                }
             }
             .frame(maxWidth: .infinity)
         }
@@ -403,11 +401,22 @@ struct MonologueSessionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func liveChrome(_ session: MonologueSession) -> some View {
+    private func liveChrome(_ session: MonologueSession, live: Bool) -> some View {
+        VStack(spacing: 4) {
+            SpeechSubtitle(text: subtitleLine(hypothesis))
+            orbBar(session: session, live: live)
+        }
+        .padding(.horizontal, SpeechSpacing.page)
+        .padding(.top, 8)
+        .padding(.bottom, 16)
+    }
+
+    /// Keep this bar at its real size. A phase spring that shrinks it leaves the WebGL orb blank.
+    private func orbBar(session: MonologueSession, live: Bool) -> some View {
         SessionOrbBar(
-            phase: .monologue(isPreparing: false, phase: session.phase),
+            phase: .monologue(isPreparing: !live, phase: session.phase),
             inputVolume: session.phase == .taking ? speechEnergy : 0,
-            animating: session.phase == .taking
+            animating: session.phase != .paused
         ) {
             Button {
                 guard pauseThrottle.allow() else { return }
@@ -441,9 +450,8 @@ struct MonologueSessionView: View {
         }
         .accessibilityHidden(showLeaveConfirm)
         .allowsHitTesting(!showLeaveConfirm)
-        .padding(.horizontal, SpeechSpacing.page)
-        .padding(.top, 12)
-        .padding(.bottom, 16)
+        .fixedSize(horizontal: false, vertical: true)
+        .transaction { $0.disablesAnimations = true }
     }
 
     // MARK: - Error state
@@ -491,10 +499,10 @@ struct MonologueSessionView: View {
         session.notes = notes.map(\.text).joined(separator: "\n")
     }
 
-    /// The newest words, capped so a long take stays on screen under the clock.
+    /// The newest words, capped so the caption stays two short lines above the orb.
     private func subtitleLine(_ transcript: String) -> String {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        let limit = 180
+        let limit = 96
         guard trimmed.count > limit else { return trimmed }
         let start = trimmed.index(trimmed.endIndex, offsetBy: -limit)
         let tail = trimmed[start...]
@@ -743,11 +751,6 @@ struct MonologueSessionView: View {
         }
     }
 
-    private func clockLabel(_ t: TimeInterval) -> String {
-        let s = max(0, Int(t.rounded()))
-        return String(format: "%d:%02d", s / 60, s % 60)
-    }
-
     /// Drops the keyboard on this frame. A normal resign waits out the countdown
     /// animation, so I’m ready would leave the keyboard up on the next screen.
     private func dismissKeyboardImmediately() {
@@ -764,13 +767,6 @@ struct MonologueSessionView: View {
                 for: nil
             )
         }
-    }
-
-    private func spokenRemaining(_ t: TimeInterval) -> String {
-        let total = max(0, Int(t.rounded()))
-        let minutes = total / 60
-        let seconds = total % 60
-        return "\(minutes) minutes \(seconds) seconds remaining"
     }
 }
 
