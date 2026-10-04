@@ -100,7 +100,7 @@ struct ConversationSessionView: View {
                         Color.black.opacity(fogWashOpacity)
                             .allowsHitTesting(false)
                     }
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                    .safeAreaBar(edge: .bottom, spacing: 0) {
                         bottomChrome
                     }
                     .accessibilityHidden(isFogged || showStopConfirm)
@@ -134,7 +134,8 @@ struct ConversationSessionView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: phase)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
-        .navigationTitle("Conversation")
+        .speechPageTitle("Conversation")
+        .speechBottomBlur(bar: false)
         .navigationSubtitle("\(model.budget.label) used this month")
         .navigationBarTitleDisplayMode(.inline)
         // Keep the bar during the stop modal (hiding it shifts the page); only the back button goes.
@@ -165,23 +166,7 @@ struct ConversationSessionView: View {
     }
 
     private var liveCanvas: some View {
-        let line = session?.stageLine ?? ""
-        return ZStack {
-            if !line.isEmpty {
-                Text(line)
-                    .font(.system(.title3, design: .serif))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                    .foregroundStyle(isFogged ? .tertiary : .primary)
-                    .lineLimit(4)
-                    .truncationMode(.head)
-                    .frame(maxWidth: 320)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .padding(.top, 28)
-                    .accessibilityLabel(line)
-                    .accessibilityAddTraits(.updatesFrequently)
-            }
-
+        ZStack {
             if isPaused {
                 Text("Paused — still here.")
                     .font(.title3.weight(.medium))
@@ -235,6 +220,13 @@ struct ConversationSessionView: View {
     }
 
     private var liveControlRow: some View {
+        VStack(spacing: 4) {
+            SpeechSubtitle(text: session?.subtitleLine ?? "")
+            conversationOrbBar
+        }
+    }
+
+    private var conversationOrbBar: some View {
         SessionOrbBar(
             phase: orbPhase,
             inputVolume: orbPhase == .listening ? speechEnergy : 0,
@@ -300,9 +292,6 @@ struct ConversationSessionView: View {
 
             built.session.beginCountdown()
 
-            let mintTask: Task<MintResponse, Error>? = built.mint.map { client in
-                Task { try await client.mint() }
-            }
             let prepareTask = Task {
                 try await built.mouth.prepare()
             }
@@ -317,24 +306,17 @@ struct ConversationSessionView: View {
             countdownRemaining = nil
             built.session.enterConnecting()
 
-            do {
-                try await prepareTask.value
-            } catch {
-                if !(error is CancellationError) { mintTask?.cancel() }
-                throw error
-            }
+            try await prepareTask.value
 
-            if let mintTask {
-                let minted: MintResponse
-                do {
-                    minted = try await mintTask.value
-                } catch {
-                    if !(error is CancellationError) { await built.mouth.close() }
-                    throw error
+            // Format 2: Bearer token from gitignored plist — no mint server.
+            if let apiKey = built.directAPIKey {
+                // On-device budget gate (20 starts a month, 1 live, 3 per 10 min); no server.
+                if let mint = built.mint {
+                    _ = try await mint.mint()
+                    didMint = true
                 }
-                didMint = true
                 do {
-                    try await built.session.countdownReachedZero(ephemeralKey: minted.clientSecret)
+                    try await built.session.countdownReachedZero(ephemeralKey: apiKey)
                 } catch {
                     await built.session.handle(.failed)
                     throw error
@@ -349,6 +331,8 @@ struct ConversationSessionView: View {
                 #if DEBUG
                 startDebugUserLoop(session: built.session, mouth: fake)
                 #endif
+            } else {
+                throw ConversationSessionError.missingAPIKey
             }
         } catch is CancellationError {
             countdownRemaining = nil
@@ -427,11 +411,14 @@ struct ConversationSessionView: View {
         var rng = SplitMix64(seed: UInt64.random(in: 1...UInt64.max))
         let stance = deck.sample(rng: &rng).views.joined(separator: "\n")
         let openQuestion = bank.prompts[Int(rng.next() % UInt64(bank.prompts.count))]
+        // TestFlight: the build's scrambled xAI key, with the on-device start budget (MintClient).
+        // A local XAISecrets.plist (main's Format 2) still wins when present.
         let mint = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
+        let apiKey = XAIDirectKey.load() ?? mint?.apiKey
         let mouth: any ConversationMouth
         let fake: FakeConversationMouth?
-        if let mint {
-            mouth = LiveConversationMouth(apiKey: mint.apiKey)
+        if apiKey != nil {
+            mouth = LiveConversationMouth()
             fake = nil
         } else {
             let prototype = FakeConversationMouth()
@@ -449,7 +436,13 @@ struct ConversationSessionView: View {
             stance: stance,
             openQuestion: openQuestion
         )
-        return SessionStart(session: session, mouth: mouth, fake: fake, mint: mint)
+        return SessionStart(
+            session: session,
+            mouth: mouth,
+            fake: fake,
+            mint: mint,
+            directAPIKey: apiKey
+        )
     }
 
     private func startEventPump(session: ConversationSession, mouth: any ConversationMouth) {
@@ -633,14 +626,17 @@ private struct SessionStart {
     let mouth: any ConversationMouth
     let fake: FakeConversationMouth?
     let mint: MintClient?
+    let directAPIKey: String?
 }
 
 private enum ConversationSessionError: LocalizedError {
     case missingOpens
+    case missingAPIKey
 
     var errorDescription: String? {
         switch self {
         case .missingOpens: "Opening prompts didn’t load."
+        case .missingAPIKey: "Conversation isn’t configured. Add XAI_API_KEY to server/.env and rebuild."
         }
     }
 }

@@ -14,9 +14,13 @@ struct ReadingSessionView: View {
     @State private var isPreparing = false
     @State private var startTask: Task<Void, Never>?
     @State private var startPulse = false
-    @State private var showStopConfirm = false
-    @State private var isStopping = false
     @State private var pauseThrottle = TapThrottle()
+    @State private var isStopping = false
+    @State private var displayIndex = 0
+    @State private var caretGeneration = 0
+    @State private var layoutReady = false
+    @State private var wordTops: [String: CGFloat] = [:]
+    @State private var lastScrolledLine: CGFloat?
 
     private var isLive: Bool {
         session?.phase == .running || session?.phase == .stalled
@@ -48,6 +52,11 @@ struct ReadingSessionView: View {
         isFogged && !reduceTransparency ? SpeechCountdown.fogBlurRadius : 0
     }
 
+    private var displayWordID: String? {
+        guard isLive, passage.words.indices.contains(displayIndex) else { return nil }
+        return passage.words[displayIndex].id
+    }
+
     private var fogWashOpacity: Double {
         guard isFogged else { return 0 }
         return reduceTransparency
@@ -60,65 +69,36 @@ struct ReadingSessionView: View {
             SpeechScreenBackground()
 
             passageScroll
-                .scrollEdgeEffectStyle(.soft, for: .bottom)
                 .blur(radius: fogBlurRadius)
                 .overlay {
                     Color.black.opacity(fogWashOpacity)
                         .allowsHitTesting(false)
                 }
-                // Only the passage goes untouchable under the fog. The stop card's backdrop
-                // already blocks touches, and toggling hit testing on the scroll view's bottom
-                // inset left the live Stop dead for seconds after "Keep reading".
-                .allowsHitTesting(!isFogged)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
+                .safeAreaBar(edge: .bottom, spacing: 0) {
                     bottomChrome
                 }
-                .accessibilityHidden(isFogged || showStopConfirm)
+                .accessibilityHidden(isFogged)
+                .allowsHitTesting(!isFogged)
 
             if isFogged {
                 ReadingCountdownOverlay(remaining: countdownRemaining)
             }
-
-            if showStopConfirm {
-                SessionStopModal(
-                    title: "Stop this reading?",
-                    confirmTitle: "Stop",
-                    dismissTitle: "Keep reading",
-                    onConfirm: {
-                        guard !isStopping else { return }
-                        isStopping = true
-                        showStopConfirm = false
-                        Task { await stopSession() }
-                    },
-                    onDismiss: { showStopConfirm = false }
-                )
-                .transition(.opacity)
-            }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
-        // Own back button that stays in the bar, unchanged, while the stop card is up: removing
-        // or hiding the only bar item collapses the bar and shifts the page up. The card guards it.
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    guard !showStopConfirm, !isStopping else { return }
-                    withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                        model.chooseAnotherPassage()
-                    }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Back")
-            }
-        }
+        .speechBottomBlur(bar: false)
         .background {
-            NavigationPopLock(isLocked: showStopConfirm)
+            CaretClock(
+                wordCount: passage.words.count,
+                generation: caretGeneration,
+                isLive: isLive,
+                speaking: session?.isHearingSpeech == true,
+                reduceMotion: reduceMotion,
+                anchor: session?.caretAnchor ?? CaretAnchor(index: 0, speechEnd: nil, hostTime: 0),
+                displayIndex: $displayIndex,
+                layoutReady: $layoutReady
+            )
         }
         .onAppear {
             VoiceOrbPreloader.warmup()
@@ -152,18 +132,31 @@ struct ReadingSessionView: View {
             ScrollView {
                 passageBody
             }
-            .onChange(of: session?.currentWordID) { _, wordID in
-                guard isLive, let wordID else { return }
-                guard let index = passage.words.firstIndex(where: { $0.id == wordID }), index >= 12 else {
-                    return
-                }
-                if reduceMotion {
-                    proxy.scrollTo(wordID, anchor: .center)
-                } else {
-                    withAnimation(SpeechMotion.scroll) {
-                        proxy.scrollTo(wordID, anchor: .center)
-                    }
-                }
+            .coordinateSpace(.named("reading-passage"))
+            .onPreferenceChange(WordLineTops.self) { tops in
+                guard layoutReady, tops != wordTops else { return }
+                wordTops = tops
+                scrollIfLineChanged(proxy: proxy)
+            }
+            .onChange(of: displayIndex) { _, _ in
+                scrollIfLineChanged(proxy: proxy)
+            }
+        }
+    }
+
+    /// Scroll when the underlined word moves to another line, not on every word.
+    private func scrollIfLineChanged(proxy: ScrollViewProxy) {
+        guard isLive, passage.words.indices.contains(displayIndex), displayIndex >= 12 else { return }
+        let id = passage.words[displayIndex].id
+        guard let top = wordTops[id] else { return }
+        let line = (top / 8).rounded()
+        guard line != lastScrolledLine else { return }
+        lastScrolledLine = line
+        if reduceMotion {
+            proxy.scrollTo(id, anchor: .center)
+        } else {
+            withAnimation(SpeechMotion.scroll) {
+                proxy.scrollTo(id, anchor: .center)
             }
         }
     }
@@ -172,7 +165,7 @@ struct ReadingSessionView: View {
         VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(passage.title)
-                        .font(.system(.title2, design: .serif).weight(.semibold))
+                        .speechType(.h2)
                         .foregroundStyle(isFogged ? .tertiary : .primary)
 
                     Text(passage.durationLabel)
@@ -182,8 +175,7 @@ struct ReadingSessionView: View {
 
                 ReadingFollowAlong(
                     words: passage.words,
-                    currentWordID: isLive ? session?.currentWordID : nil,
-                    reduceMotion: reduceMotion,
+                    currentWordID: displayWordID,
                     dimmed: isFogged
                 )
                 .padding(.top, 28)
@@ -214,7 +206,6 @@ struct ReadingSessionView: View {
     private var actionRow: some View {
         if controlsActive {
             liveControlRow
-                .accessibilityHidden(showStopConfirm)
         } else if isLive || isPaused || isFinishing || isFogged {
             // Hold the bar's height under the fog so nothing moves when it lifts, but render no
             // controls: nothing visible, hittable, or reachable by VoiceOver until they work.
@@ -225,7 +216,7 @@ struct ReadingSessionView: View {
             Button("Start") {
                 startTapped()
             }
-            .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
+            .buttonStyle(SpeechStartButtonStyle())
             .sensoryFeedback(.impact(flexibility: .soft), trigger: startPulse)
         }
     }
@@ -252,13 +243,17 @@ struct ReadingSessionView: View {
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
         } trailing: {
             Button {
-                showStopConfirm = true
+                // A second tap while the report is being built is ignored.
+                guard !isStopping else { return }
+                isStopping = true
+                Task { await stopSession() }
             } label: {
-                Image(systemName: "stop.fill")
-                    .speechGlassCircle(tint: .red)
+                Image(systemName: "checkmark")
+                    .speechGlassCircle(tint: .accentColor)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Stop")
+            .disabled(isFinishing)
+            .accessibilityLabel("Done")
         }
     }
 
@@ -318,6 +313,9 @@ struct ReadingSessionView: View {
             countdownRemaining = nil
             try await prepareTask.value
             try Task.checkCancellation()
+            caretGeneration += 1
+            displayIndex = 0
+            lastScrolledLine = nil
             let source = MicAudioSource()
             try await session?.start(
                 audioSource: source,
@@ -367,25 +365,145 @@ struct ReadingSessionView: View {
 private struct ReadingFollowAlong: View {
     let words: [ScriptWord]
     let currentWordID: String?
-    let reduceMotion: Bool
     let dimmed: Bool
 
     var body: some View {
-        WordWrapLayout(spacing: 8, lineSpacing: 14) {
+        // Was 14. About 20% less gap between lines. The 22pt face is unchanged.
+        WordWrapLayout(spacing: 8, lineSpacing: 11) {
             ForEach(words) { word in
                 let isCurrent = word.id == currentWordID
                 Text(word.surface)
-                    .font(.system(size: 22, weight: isCurrent ? .semibold : .regular, design: .serif))
+                    .font(.system(size: 22, weight: .regular, design: .serif))
                     .foregroundStyle(dimmed ? .tertiary : .primary)
                     .underline(isCurrent, color: dimmed ? Color.secondary : Color.primary)
                     .id(word.id)
                     .accessibilityAddTraits(isCurrent ? .isSelected : [])
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: WordLineTops.self,
+                                value: [word.id: proxy.frame(in: .named("reading-passage")).minY]
+                            )
+                        }
+                    }
             }
         }
-        .animation(reduceMotion ? nil : SpeechMotion.follow, value: currentWordID)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(words.map(\.surface).joined(separator: " "))
+    }
+}
+
+/// Y position of each passage word, so scroll runs when the underline changes line.
+private struct WordLineTops: PreferenceKey {
+    static var defaultValue: [String: CGFloat] { [:] }
+
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
+/// Moves the underline after the navigation push has finished.
+///
+/// A per-frame SwiftUI animation during that push throws
+/// "Failed to preempt running transition" and leaves a black screen.
+private struct CaretClock: UIViewControllerRepresentable {
+    var wordCount: Int
+    var generation: Int
+    var isLive: Bool
+    var speaking: Bool
+    var reduceMotion: Bool
+    var anchor: CaretAnchor
+    @Binding var displayIndex: Int
+    @Binding var layoutReady: Bool
+
+    func makeUIViewController(context: Context) -> Controller {
+        Controller()
+    }
+
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        controller.wordCount = wordCount
+        controller.generation = generation
+        controller.isLive = isLive
+        controller.speaking = speaking
+        controller.reduceMotion = reduceMotion
+        controller.anchor = anchor
+        controller.onIndex = { index in
+            if displayIndex != index {
+                displayIndex = index
+            }
+        }
+        controller.onReady = {
+            if !layoutReady {
+                layoutReady = true
+            }
+        }
+        controller.sync()
+    }
+
+    final class Controller: UIViewController {
+        var follow = CaretFollow()
+        var wordCount = 0
+        var generation = 0
+        var isLive = false
+        var speaking = false
+        var reduceMotion = false
+        var anchor = CaretAnchor(index: 0, speechEnd: nil, hostTime: 0)
+        var onIndex: (Int) -> Void = { _ in }
+        var onReady: () -> Void = {}
+        private var link: CADisplayLink?
+        private var didAppear = false
+        private var appliedGeneration = -1
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            didAppear = true
+            onReady()
+            sync()
+        }
+
+        override func viewDidDisappear(_ animated: Bool) {
+            super.viewDidDisappear(animated)
+            didAppear = false
+            link?.invalidate()
+            link = nil
+        }
+
+        func sync() {
+            guard didAppear else { return }
+            if generation != appliedGeneration || follow.wordCount != wordCount {
+                appliedGeneration = generation
+                follow = CaretFollow(wordCount: max(wordCount, 1))
+            }
+            if isLive {
+                if link == nil {
+                    let link = CADisplayLink(target: self, selector: #selector(tick))
+                    link.preferredFrameRateRange = CAFrameRateRange(minimum: 20, maximum: 30, preferred: 30)
+                    link.add(to: .main, forMode: .common)
+                    self.link = link
+                }
+                link?.isPaused = false
+            } else {
+                link?.isPaused = true
+            }
+        }
+
+        @objc private func tick() {
+            guard isLive else { return }
+            if anchor.hostTime > 0 {
+                follow.noteAnchor(
+                    index: anchor.index,
+                    speechEnd: anchor.speechEnd,
+                    hostNow: anchor.hostTime
+                )
+            }
+            follow.tick(
+                hostNow: ProcessInfo.processInfo.systemUptime,
+                speaking: speaking,
+                reduceMotion: reduceMotion
+            )
+            onIndex(follow.displayWordIndex)
+        }
     }
 }
 

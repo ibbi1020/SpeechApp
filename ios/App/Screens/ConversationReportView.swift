@@ -22,6 +22,11 @@ struct ConversationReportView: View {
                             .padding(.top, SpeechSpacing.related)
                     }
 
+                    if let logPath = report.captionSyncLogPath {
+                        captionSyncSection(path: logPath)
+                            .padding(.top, SpeechSpacing.section)
+                    }
+
                     Button("Back to home", action: goHome)
                         .buttonStyle(SpeechPrimaryButtonStyle())
                         .padding(.top, SpeechSpacing.section)
@@ -31,8 +36,8 @@ struct ConversationReportView: View {
                 .padding(.top, 20)
             }
         }
-        .navigationTitle("Your conversation")
-        .navigationBarTitleDisplayMode(.inline)
+        .speechPageTitle("Your conversation")
+        .speechBottomBlur()
     }
 
     private var linesCard: some View {
@@ -55,6 +60,50 @@ struct ConversationReportView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
         )
+    }
+
+    @ViewBuilder
+    private func captionSyncSection(path: String) -> some View {
+        let url = URL(fileURLWithPath: path)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Diagnostics")
+                .speechType(.label)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Caption sync log from this conversation. Share it if partner subtitles lagged or stuck.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if FileManager.default.fileExists(atPath: path) {
+                        ShareLink(item: url) {
+                            Text("Share caption sync log")
+                                .font(.body.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        }
+                        .buttonStyle(SpeechSecondaryButtonStyle())
+                    } else {
+                        Text("Log file missing.")
+                            .font(.footnote)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                Text("Caption sync log")
+                    .font(.body)
+                    .foregroundStyle(.primary)
+            }
+            .tint(.secondary)
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
+            )
+        }
     }
 
     private func goHome() {

@@ -19,7 +19,8 @@ struct SessionStopModal: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Text(title)
-                    .font(.system(.title3, design: .serif).weight(.semibold))
+                    .speechType(.body)
+                    .fontWeight(.semibold)
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
 

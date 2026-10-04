@@ -57,14 +57,14 @@ struct SessionReportView: View {
                 .padding(.top, 20)
             }
         }
-        .navigationTitle("Your reading")
-        .navigationBarTitleDisplayMode(.inline)
+        .speechPageTitle("Your reading")
+        .speechBottomBlur()
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(report.passageTitle)
-                .font(.system(.title2, design: .serif).weight(.semibold))
+                .speechType(.h2)
             Text("\(report.scriptWordCount) words · \(durationLabel)")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -310,10 +310,9 @@ struct SessionReportView: View {
 
     private func sectionLabel(_ title: String) -> some View {
         Text(title)
-            .font(.footnote.weight(.semibold))
+            .speechType(.label)
             .foregroundStyle(.secondary)
             .textCase(.uppercase)
-            .tracking(0.6)
     }
 
     private func metric(title: String, value: String) -> some View {

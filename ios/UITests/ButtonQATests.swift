@@ -186,6 +186,14 @@ final class ButtonQATests: XCTestCase {
         qaNote(screen, "Pause", app.buttons["Pause"], note: "size")
         qaTap(screen, "Pause", app.buttons["Pause"]) { app.buttons["Resume"].exists }
         qaTap(screen, "Resume", app.buttons["Resume"]) { app.buttons["Pause"].exists }
+        // main replaced Reading's Stop + stop card with a single Done (no card).
+        if !app.buttons["Stop"].exists, app.buttons["Done"].exists {
+            qaTap(screen, "Done", app.buttons["Done"].firstMatch, timeout: 10) {
+                app.buttons["Read this again"].exists
+            }
+            if app.buttons["Read this again"].exists { readingReport() }
+            return
+        }
         noteNavBar(screen, "before stop modal")
         qaTap(screen, "Stop", app.buttons["Stop"].firstMatch) { app.buttons["Keep reading"].exists }
         noteNavBar("Reading stop modal", "modal up")
