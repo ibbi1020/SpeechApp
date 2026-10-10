@@ -197,7 +197,7 @@ Phrase as “Take 3 vs take 1: more talking time, fewer long gaps” — never a
 | Capture | On-device mic. User-only; no partner playback except canned 988. Do **not** start Conversation’s WebRTC / `RTCAudioSession`. Do **not** attach a live model. |
 | Scoring | Apple SpeechAnalyzer family + energy VAD, same family as Conversation / Reading. **No SpeechDetector.** Reuse `ConversationPauseTime`, a gap **count** on the same ≥250 ms gaps, `ConversationPace`, phonation union. |
 | Transcripts | Keep in RAM until the report is built, then drop. Needed for overlap %. |
-| PCM | Sequential **process-and-delete per take**. Do not hold three PCM buffers until the end (milestone-snippet risk). |
+| PCM / listen-back | While taking, write only running (non-paused) audio to a temp file. At take end: denoise (`AUSoundIsolation`), correct denoiser delay, encode AAC-LC 16 kHz mono 32 kbps, store under `Application Support/Recordings/<regimenID>/` with `manifest.json` (excluded from iCloud backup). Keep recordings defaults on; opt-out stops new saves. No rolling cap. Crisis deletes the whole regimen. Zero-word takes are not saved. No speaker embeddings. Not uploaded. |
 | Identity | **No speaker embeddings.** Take comparison is token overlap on text, not a voiceprint (BIPA). |
 | Crisis | Same on-device keyword list as Conversation, on volatile ∪ final, every take. |
 | Backend | Anonymous `crisis_referral_events` only. No Realtime mint. Monologue does not consume the 20 Conversation starts / month. |
