@@ -68,20 +68,21 @@ struct MonologueSessionClockTests {
     }
 
     @MainActor
-    @Test("a saved topic opens again and is marked as last time")
-    func reopenedTopic() {
+    @Test("opening does not bring back the saved topic")
+    func doesNotReopenSavedTopic() {
         let store = InMemoryMonologuePromptStore(lastPrompt: "bravo")
-        let session = MonologueSession(
-            prompts: ["alpha", "bravo", "charlie"],
-            store: store,
-            time: ControllableTimeSource(),
-            rng: SplitMix64(seed: 1)
-        )
-        #expect(session.prompt == "bravo")
-        #expect(session.reopenedLastTopic)
-        session.skipTopic()
-        #expect(session.prompt != "bravo")
-        #expect(!session.reopenedLastTopic)
+        var seen = Set<String>()
+        for seed in UInt64(1)...20 {
+            let session = MonologueSession(
+                prompts: ["alpha", "bravo", "charlie"],
+                store: store,
+                time: ControllableTimeSource(),
+                rng: SplitMix64(seed: seed)
+            )
+            #expect(session.prompt != "bravo")
+            seen.insert(session.prompt)
+        }
+        #expect(seen.count > 1)
     }
 
     @MainActor
@@ -96,7 +97,6 @@ struct MonologueSessionClockTests {
         session.skipTopic()
         #expect(session.prompt != before)
         #expect(session.phase == .planning)
-        #expect(!session.reopenedLastTopic)
     }
 }
 

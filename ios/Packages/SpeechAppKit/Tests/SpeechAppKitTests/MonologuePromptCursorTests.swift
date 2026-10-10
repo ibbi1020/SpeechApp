@@ -3,18 +3,20 @@ import Testing
 
 @Suite("Monologue prompt cursor")
 struct MonologuePromptCursorTests {
-    @Test("last prompt is reopened when it still exists")
-    func reopenLast() {
-        var rng = SplitMix64(seed: 1)
-        var cursor = MonologuePromptCursor(
-            prompts: ["alpha", "bravo", "charlie"],
-            lastPrompt: "bravo",
-            rng: &rng
-        )
-        #expect(cursor.current == "bravo")
-        #expect(cursor.openedLastPrompt)
-        cursor.skip(using: &rng)
-        #expect(cursor.current != "bravo")
+    @Test("opening skips the topic from last time")
+    func skipsSavedTopic() {
+        var hits = Set<String>()
+        for seed in UInt64(1)...40 {
+            var rng = SplitMix64(seed: seed)
+            let cursor = MonologuePromptCursor(
+                prompts: ["alpha", "bravo", "charlie"],
+                lastPrompt: "bravo",
+                rng: &rng
+            )
+            #expect(cursor.current != "bravo")
+            hits.insert(cursor.current)
+        }
+        #expect(hits == ["alpha", "charlie"])
     }
 
     @Test("a missing last prompt is not stuck on the first topic")
@@ -24,13 +26,13 @@ struct MonologuePromptCursorTests {
             var rng = SplitMix64(seed: seed)
             let cursor = MonologuePromptCursor(
                 prompts: ["alpha", "bravo", "charlie"],
-                lastPrompt: "ghost",
+                lastPrompt: nil,
                 rng: &rng
             )
-            #expect(!cursor.openedLastPrompt)
             hits.insert(cursor.current)
         }
         #expect(hits.count > 1)
+        #expect(hits.contains("alpha"))
     }
 
     @Test("change topic picks a different prompt")

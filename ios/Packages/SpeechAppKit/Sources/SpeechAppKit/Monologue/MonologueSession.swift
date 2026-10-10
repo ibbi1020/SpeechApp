@@ -18,8 +18,6 @@ public final class MonologueSession {
     public let store: any MonologuePromptStore
 
     public var prompt: String { cursor.current }
-    /// The planning page opened on the topic from the previous session.
-    public private(set) var reopenedLastTopic: Bool
     public var ceiling: TimeInterval { MonologueCeiling.seconds(forTake: takeNumber) }
 
     public var elapsed: TimeInterval {
@@ -62,7 +60,6 @@ public final class MonologueSession {
         let cursor = MonologuePromptCursor(prompts: prompts, lastPrompt: store.lastPrompt, rng: &rng)
         self.cursor = cursor
         self.rng = rng
-        self.reopenedLastTopic = cursor.openedLastPrompt
         self.store = store
         self.time = time
     }
@@ -70,7 +67,6 @@ public final class MonologueSession {
     public func skipTopic() {
         guard phase == .planning || phase == .between else { return }
         cursor.skip(using: &rng)
-        reopenedLastTopic = false
     }
 
     public func ready() {

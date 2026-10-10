@@ -3,19 +3,20 @@ import Foundation
 public struct MonologuePromptCursor: Equatable, Sendable {
     public let prompts: [String]
     public private(set) var index: Int
-    /// True when this cursor opened on the saved prompt from the previous session.
-    public let openedLastPrompt: Bool
 
+    /// A random prompt. The saved topic from last time is left out when another one exists.
     public init(prompts: [String], lastPrompt: String?, rng: inout SplitMix64) {
         precondition(!prompts.isEmpty, "prompt bank is empty")
         self.prompts = prompts
-        if let lastPrompt, let found = prompts.firstIndex(of: lastPrompt) {
-            index = found
-            openedLastPrompt = true
-        } else {
-            index = Int(rng.next() % UInt64(prompts.count))
-            openedLastPrompt = false
+        let pool = Self.choices(in: prompts, excluding: lastPrompt)
+        index = pool[Int(rng.next() % UInt64(pool.count))]
+    }
+
+    private static func choices(in prompts: [String], excluding lastPrompt: String?) -> [Int] {
+        guard prompts.count > 1, let lastPrompt, let found = prompts.firstIndex(of: lastPrompt) else {
+            return Array(prompts.indices)
         }
+        return prompts.indices.filter { $0 != found }
     }
 
     public var current: String { prompts[index] }

@@ -242,12 +242,6 @@ struct MonologueSessionView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     stageDuration(minutes)
 
-                    if session.phase == .planning, session.reopenedLastTopic {
-                        Text("You talked about this last time.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
                     Text(session.prompt)
                         .font(.system(size: 22, weight: .regular, design: .serif))
                         .lineSpacing(8)
