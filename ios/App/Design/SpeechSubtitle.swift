@@ -1,8 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// Live caption above the speech orb. One line at a time: when the line is full,
-/// it fades out and the next words start on a fresh line.
+/// Live caption above the speech orb. One line at a time. When the line is full,
+/// it fades out and the next line appears. The fade is the only wait.
 struct SpeechSubtitle: View {
     let text: String
 
@@ -89,8 +89,7 @@ struct SpeechSubtitle: View {
             sourceWords = next
             pageStart = 0
             isPaging = false
-            presentPage(animated: animated && !tokens.isEmpty, replace: !tokens.isEmpty)
-            scheduleFollowUpPageIfNeeded()
+            reveal(animated: animated && !tokens.isEmpty, replace: !tokens.isEmpty)
             return
         }
 
@@ -112,13 +111,12 @@ struct SpeechSubtitle: View {
                 appendWords(additions, onto: tokens, animated: animated && !showing.isEmpty)
             }
             if overflow {
-                holdThenTurnPage()
+                beginPageTurn(animated: true)
             }
             return
         }
 
-        presentPage(animated: animated, replace: true)
-        if overflow { holdThenTurnPage() }
+        reveal(animated: animated, replace: true)
     }
 
     private func appendWords(_ additions: [String], onto existing: [Token], animated: Bool) {
@@ -207,11 +205,8 @@ struct SpeechSubtitle: View {
         let finish: @MainActor @Sendable () -> Void = {
             pageStart += leaving.count
             commit([], animated: false)
-            scheduleIfCurrent(gate: gate, after: 0.12) {
-                isPaging = false
-                presentPage(animated: animated, replace: false)
-                scheduleFollowUpPageIfNeeded()
-            }
+            isPaging = false
+            reveal(animated: animated, replace: false)
         }
 
         if !animated || reduceMotion {
@@ -223,20 +218,29 @@ struct SpeechSubtitle: View {
         scheduleIfCurrent(gate: gate, after: Self.enterDuration, finish)
     }
 
-    /// Let the finished line be readable, then fade it for the next line.
-    private func holdThenTurnPage() {
-        let gate = generation
-        scheduleIfCurrent(gate: gate, after: 0.35) {
-            beginPageTurn(animated: true)
-        }
-    }
-
-    private func scheduleFollowUpPageIfNeeded() {
+    /// Show the current page. When that page is already full, the next fade starts
+    /// once this line is visible. There is no hold before the fade and no blank gap after it.
+    private func reveal(animated: Bool, replace: Bool) {
         let page = fittedPage()
-        guard pageStart + page.count < sourceWords.count, !page.isEmpty else { return }
+        guard !page.isEmpty else {
+            commit([], animated: false)
+            return
+        }
+
+        let overflow = pageStart + page.count < sourceWords.count
+        if !overflow {
+            presentPage(animated: animated, replace: replace)
+            return
+        }
+
+        let turnAnimated = animated && !reduceMotion
+        presentPage(animated: turnAnimated, replace: false)
         let gate = generation
-        scheduleIfCurrent(gate: gate, after: 0.7) {
-            beginPageTurn(animated: true)
+        // The entrance fade is the wait. Starting the next turn in this same update
+        // would fade the line out before it had been drawn.
+        let delay: TimeInterval = turnAnimated ? Self.enterDuration : 0
+        scheduleIfCurrent(gate: gate, after: delay) {
+            beginPageTurn(animated: turnAnimated)
         }
     }
 
