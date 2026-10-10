@@ -12,7 +12,8 @@ public enum MonologueOverlap {
     }
 
     public static func tokens(_ text: String) -> [String] {
-        text.lowercased()
+        FillerWords.strippingTranscript(text)
+            .lowercased()
             .split { $0.isWhitespace || $0.isNewline }
             .map(String.init)
     }

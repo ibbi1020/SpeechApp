@@ -34,6 +34,7 @@ struct ConversationSessionView: View {
     @State private var speechEnergy: Float = 0
     @State private var partnerEnergy: Float = 0
     @State private var levelTask: Task<Void, Never>?
+    @State private var listenBack: ConversationListenBack?
 
     private var phase: ConversationPhase {
         session?.phase ?? .idle
@@ -276,6 +277,7 @@ struct ConversationSessionView: View {
             mint = built.mint
             startEventPump(session: built.session, mouth: built.mouth)
             startLevelPump()
+            await startListenBack(session: built.session, mouth: built.mouth)
 
             built.session.beginCountdown()
 
@@ -341,7 +343,24 @@ struct ConversationSessionView: View {
         await beginSession()
     }
 
+    /// Records the user's side for the report player (live mouth only).
+    private func startListenBack(session: ConversationSession, mouth: any ConversationMouth) async {
+        listenBack?.discard()
+        listenBack = nil
+        guard RecordingsService.keepRecordings,
+              let live = mouth as? LiveConversationMouth,
+              let relay = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
+        else { return }
+        let recorder = ConversationListenBack(mouth: live, relayBase: relay.base, bearerToken: relay.uuid.uuidString)
+        listenBack = recorder
+        await recorder.start {
+            session.phase == .talking || session.phase == .wrapping
+        }
+    }
+
     private func clearLiveSession() {
+        listenBack?.discard()
+        listenBack = nil
         eventPump?.cancel()
         eventPump = nil
         levelTask?.cancel()
@@ -539,6 +558,8 @@ struct ConversationSessionView: View {
         guard !didRouteFinish, let session else { return }
         switch session.phase {
         case .crisis:
+            listenBack?.discard()
+            listenBack = nil
             markRoutedAndPostEnded()
             model.presentCrisis(possibleMinorFlag: session.possibleMinorFlag)
         case .report, .dropped:
@@ -547,6 +568,8 @@ struct ConversationSessionView: View {
                 "conversation end reason=\(String(describing: report.endReason), privacy: .public) turns=\(report.userTurns) present=\(session.shouldPresentReport)"
             )
             if !session.shouldPresentReport {
+                listenBack?.discard()
+                listenBack = nil
                 if errorMessage == nil {
                     errorMessage = "Connection lost."
                     canRetry = true
@@ -555,9 +578,13 @@ struct ConversationSessionView: View {
                 return
             }
             markRoutedAndPostEnded()
+            let recordingID = report.kind == .crisis ? nil : listenBack?.finish(report: report)
+            if recordingID == nil { listenBack?.discard() }
+            listenBack = nil
             model.finishConversation(
                 report: report,
-                possibleMinorFlag: session.possibleMinorFlag
+                possibleMinorFlag: session.possibleMinorFlag,
+                recordingID: recordingID
             )
         default:
             break
@@ -588,6 +615,8 @@ struct ConversationSessionView: View {
         }
 
         didRouteFinish = true
+        listenBack?.discard()
+        listenBack = nil
         Task { await postEndedIfNeeded() }
         guard let session else { return }
         switch session.phase {

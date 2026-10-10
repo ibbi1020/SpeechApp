@@ -5,6 +5,7 @@ struct MonologueReportView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let report: MonologueReport
+    let regimenID: UUID?
 
     var body: some View {
         ZStack {
@@ -28,6 +29,11 @@ struct MonologueReportView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.top, SpeechSpacing.related)
+                    }
+
+                    if regimenID != nil {
+                        RecordingReviewLoader(recordingID: regimenID)
+                            .padding(.top, SpeechSpacing.section)
                     }
 
                     Button("Back to home", action: goHome)

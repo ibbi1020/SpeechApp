@@ -5,6 +5,7 @@ struct SessionReportView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let report: SessionReport
+    var recordingID: UUID? = nil
 
     @State private var showAllWords = false
     @State private var expandedWordIDs: Set<String> = []
@@ -21,6 +22,11 @@ struct SessionReportView: View {
                         .padding(.bottom, SpeechSpacing.section)
 
                     resultsSection
+
+                    if recordingID != nil {
+                        RecordingReviewLoader(recordingID: recordingID)
+                            .padding(.top, SpeechSpacing.section)
+                    }
 
                     notesSection
                         .padding(.top, SpeechSpacing.section)

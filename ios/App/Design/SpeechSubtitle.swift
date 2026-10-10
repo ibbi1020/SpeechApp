@@ -204,7 +204,7 @@ struct SpeechSubtitle: View {
         isPaging = true
         let gate = bumpGeneration()
 
-        let finish = {
+        let finish: @MainActor @Sendable () -> Void = {
             pageStart += leaving.count
             commit([], animated: false)
             scheduleIfCurrent(gate: gate, after: 0.12) {

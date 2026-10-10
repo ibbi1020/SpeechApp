@@ -16,6 +16,12 @@ settings:
 packages:
   SpeechAppKit:
     path: Packages/SpeechAppKit
+  DSWaveformImage:
+    url: https://github.com/dmrschmidt/DSWaveformImage
+    from: 14.5.0
+  SwiftUI-Flow:
+    url: https://github.com/tevelee/SwiftUI-Flow
+    from: 3.0.0
 targets:
   SpeechApp:
     type: application
@@ -36,6 +42,12 @@ targets:
         SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
     dependencies:
       - package: SpeechAppKit
+      - package: DSWaveformImage
+        product: DSWaveformImage
+      - package: DSWaveformImage
+        product: DSWaveformImageViews
+      - package: SwiftUI-Flow
+        product: Flow
     info:
       path: App/Info.plist
       properties:
@@ -55,7 +67,7 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        NSMicrophoneUsageDescription: Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Speech is sent to xAI for transcription and live conversation. We do not keep the recording.
+        NSMicrophoneUsageDescription: Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Speech is sent to xAI for transcription and live conversation. Topic talks can be kept on this phone so you can listen back. You can delete them anytime.
         NSSpeechRecognitionUsageDescription: Orator uses on-device speech recognition to follow reading and to time topic talks. Recognition runs on your device.
 schemes:
   SpeechApp:

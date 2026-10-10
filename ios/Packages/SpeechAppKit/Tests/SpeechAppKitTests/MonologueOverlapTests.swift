@@ -32,4 +32,18 @@ struct MonologueOverlapTests {
     func empty() {
         #expect(MonologueOverlap.tokenPercent(previous: "  ", current: "") == nil)
     }
+
+    @Test("fillers do not change overlap")
+    func fillersIgnored() {
+        let without = MonologueOverlap.tokenPercent(
+            previous: "I went to the store",
+            current: "I went to the store"
+        )
+        let with = MonologueOverlap.tokenPercent(
+            previous: "I um went uh to the store",
+            current: "I went to the store"
+        )
+        #expect(without == with)
+        #expect(without == 100)
+    }
 }

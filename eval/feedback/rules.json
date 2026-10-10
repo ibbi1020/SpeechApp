@@ -1,0 +1,335 @@
+[
+  {
+    "name": "long pause mid-sentence",
+    "why": "A 2.5 s word gap (about 2.3 s of real silence) while looking for a word is the main thing the player should point at.",
+    "script": "I went to the [2.5 pause] store today",
+    "durationSeconds": 60,
+    "noteContains": "A 2-second pause"
+  },
+  {
+    "name": "pause after “the” is mid-sentence",
+    "why": "After “the” the sentence must go on, so the speaker was looking for a word.",
+    "script": "I went to the [2.5 pause] store today",
+    "durationSeconds": 60,
+    "noteContains": "in the middle of a sentence. Listen: what word were you looking for?"
+  },
+  {
+    "name": "pause after a full stop before “So” is between sentences",
+    "why": "A sentence ended and a new one began, so the speaker was planning the next point.",
+    "script": "We went to the lake. [2.5 pause] So we swam all day",
+    "durationSeconds": 60,
+    "noteContains": "between sentences. Listen: were you planning your next point?"
+  },
+  {
+    "name": "pause after a period Grok inserted keeps the open question",
+    "why": "Grok writes a period at long pauses (“a small. Bakery”). That alone is not proof of a sentence end.",
+    "script": "I work at a small. [2.5 pause] Bakery near home",
+    "durationSeconds": 60,
+    "noteContains": "looking for a word, or your next point?"
+  },
+  {
+    "name": "word gap of 1.6 s",
+    "why": "Grok word gaps read about 0.2 s long. 1.6 s is a real 1.4 s breath and must not be flagged.",
+    "script": "I went to the [1.6 not pause] store today",
+    "durationSeconds": 60
+  },
+  {
+    "name": "word gap of exactly 1.7 s",
+    "why": "1.7 s between Grok words is a real 1.5 s silence. Rounding in word times must not drop it.",
+    "script": "I went to the [1.7 pause] store today",
+    "durationSeconds": 60
+  },
+  {
+    "name": "silence before the first word",
+    "why": "Freezing at the start is a pause too.",
+    "script": "[2.0 pause] So I think we should go",
+    "durationSeconds": 60
+  },
+  {
+    "name": "short silence before the first word",
+    "why": "A normal breath before starting is not a freeze.",
+    "script": "[1.0 not pause] So I think we should go",
+    "durationSeconds": 60
+  },
+  {
+    "name": "silence after the last word",
+    "why": "Stopping early is not a pause inside the talk.",
+    "script": "I think that is all [5.0 not pause]"
+  },
+  {
+    "name": "two fillers within 6 s",
+    "why": "A cluster of fillers marks a moment of searching.",
+    "script": "I <fillers> um think it was really nice and then I went uh </> home",
+    "durationSeconds": 60,
+    "noteContains": "2 fillers"
+  },
+  {
+    "name": "two fillers more than 6 s apart",
+    "why": "Fillers spread across a talk are normal speech, not one stuck moment.",
+    "script": "So <not fillers> um we drove to the coast on a sunny day and the water was calm so we stayed by the beach for a long time until uh </> lunch",
+    "durationSeconds": 60
+  },
+  {
+    "name": "one filler",
+    "why": "A single um is not worth a marker.",
+    "script": "I <not fillers> um </> think so",
+    "durationSeconds": 60
+  },
+  {
+    "name": "three fillers close together",
+    "why": "The note should count all three.",
+    "script": "So <fillers> um I uh think er </> yes",
+    "durationSeconds": 60,
+    "noteContains": "3 fillers in 2 seconds"
+  },
+  {
+    "name": "fillers with punctuation and capitals",
+    "why": "Grok writes “Um,” at sentence starts. It is still a filler.",
+    "script": "<fillers> Um, I went uh, </> home",
+    "durationSeconds": 60
+  },
+  {
+    "name": "restart of one word",
+    "why": "“I I went” is a restart.",
+    "script": "<restart> I I </> went home",
+    "durationSeconds": 60,
+    "noteContains": "started this part again"
+  },
+  {
+    "name": "restart of three words",
+    "why": "“I went to, I went to the store” is a restart.",
+    "script": "<restart> I went to I went to </> the store",
+    "durationSeconds": 60
+  },
+  {
+    "name": "restart of a short function word",
+    "why": "“to to the store” is a stumble, not emphasis.",
+    "script": "I went <restart> to to </> the store",
+    "durationSeconds": 60
+  },
+  {
+    "name": "restart with a filler between",
+    "why": "“I, um, I went” is still a restart, and one filler is not a cluster.",
+    "script": "<restart> I um I </> went home",
+    "durationSeconds": 60
+  },
+  {
+    "name": "repeat after a long pause",
+    "why": "If 2 s pass between the copies it is a pause, not a quick restart.",
+    "script": "<not restart> I went [2.0 pause] I went </> home",
+    "durationSeconds": 60
+  },
+  {
+    "name": "emphasis repeat",
+    "why": "“very very good” is emphasis, not a restart.",
+    "script": "It was <not restart> very very </> good",
+    "durationSeconds": 60
+  },
+  {
+    "name": "grammatical repeat",
+    "why": "“I think that that is true” is correct English.",
+    "script": "I think <not restart> that that </> is true",
+    "durationSeconds": 60
+  },
+  {
+    "name": "emphasis no no",
+    "why": "“No no, that is fine” is emphasis.",
+    "script": "<not restart> No no </> that is fine",
+    "durationSeconds": 60
+  },
+  {
+    "name": "cap keeps the three longest pauses on a 1-minute take",
+    "why": "A 1-minute take shows at most 3 markers. The longest hesitations win.",
+    "script": "one [9 pause] two [8 pause] three [2 pause maybe] four [7 pause] five [1.8 pause maybe] six",
+    "durationSeconds": 60
+  },
+  {
+    "name": "two close pauses keep the longer",
+    "why": "Markers must sit at least 13% of the take apart, so the scrubber stays tappable.",
+    "script": "I went [4 pause] to the shop [3 pause maybe] for milk",
+    "durationSeconds": 60
+  },
+  {
+    "name": "take under 30 s still gets markers",
+    "why": "Short takes do not count toward the report, but they still get feedback.",
+    "script": "So I [2.0 pause] think it went well",
+    "durationSeconds": 20
+  },
+  {
+    "name": "very short take shows one marker, the biggest",
+    "why": "A 6 s take gets one marker. A 2.3 s filler cluster beats a 1.8 s word gap.",
+    "script": "I [1.8 pause maybe] <fillers> um went to uh the er </> store",
+    "durationSeconds": 6
+  },
+  {
+    "name": "pause inside a filler cluster",
+    "why": "One stuck moment should get one marker, not two on top of each other.",
+    "script": "So <fillers> um [2.0 pause maybe] uh </> I think",
+    "durationSeconds": 60
+  },
+  {
+    "name": "clean take",
+    "why": "Fluent speech gets no markers.",
+    "script": "I like to walk to work because it is quiet and I can think about the day",
+    "durationSeconds": 60
+  },
+  {
+    "name": "reading: clean read",
+    "why": "Reading the passage as written gets no markers.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed past the old lighthouse at dawn while the river ran fast."
+  },
+  {
+    "name": "reading: skipped content word",
+    "why": "Skipping “old” changes the picture. It should be shown.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed past the [0.1 skip] lighthouse at dawn while the river ran fast.",
+    "noteContains": "We didn't hear “old”"
+  },
+  {
+    "name": "reading: several skipped words become one marker",
+    "why": "“past the old” dropped together is one moment, not three.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed [0.1 skip] lighthouse at dawn while the river ran fast.",
+    "noteContains": "“past the old”"
+  },
+  {
+    "name": "reading: dropped function word is ignored",
+    "why": "Grok often drops “the”. Flagging it would be noise.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed past [0.1 not skip] old lighthouse at dawn while the river ran fast."
+  },
+  {
+    "name": "reading: minimal-pair swap",
+    "why": "“sheep” for “ship” is the contrast the passage trains.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The <swap> sheep </> sailed past the old lighthouse at dawn while the river ran fast.",
+    "noteContains": "The passage says “ship”"
+  },
+  {
+    "name": "reading: near-miss ending is not a swap",
+    "why": "“sail” for “sailed” is a clipped ending, which ASR does often. Not worth a marker.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship <not swap> sail </> past the old lighthouse at dawn while the river ran fast."
+  },
+  {
+    "name": "reading: self-correction is not flagged",
+    "why": "Rereading “the old” to fix it is good reading, not an error.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed past the old the old lighthouse at dawn while the river ran fast."
+  },
+  {
+    "name": "reading: fillers are ignored",
+    "why": "Reading markers are about the words, not fillers.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed past <not fillers> um the old uh </> lighthouse at dawn while the river ran fast."
+  },
+  {
+    "name": "reading: pause before a word mid-phrase",
+    "why": "Stopping 3 s before “past” in the middle of a phrase points to a hard word.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed [3.0 pause] past the old lighthouse at dawn while the river ran fast.",
+    "noteContains": "pause before “past”"
+  },
+  {
+    "name": "reading: pause at a comma is good reading",
+    "why": "Pausing where the passage has a comma is what a good reader does.",
+    "exercise": "reading",
+    "passage": "When the rain stopped, the riders raced toward the old bridge.",
+    "script": "When the rain stopped, [3.0 not pause] the riders raced toward the old bridge."
+  },
+  {
+    "name": "reading: short pause mid-phrase is fine",
+    "why": "A normal breath inside a phrase is not a hesitation.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed [1.0 not pause] past the old lighthouse at dawn while the river ran fast."
+  },
+  {
+    "name": "reading: stopping early is not a skip",
+    "why": "The unread rest of the passage is already in the report. It is not a listen-back moment.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed past the old lighthouse"
+  },
+  {
+    "name": "conversation: slow start",
+    "why": "Taking 3 s to start answering is the freeze Conversation trains against.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you do on weekends?} [3.0 slowstart] Usually I go hiking with friends",
+    "durationSeconds": 60,
+    "noteContains": "After “What do you do on weekends?”, you took 3 seconds"
+  },
+  {
+    "name": "conversation: quick answer",
+    "why": "Answering within a second is normal timing, even for L2 speakers.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you do on weekends?} [1.0 not slowstart] Usually I go hiking with friends",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: wait just under the line",
+    "why": "About 1.9 s is inside a beginner's normal range. Not flagged.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you do?} [2.0 not slowstart] I work at a bakery",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: wait just over the line",
+    "why": "About 2.1 s is past a beginner's normal range.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you do?} [2.2 slowstart] I work at a bakery",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: the partner's turn is not a pause",
+    "why": "Silence on the mic while the partner talks is not the user pausing.",
+    "exercise": "conversation",
+    "script": "I like hiking {3.0 Where do you go?} [0.5 not slowstart] Mostly the hills near home",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: pause inside an answer",
+    "why": "A long freeze mid-answer is flagged, the same as in Monologue.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you do?} [0.6] I work at a [2.5 pause] bakery near home",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: fillers inside an answer",
+    "why": "A filler cluster mid-answer is flagged.",
+    "exercise": "conversation",
+    "script": "{2.0 Why that job?} [0.5] I <fillers> um think it was uh </> the hours",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: fillers split by the partner are not a cluster",
+    "why": "One um before the partner speaks and one after are two separate answers.",
+    "exercise": "conversation",
+    "script": "I think <not fillers> um {2.0 Really?} [0.5] uh </> yes",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: no answer before the partner speaks again",
+    "why": "If the partner talks again before the user answers, there is no answer to time.",
+    "exercise": "conversation",
+    "script": "{2.0 Hi there.} [4.0 not slowstart] {2.0 Are you still there?} [0.5] Yes sorry",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: restart inside an answer",
+    "why": "“I went to, I went to the market” mid-answer is a restart, the same as in Monologue.",
+    "exercise": "conversation",
+    "script": "{2.0 What did you do on Sunday?} [0.6] On Sunday <restart> I went to I went to </> the market",
+    "durationSeconds": 60
+  }
+]
