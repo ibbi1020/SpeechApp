@@ -7,6 +7,27 @@
     "noteContains": "A 2-second pause"
   },
   {
+    "name": "pause after “the” is mid-sentence",
+    "why": "After “the” the sentence must go on, so the speaker was looking for a word.",
+    "script": "I went to the [2.5 pause] store today",
+    "durationSeconds": 60,
+    "noteContains": "in the middle of a sentence. Listen: what word were you looking for?"
+  },
+  {
+    "name": "pause after a full stop before “So” is between sentences",
+    "why": "A sentence ended and a new one began, so the speaker was planning the next point.",
+    "script": "We went to the lake. [2.5 pause] So we swam all day",
+    "durationSeconds": 60,
+    "noteContains": "between sentences. Listen: were you planning your next point?"
+  },
+  {
+    "name": "pause after a period Grok inserted keeps the open question",
+    "why": "Grok writes a period at long pauses (“a small. Bakery”). That alone is not proof of a sentence end.",
+    "script": "I work at a small. [2.5 pause] Bakery near home",
+    "durationSeconds": 60,
+    "noteContains": "looking for a word, or your next point?"
+  },
+  {
     "name": "word gap of 1.6 s",
     "why": "Grok word gaps read about 0.2 s long. 1.6 s is a real 1.4 s breath and must not be flagged.",
     "script": "I went to the [1.6 not pause] store today",
@@ -212,11 +233,26 @@
     "script": "The ship sailed past <not fillers> um the old uh </> lighthouse at dawn while the river ran fast."
   },
   {
-    "name": "reading: pauses are not markers",
-    "why": "Reading markers are about the words, not pauses.",
+    "name": "reading: pause before a word mid-phrase",
+    "why": "Stopping 3 s before “past” in the middle of a phrase points to a hard word.",
     "exercise": "reading",
     "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
-    "script": "The ship sailed [3.0 not pause] past the old lighthouse at dawn while the river ran fast."
+    "script": "The ship sailed [3.0 pause] past the old lighthouse at dawn while the river ran fast.",
+    "noteContains": "pause before “past”"
+  },
+  {
+    "name": "reading: pause at a comma is good reading",
+    "why": "Pausing where the passage has a comma is what a good reader does.",
+    "exercise": "reading",
+    "passage": "When the rain stopped, the riders raced toward the old bridge.",
+    "script": "When the rain stopped, [3.0 not pause] the riders raced toward the old bridge."
+  },
+  {
+    "name": "reading: short pause mid-phrase is fine",
+    "why": "A normal breath inside a phrase is not a hesitation.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed [1.0 not pause] past the old lighthouse at dawn while the river ran fast."
   },
   {
     "name": "reading: stopping early is not a skip",
@@ -287,6 +323,13 @@
     "why": "If the partner talks again before the user answers, there is no answer to time.",
     "exercise": "conversation",
     "script": "{2.0 Hi there.} [4.0 not slowstart] {2.0 Are you still there?} [0.5] Yes sorry",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: restart inside an answer",
+    "why": "“I went to, I went to the market” mid-answer is a restart, the same as in Monologue.",
+    "exercise": "conversation",
+    "script": "{2.0 What did you do on Sunday?} [0.6] On Sunday <restart> I went to I went to </> the market",
     "durationSeconds": 60
   }
 ]

@@ -1,6 +1,7 @@
 import Foundation
 
-/// Listen-back markers for Reading: passage words that were skipped or swapped.
+/// Listen-back markers for Reading: passage words that were skipped or swapped, and
+/// long pauses before a word in the middle of a phrase.
 ///
 /// The live aligner is generous on purpose (it fills dropped ASR words as heard so the
 /// caret never jumps). Feedback needs the opposite, so this runs a strict global
@@ -124,6 +125,10 @@ public enum ReadingMarkers {
                     spokenRun.append(w)
                     index += 1
                 }
+                // Low-load contrasts (e.g. "th") barely affect understanding (Munro & Derwing 2006).
+                if scriptRun.allSatisfy({ passage.words[$0].flBand == .low }) {
+                    continue
+                }
                 let first = words[spokenRun.first!]
                 let last = words[spokenRun.last!]
                 markers.append(ReviewMarker(
@@ -136,6 +141,43 @@ public enum ReadingMarkers {
             default:
                 index += 1
             }
+        }
+        markers.append(contentsOf: hesitations(passage: passage, steps: steps, words: words))
+        return markers.sorted { $0.start < $1.start }
+    }
+
+    /// A long pause between two passage words that sit in the same phrase. A pause at a
+    /// comma or full stop is good reading; a mid-phrase pause points to a word that was
+    /// hard to read (mid-clause pauses index word-level trouble, ijal.12472).
+    static func hesitations(passage: Passage, steps: [Step], words: [RecordedWord]) -> [ReviewMarker] {
+        var heard: [(script: Int, spoken: Int)] = []
+        for step in steps {
+            switch step {
+            case .match(let s, let w), .swap(let s, let w): heard.append((s, w))
+            default: break
+            }
+        }
+        guard heard.count > 1 else { return [] }
+        var markers: [ReviewMarker] = []
+        for i in 1..<heard.count {
+            let before = heard[i - 1]
+            let after = heard[i]
+            guard after.script == before.script + 1 else { continue }
+            let boundary = passage.words[before.script].surface.last.map { ",.;:!?—–-\"”)".contains($0) } ?? false
+            guard !boundary else { continue }
+            let gapStart = words[before.spoken].end
+            let gapEnd = words[after.spoken].start
+            let gap = gapEnd - gapStart
+            guard gap >= ReviewMarkers.minimumWordGap - ReviewMarkers.timeSlack else { continue }
+            let silence = gap - ReviewMarkers.wordEdgePadding
+            let next = passage.words[after.script].surface.trimmingCharacters(in: .punctuationCharacters)
+            markers.append(ReviewMarker(
+                kind: .pause,
+                start: gapStart,
+                end: gapEnd,
+                score: silence,
+                note: "A \(Int(silence.rounded()))-second pause before “\(next)”. Listen: was it hard to read?"
+            ))
         }
         return markers
     }

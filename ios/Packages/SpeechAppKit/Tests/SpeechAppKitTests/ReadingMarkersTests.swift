@@ -11,7 +11,7 @@ struct ReadingMarkersTests {
         }
     }
 
-    @Test("swaps rank by functional load")
+    @Test("low-load swaps are dropped; the rest rank by functional load")
     func functionalLoadRanking() {
         let passage = Passage(id: "p", title: "p", words: [
             ScriptWord(id: "0", surface: "the", flBand: .low),
@@ -24,9 +24,10 @@ struct ReadingMarkersTests {
         let heard = words("the fin boat passed the sheep")
         let candidates = ReadingMarkers.candidates(passage: passage, words: heard)
         let swaps = candidates.filter { $0.kind == .swappedWord }
-        #expect(swaps.count == 2)
-        let top = swaps.max { $0.score < $1.score }
-        #expect(top?.note.contains("“ship”") == true)
+        // "fin" for low-load "thin" is dropped; "sheep" for high-load "ship" stays.
+        #expect(swaps.count == 1)
+        #expect(swaps.first?.note.contains("“ship”") == true)
+        #expect(swaps.first?.score == 3)
     }
 
     @Test("a 6 s read shows only the highest-load swap")
@@ -39,7 +40,7 @@ struct ReadingMarkersTests {
             ScriptWord(id: "4", surface: "the", flBand: .medium),
             ScriptWord(id: "5", surface: "ship", flBand: .high),
         ])
-        let markers = ReadingMarkers.build(passage: passage, words: words("fin boats sail past the sheep"), durationSeconds: 6)
+        let markers = ReadingMarkers.build(passage: passage, words: words("fin goats sail past the sheep"), durationSeconds: 6)
         #expect(markers.count == 1)
         #expect(markers.first?.note.contains("“ship”") == true)
     }

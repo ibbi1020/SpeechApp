@@ -38,8 +38,13 @@ problem. For each miss it says whether the **transcript** or the **rules** are t
 | Exercise | Markers | Why |
 |---|---|---|
 | Monologue | long pause, filler cluster, restart | 4/3/2 trains utterance fluency |
-| Reading | skipped word, swapped word (ranked by functional load) | The passage is known, so mistakes are about the words, not timing (Munro & Derwing 2006) |
-| Conversation | long pause and filler cluster inside an answer, slow start (2 s+ before answering) | Answer timing is the interactive skill. L2 beginners average ~1 s, listeners read meaning into gaps from ~0.7 s (Kendrick & Torreira 2015) |
+| Reading | skipped word, swapped word (ranked by functional load; low-load swaps dropped), pause before a word mid-phrase (not at a comma or full stop) | The passage is known, so mistakes are about the words (Munro & Derwing 2006). Mid-clause pauses point to word-level trouble |
+| Conversation | long pause, filler cluster, and restart inside an answer; slow start (2 s+ before answering) | Answer timing is the interactive skill. L2 beginners average ~1 s, listeners read meaning into gaps from ~0.7 s (Kendrick & Torreira 2015) |
+
+Pause notes say where the pause fell: after a word like "the" or "to" it is mid-sentence ("what word
+were you looking for?"); after a full stop followed by a word like "So" it is between sentences
+("were you planning your next point?"). Grok adds full stops at long pauses, so anything less clear
+keeps the open question.
 
 Set `"exercise": "reading"` with `"passage"`, or `"exercise": "conversation"`, on a rule case or clip.
 

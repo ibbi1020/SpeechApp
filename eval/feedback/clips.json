@@ -138,11 +138,19 @@
     "voice": "Samantha"
   },
   {
-    "name": "reading-pause-not-flagged",
-    "why": "A long pause in Reading is not a reading marker.",
+    "name": "reading-hesitation",
+    "why": "A 3 s stop mid-phrase before “while” points to a hard word.",
     "exercise": "reading",
     "passage": "A light rain ran along the long river road while riders raced toward the old bridge.",
-    "script": "A light rain ran along the long river road [3.0 not pause] while riders raced toward the old bridge.",
+    "script": "A light rain ran along the long river road [3.0 pause] while riders raced toward the old bridge.",
+    "voice": "Samantha"
+  },
+  {
+    "name": "reading-pause-at-comma",
+    "why": "Pausing at the comma is good reading and must not be flagged.",
+    "exercise": "reading",
+    "passage": "When the rain stopped, the riders raced toward the old bridge.",
+    "script": "When the rain stopped, [2.5 not pause] the riders raced toward the old bridge.",
     "voice": "Samantha"
   },
   {
@@ -187,5 +195,12 @@
     "exercise": "conversation",
     "script": "{2.0 Where did you grow up?} [0.7 not slowstart] In a small town by the sea {2.5 What did you like most about it?} [3.5 slowstart] The quiet mornings on the beach",
     "voice": "Daniel"
+  },
+  {
+    "name": "conversation-restart",
+    "why": "A restart mid-answer is flagged in Conversation too.",
+    "exercise": "conversation",
+    "script": "{2.0 What did you do on Sunday?} [0.6] On Sunday <restart> I went to I went to </> the market with my sister",
+    "voice": "Samantha"
   }
 ]

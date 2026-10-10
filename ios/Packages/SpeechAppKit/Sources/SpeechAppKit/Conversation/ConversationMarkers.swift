@@ -1,7 +1,7 @@
 import Foundation
 
-/// Listen-back markers for Conversation: long pauses and filler clusters inside an
-/// answer, and slow starts after the partner stops.
+/// Listen-back markers for Conversation: long pauses, filler clusters, and restarts
+/// inside an answer, and slow starts after the partner stops.
 ///
 /// Slow start: people usually answer within about 0.5 s; beginner L2 speakers average
 /// about 1 s with a spread of about 1.25 s (Wehrle et al., L2 Map Task). Gaps from
@@ -38,6 +38,7 @@ public enum ConversationMarkers {
         for answer in answers where !answer.isEmpty {
             markers.append(contentsOf: ReviewMarkers.pauseMarkers(words: answer, includeLeading: false))
             markers.append(contentsOf: ReviewMarkers.fillerClusterMarkers(words: answer))
+            markers.append(contentsOf: ReviewMarkers.restartMarkers(words: answer))
         }
 
         for (index, turn) in turns.enumerated() {

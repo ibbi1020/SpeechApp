@@ -96,18 +96,20 @@ public enum ReviewMarkers {
         var found: [ReviewMarker] = []
         found.append(contentsOf: pauseMarkers(words: words, includeLeading: true))
         found.append(contentsOf: fillerClusterMarkers(words: words))
-        for restart in RestartDetector.find(in: words) {
-            found.append(
-                ReviewMarker(
-                    kind: .restart,
-                    start: restart.start,
-                    end: restart.end,
-                    score: restart.score,
-                    note: note(for: .restart, score: restart.score, end: restart.end, start: restart.start)
-                )
+        found.append(contentsOf: restartMarkers(words: words))
+        return found.sorted { $0.start < $1.start }
+    }
+
+    static func restartMarkers(words: [RecordedWord]) -> [ReviewMarker] {
+        RestartDetector.find(in: words).map { restart in
+            ReviewMarker(
+                kind: .restart,
+                start: restart.start,
+                end: restart.end,
+                score: restart.score,
+                note: note(for: .restart, score: restart.score, end: restart.end, start: restart.start)
             )
         }
-        return found.sorted { $0.start < $1.start }
     }
 
     // MARK: - Pauses
@@ -126,7 +128,7 @@ public enum ReviewMarkers {
                     start: 0,
                     end: first.start,
                     score: first.start,
-                    note: note(for: .pause, score: first.start, end: first.start, start: 0)
+                    note: pauseNote(seconds: first.start, spot: .unknown)
                 )
             )
         }
@@ -145,7 +147,10 @@ public enum ReviewMarkers {
                     start: gapStart,
                     end: gapEnd,
                     score: silence,
-                    note: note(for: .pause, score: silence, end: gapEnd, start: gapStart)
+                    note: pauseNote(
+                        seconds: silence,
+                        spot: PauseSpot.classify(before: ordered[index], after: ordered[index + 1])
+                    )
                 )
             )
         }
@@ -199,8 +204,7 @@ public enum ReviewMarkers {
     ) -> String {
         switch kind {
         case .pause:
-            let seconds = Int(score.rounded())
-            return "A \(seconds)-second pause. Listen: were you looking for a word, or your next point?"
+            return pauseNote(seconds: score, spot: .unknown)
         case .fillerCluster:
             return fillerNote(count: 2, seconds: score)
         case .restart:
@@ -208,6 +212,20 @@ public enum ReviewMarkers {
         case .skippedWord, .swappedWord, .slowStart:
             // Built by ReadingMarkers / ConversationMarkers, which know the words involved.
             return ""
+        }
+    }
+
+    /// Mid-clause pauses point to looking for a word; pauses between clauses point to
+    /// planning the next idea (pause location literature, Int J Appl Linguist, ijal.12472).
+    static func pauseNote(seconds: TimeInterval, spot: PauseSpot) -> String {
+        let lead = "A \(Int(seconds.rounded()))-second pause"
+        switch spot {
+        case .midClause:
+            return "\(lead) in the middle of a sentence. Listen: what word were you looking for?"
+        case .betweenClauses:
+            return "\(lead) between sentences. Listen: were you planning your next point?"
+        case .unknown:
+            return "\(lead). Listen: were you looking for a word, or your next point?"
         }
     }
 
