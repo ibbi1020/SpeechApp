@@ -19,9 +19,26 @@ struct RootView: View {
                 .navigationDestination(isPresented: monologuePresented) {
                     monologueDestination
                 }
+                .navigationDestination(isPresented: recordingsPresented) {
+                    if case .recordings(let filter) = model.route {
+                        RecordingsLibraryView(filter: filter)
+                    } else {
+                        RecordingsLibraryView(filter: nil)
+                    }
+                }
         }
         .tint(.accentColor)
         .preferredColorScheme(.dark)
+    }
+
+    private var recordingsPresented: Binding<Bool> {
+        Binding(
+            get: {
+                if case .recordings = model.route { return true }
+                return false
+            },
+            set: { if !$0, case .recordings = model.route { model.goHome() } }
+        )
     }
 
     private var libraryPresented: Binding<Bool> {
@@ -107,8 +124,8 @@ struct RootView: View {
         switch model.route {
         case .crisis where model.hostedFormat == .monologue:
             CrisisReferralView()
-        case .monologueReport(let report):
-            MonologueReportView(report: report)
+        case .monologueReport(let report, let regimenID):
+            MonologueReportView(report: report, regimenID: regimenID)
         default:
             MonologueSessionView()
         }
