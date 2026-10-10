@@ -34,8 +34,8 @@ struct RecordingReviewLoader: View {
     private func load() async {
         guard let recordingID else { return }
         isLoading = true
-        // A long take can take a few seconds to denoise and encode.
-        for _ in 0..<60 {
+        // A conversation can take a couple of minutes to encode after it ends.
+        for _ in 0..<480 {
             if let loaded = try? RecordingsService.store.load(id: recordingID) {
                 manifest = loaded
                 isLoading = false

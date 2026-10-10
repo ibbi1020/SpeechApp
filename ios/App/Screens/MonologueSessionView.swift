@@ -828,19 +828,19 @@ struct MonologueSessionView: View {
         guard RecordingsService.keepRecordings else { return }
         guard let report = session.report, report.kind != .crisis else { return }
         do {
-            if let saveErrorMessage {
-                try MonologueRecordingPipeline.saveDiskFullPlaceholder(
-                    regimenID: regimenID,
-                    topic: session.prompt,
-                    report: report
-                )
-                _ = saveErrorMessage
-            } else if !finishedTakes.isEmpty {
+            if !finishedTakes.isEmpty {
+                // Keep the takes that did save. One failed take must not wipe the others.
                 _ = try MonologueRecordingPipeline.save(
                     regimenID: regimenID,
                     topic: session.prompt,
                     report: report,
                     finishedTakes: finishedTakes
+                )
+            } else if saveErrorMessage != nil {
+                try MonologueRecordingPipeline.saveDiskFullPlaceholder(
+                    regimenID: regimenID,
+                    topic: session.prompt,
+                    report: report
                 )
             }
         } catch RecordingStoreError.diskFull {

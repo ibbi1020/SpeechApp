@@ -33,7 +33,11 @@ public enum TakeFinalizer {
         let rate: Double
         var usedDenoise = false
         var delay: TimeInterval = 0
-        if let denoised = try? denoise(samples: samples.samples, sampleRate: samples.sampleRate),
+        // Offline denoise holds a second full copy and renders slower than
+        // realtime. Past 3 minutes, save the original so a conversation still appears.
+        let tooLongToDenoise = Double(samples.samples.count) / samples.sampleRate > 180
+        if !tooLongToDenoise,
+           let denoised = try? denoise(samples: samples.samples, sampleRate: samples.sampleRate),
            audible(denoised.samples, comparedTo: samples.samples) {
             delay = DelayEstimator.delaySeconds(
                 reference: samples.samples,
@@ -72,25 +76,26 @@ public enum TakeFinalizer {
     private static func readFloatMono(url: URL) throws -> (samples: [Float], sampleRate: Double) {
         let file = try AVAudioFile(forReading: url)
         let format = file.processingFormat
-        let frameCount = AVAudioFrameCount(file.length)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+        // A 15-minute take does not fit in one buffer, so read a second at a time.
+        let chunk = AVAudioFrameCount(max(1, format.sampleRate))
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunk) else {
             throw TakeFinalizerError.empty
         }
-        try file.read(into: buffer)
-        let channel = buffer.floatChannelData?[0]
-        let count = Int(buffer.frameLength)
-        var samples = [Float](repeating: 0, count: count)
-        if let channel {
-            for i in 0..<count { samples[i] = channel[i] }
-        }
-        // Mix down if multi-channel.
-        if format.channelCount > 1, let channels = buffer.floatChannelData {
-            for i in 0..<count {
-                var sum: Float = 0
-                for c in 0..<Int(format.channelCount) {
-                    sum += channels[c][i]
+        var samples: [Float] = []
+        samples.reserveCapacity(Int(file.length))
+        while file.framePosition < file.length {
+            try file.read(into: buffer, frameCount: chunk)
+            let count = Int(buffer.frameLength)
+            guard count > 0, let channels = buffer.floatChannelData else { break }
+            let channelCount = Int(format.channelCount)
+            if channelCount <= 1 {
+                samples.append(contentsOf: UnsafeBufferPointer(start: channels[0], count: count))
+            } else {
+                for i in 0..<count {
+                    var sum: Float = 0
+                    for c in 0..<channelCount { sum += channels[c][i] }
+                    samples.append(sum / Float(channelCount))
                 }
-                samples[i] = sum / Float(format.channelCount)
             }
         }
         return (samples, format.sampleRate)
@@ -128,21 +133,28 @@ public enum TakeFinalizer {
         } else {
             writeSamples = samples
         }
-        let frameCount = AVAudioFrameCount(writeSamples.count)
         let bufferFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: writeFormat.sampleRate,
             channels: 1,
             interleaved: false
         ) ?? floatFormat
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: bufferFormat, frameCapacity: frameCount) else {
+        // One buffer for a whole conversation (~15 min) fails to allocate, and the
+        // save was reported as "out of space" with no audio.
+        let chunkFrames = 16_000
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: bufferFormat, frameCapacity: AVAudioFrameCount(chunkFrames)) else {
             throw TakeFinalizerError.encodeFailed
         }
-        buffer.frameLength = frameCount
-        writeSamples.withUnsafeBufferPointer { src in
-            buffer.floatChannelData?[0].update(from: src.baseAddress!, count: writeSamples.count)
+        var offset = 0
+        while offset < writeSamples.count {
+            let count = min(chunkFrames, writeSamples.count - offset)
+            buffer.frameLength = AVAudioFrameCount(count)
+            writeSamples.withUnsafeBufferPointer { src in
+                buffer.floatChannelData?[0].update(from: src.baseAddress! + offset, count: count)
+            }
+            try file.write(from: buffer)
+            offset += count
         }
-        try file.write(from: buffer)
     }
 
     /// Denoise that comes back as silence must not replace the take.

@@ -46,11 +46,10 @@ enum SingleTakeRecording {
                         ),
                     ]
                 ))
-            } catch TakeFinalizerError.empty {
-                try? FileManager.default.removeItem(at: rawURL)
             } catch {
                 log.error("save failed: \(error.localizedDescription, privacy: .public)")
                 try? FileManager.default.removeItem(at: rawURL)
+                let outOfSpace = (error as? RecordingStoreError) == .diskFull
                 try? store.save(RecordingManifest(
                     id: content.id,
                     format: content.format,
@@ -58,7 +57,9 @@ enum SingleTakeRecording {
                     reportLines: content.lines,
                     comparison: "",
                     takes: [],
-                    saveError: "Couldn't save this recording. Your phone is out of space."
+                    saveError: outOfSpace
+                        ? "Couldn't save this recording. Your phone is out of space."
+                        : "Couldn't prepare this recording, so there's nothing to play."
                 ))
             }
         }
