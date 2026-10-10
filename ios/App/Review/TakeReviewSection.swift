@@ -105,6 +105,13 @@ struct TakeReviewSection: View {
                     Spacer()
                 }
 
+                if let playbackError = player.playbackError {
+                    Text(playbackError)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 if let activeMarker {
                     Text(activeMarker.note)
                         .font(.subheadline)
