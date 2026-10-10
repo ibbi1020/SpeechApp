@@ -62,5 +62,3 @@ public struct RecordingManifest: Equatable, Sendable, Codable, Identifiable {
 
     public var takeCount: Int { takes.count }
 }
-
-extension MonologueReport.Line: Codable {}
