@@ -151,5 +151,78 @@
     "why": "Fluent speech gets no markers.",
     "script": "I like to walk to work because it is quiet and I can think about the day",
     "durationSeconds": 60
+  },
+  {
+    "name": "reading: clean read",
+    "why": "Reading the passage as written gets no markers.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed past the old lighthouse at dawn while the river ran fast."
+  },
+  {
+    "name": "reading: skipped content word",
+    "why": "Skipping “old” changes the picture. It should be shown.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed past the [0.1 skip] lighthouse at dawn while the river ran fast.",
+    "noteContains": "We didn't hear “old”"
+  },
+  {
+    "name": "reading: several skipped words become one marker",
+    "why": "“past the old” dropped together is one moment, not three.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed [0.1 skip] lighthouse at dawn while the river ran fast.",
+    "noteContains": "“past the old”"
+  },
+  {
+    "name": "reading: dropped function word is ignored",
+    "why": "Grok often drops “the”. Flagging it would be noise.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed past [0.1 not skip] old lighthouse at dawn while the river ran fast."
+  },
+  {
+    "name": "reading: minimal-pair swap",
+    "why": "“sheep” for “ship” is the contrast the passage trains.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The <swap> sheep </> sailed past the old lighthouse at dawn while the river ran fast.",
+    "noteContains": "The passage says “ship”"
+  },
+  {
+    "name": "reading: near-miss ending is not a swap",
+    "why": "“sail” for “sailed” is a clipped ending, which ASR does often. Not worth a marker.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship <not swap> sail </> past the old lighthouse at dawn while the river ran fast."
+  },
+  {
+    "name": "reading: self-correction is not flagged",
+    "why": "Rereading “the old” to fix it is good reading, not an error.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed past the old the old lighthouse at dawn while the river ran fast."
+  },
+  {
+    "name": "reading: fillers are ignored",
+    "why": "Reading markers are about the words, not fillers.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed past <not fillers> um the old uh </> lighthouse at dawn while the river ran fast."
+  },
+  {
+    "name": "reading: pauses are not markers",
+    "why": "Reading markers are about the words, not pauses.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed [3.0 not pause] past the old lighthouse at dawn while the river ran fast."
+  },
+  {
+    "name": "reading: stopping early is not a skip",
+    "why": "The unread rest of the passage is already in the report. It is not a listen-back moment.",
+    "exercise": "reading",
+    "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
+    "script": "The ship sailed past the old lighthouse"
   }
 ]

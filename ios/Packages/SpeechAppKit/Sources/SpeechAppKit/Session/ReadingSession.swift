@@ -59,6 +59,10 @@ public final class ReadingSession {
     public private(set) var stuckSpanIndex: Int?
     /// JSONL diagnostics log for this session (share after Stop).
     public private(set) var diagnosticsLogURL: URL?
+    /// Every final timed word Grok returned, fillers included, on the recording's timeline.
+    public private(set) var spokenWords: [RecordedWord] = []
+    /// Receives exactly the audio Grok hears (nothing while paused), for listen-back.
+    @ObservationIgnored public var onRecordedChunk: (@MainActor (AudioChunk) -> Void)?
 
     public let passage: Passage
     public let ledgerAverageRate: Double?
@@ -123,6 +127,7 @@ public final class ReadingSession {
         provisionalMatchedIDs = []
         committedMatchedIDs = []
         heardWordIDs = []
+        spokenWords = []
         stallEventCount = 0
         pcmStore.secureClear()
         liveSkipMarks = []
@@ -356,6 +361,13 @@ public final class ReadingSession {
     }
 
     private func handle(update: TranscriptionUpdate) {
+        // Paused audio never reaches Grok, so these times are already on the
+        // saved recording's timeline. Keep late finals that land during a pause.
+        for token in update.tokens where token.isFinal {
+            if let start = token.startTime, let end = token.endTime {
+                spokenWords.append(RecordedWord(surface: token.surface, start: start, end: end))
+            }
+        }
         guard phase != .paused else { return }
         engineKind = update.engineKind
         // Fillers stay in the Grok stream for review elsewhere; they are not
@@ -571,6 +583,7 @@ public final class ReadingSession {
         let handleStart = ProcessInfo.processInfo.systemUptime
         pcmStore.append(chunk)
         engine?.append(chunk)
+        onRecordedChunk?(chunk)
 
         let rms = StallDetector.rms(chunk.samples)
         let speaking = rms >= 0.01

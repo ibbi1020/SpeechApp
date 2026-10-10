@@ -5,6 +5,12 @@ public struct ReviewMarker: Equatable, Hashable, Sendable, Codable, Identifiable
         case pause
         case fillerCluster
         case restart
+        /// Reading: a passage word that was not heard.
+        case skippedWord
+        /// Reading: a different word was heard in place of the passage word.
+        case swappedWord
+        /// Conversation: a long wait before answering the partner.
+        case slowStart
     }
 
     public let id: UUID
@@ -55,10 +61,16 @@ public enum ReviewMarkers {
         words: [RecordedWord],
         durationSeconds: TimeInterval
     ) -> [ReviewMarker] {
+        select(candidates(words: words, durationSeconds: durationSeconds), durationSeconds: durationSeconds)
+    }
+
+    /// Cap and spacing shared by every exercise: highest score first, at most
+    /// `maxMarkers`, at least 13% of the take apart, returned in time order.
+    public static func select(_ candidates: [ReviewMarker], durationSeconds: TimeInterval) -> [ReviewMarker] {
         let cap = maxMarkers(durationSeconds: durationSeconds)
         guard cap > 0, durationSeconds > 0 else { return [] }
 
-        var candidates = candidates(words: words, durationSeconds: durationSeconds)
+        var candidates = candidates
         candidates.sort { lhs, rhs in
             if lhs.score != rhs.score { return lhs.score > rhs.score }
             return lhs.start < rhs.start
@@ -192,6 +204,9 @@ public enum ReviewMarkers {
             return fillerNote(count: 2, seconds: score)
         case .restart:
             return "You started this part again. Listen: did the second try say it better?"
+        case .skippedWord, .swappedWord, .slowStart:
+            // Built by ReadingMarkers / ConversationMarkers, which know the words involved.
+            return ""
         }
     }
 

@@ -14,19 +14,23 @@ public struct RecordingManifest: Equatable, Hashable, Sendable, Codable, Identif
         public let audioFileName: String
         public let words: [RecordedWord]
         public let markers: [ReviewMarker]
+        /// Conversation only.
+        public let partnerTurns: [PartnerTurn]?
 
         public init(
             index: Int,
             durationSeconds: TimeInterval,
             audioFileName: String,
             words: [RecordedWord],
-            markers: [ReviewMarker]
+            markers: [ReviewMarker],
+            partnerTurns: [PartnerTurn]? = nil
         ) {
             self.index = index
             self.durationSeconds = durationSeconds
             self.audioFileName = audioFileName
             self.words = words
             self.markers = markers
+            self.partnerTurns = partnerTurns
         }
     }
 

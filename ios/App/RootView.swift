@@ -146,8 +146,8 @@ struct RootView: View {
     @ViewBuilder
     private var sessionDestination: some View {
         switch model.route {
-        case .report(let report):
-            SessionReportView(report: report)
+        case .report(let report, let recordingID):
+            SessionReportView(report: report, recordingID: recordingID)
         default:
             if let passage = model.currentPassage {
                 ReadingSessionView(passage: passage)

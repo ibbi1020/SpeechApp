@@ -9,7 +9,7 @@ final class AppModel {
         case home
         case library
         case reading
-        case report(SessionReport)
+        case report(SessionReport, recordingID: UUID?)
         case conversation
         case conversationReport(ConversationReport)
         case monologue
@@ -51,10 +51,10 @@ final class AppModel {
         route = .reading
     }
 
-    func finish(report: SessionReport) {
+    func finish(report: SessionReport, recordingID: UUID? = nil) {
         ledger.record(report: report)
         StruggleLedgerStore.save(ledger)
-        route = .report(report)
+        route = .report(report, recordingID: recordingID)
     }
 
     func finishConversation(report: ConversationReport, possibleMinorFlag: Bool = false) {

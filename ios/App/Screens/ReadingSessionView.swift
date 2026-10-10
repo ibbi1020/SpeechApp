@@ -19,6 +19,8 @@ struct ReadingSessionView: View {
     @State private var layoutReady = false
     @State private var wordTops: [String: CGFloat] = [:]
     @State private var lastScrolledLine: CGFloat?
+    @State private var takeRecorder: TakeRecorder?
+    @State private var feedbackTranscriber: FeedbackTranscriber?
 
     private var isLive: Bool {
         session?.phase == .running || session?.phase == .stalled
@@ -286,6 +288,18 @@ struct ReadingSessionView: View {
             displayIndex = 0
             lastScrolledLine = nil
             let source = MicAudioSource()
+            if RecordingsService.keepRecordings {
+                let recorder = TakeRecorder()
+                try? recorder.start()
+                takeRecorder = recorder
+                let transcriber = FeedbackTranscriber(relayBase: relay.base, bearerToken: relay.uuid.uuidString)
+                await transcriber.start()
+                feedbackTranscriber = transcriber
+                session?.onRecordedChunk = { chunk in
+                    recorder.append(chunk)
+                    transcriber.append(chunk)
+                }
+            }
             try await session?.start(
                 audioSource: source,
                 engine: engine,
@@ -306,7 +320,43 @@ struct ReadingSessionView: View {
         startTask?.cancel()
         guard let session else { return }
         let report = await session.stop()
-        model.finish(report: report)
+        session.onRecordedChunk = nil
+        let recordingID = await saveRecording(session: session, report: report)
+        model.finish(report: report, recordingID: recordingID)
+    }
+
+    /// Starts saving the take for listen-back and returns its id, or nil when not kept.
+    private func saveRecording(session: ReadingSession, report: SessionReport) async -> UUID? {
+        guard let recorder = takeRecorder else { return nil }
+        takeRecorder = nil
+        let duration = recorder.writtenSeconds
+        guard let rawURL = recorder.stop(), duration > 0 else { return nil }
+        let id = UUID()
+        // Unhinted words show what was really said; the hinted live words are the fallback.
+        var words = await feedbackTranscriber?.finish() ?? []
+        feedbackTranscriber = nil
+        if words.isEmpty { words = session.spokenWords }
+        SingleTakeRecording.finalizeAndSave(
+            rawURL: rawURL,
+            content: .init(
+                id: id,
+                format: .reading,
+                topic: passage.title,
+                lines: [
+                    .init(label: "Words read", value: "\(report.matchCount) of \(report.scriptWordCount)"),
+                    .init(label: "Time", value: Self.timeLabel(report.durationSeconds)),
+                ],
+                words: words,
+                durationSeconds: duration,
+                markers: ReadingMarkers.build(passage: passage, words: words, durationSeconds: duration)
+            )
+        )
+        return id
+    }
+
+    private static func timeLabel(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     #if os(iOS)

@@ -15,6 +15,9 @@ public enum FeedbackReport {
         case .pause: "pause"
         case .fillerCluster: "fillers"
         case .restart: "restart"
+        case .skippedWord: "skip"
+        case .swappedWord: "swap"
+        case .slowStart: "slow start"
         }
     }
 
@@ -86,6 +89,10 @@ public enum FeedbackReport {
                 return "transcript: no repeated words in what was heard. Heard \(heardText)."
             }
             return "rules: transcript has a repeat here. Heard \(heardText)."
+        case .skippedWord, .swappedWord:
+            return "Heard \(heardText). If the wrong word is missing here, Grok corrected it to the passage word (passage words are sent as hints)."
+        case .slowStart:
+            return "Heard \(heardText) after the partner stopped."
         }
     }
 }

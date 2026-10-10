@@ -108,19 +108,82 @@ struct RecordingsLibraryView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         let date = formatter.string(from: item.createdAt)
-        let takes = item.takeCount == 1 ? "1 take" : "\(item.takeCount) takes"
-        return "\(date) · \(takes)"
+        switch item.format {
+        case .monologue:
+            let takes = item.takeCount == 1 ? "1 take" : "\(item.takeCount) takes"
+            return "Talk · \(date) · \(takes)"
+        case .reading:
+            return "Reading · \(date)"
+        case .conversation:
+            return "Conversation · \(date)"
+        }
     }
 
     @ViewBuilder
     private func savedReport(for item: RecordingManifest) -> some View {
-        let report = MonologueReport(
-            kind: item.takes.isEmpty ? .thin : .full,
-            endReason: .completed,
-            takeCount: item.takeCount,
-            lines: item.reportLines,
-            comparison: item.comparison
-        )
-        MonologueReportView(report: report, regimenID: item.id)
+        switch item.format {
+        case .monologue:
+            MonologueReportView(
+                report: MonologueReport(
+                    kind: item.takes.isEmpty ? .thin : .full,
+                    endReason: .completed,
+                    takeCount: item.takeCount,
+                    lines: item.reportLines,
+                    comparison: item.comparison
+                ),
+                regimenID: item.id
+            )
+        case .reading, .conversation:
+            SavedRecordingView(manifest: item)
+        }
+    }
+}
+
+/// A saved Reading or Conversation: the report lines, then the player.
+private struct SavedRecordingView: View {
+    let manifest: RecordingManifest
+
+    var body: some View {
+        ZStack {
+            SpeechScreenBackground()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(manifest.topic)
+                        .font(.title3.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, SpeechSpacing.related)
+
+                    if !manifest.reportLines.isEmpty {
+                        VStack(alignment: .leading, spacing: 20) {
+                            ForEach(Array(manifest.reportLines.enumerated()), id: \.offset) { _, line in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(line.label)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                    Text(line.value)
+                                        .font(.title2.weight(.semibold))
+                                        .monospacedDigit()
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        .padding(24)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .fill(Color(.secondarySystemBackground))
+                        )
+                    }
+
+                    TakeReviewSection(manifest: manifest, saveError: manifest.saveError)
+                        .padding(.top, SpeechSpacing.section)
+                        .padding(.bottom, 32)
+                }
+                .padding(.horizontal, SpeechSpacing.page)
+                .padding(.top, 20)
+            }
+        }
+        .speechPageTitle(manifest.format == .reading ? "Your reading" : "Your conversation")
+        .speechBottomBlur()
     }
 }

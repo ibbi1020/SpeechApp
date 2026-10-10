@@ -20,6 +20,8 @@ Options:
   --speed <n>         Send audio n times faster than real time (default 4).
   --tolerance <sec>   How far apart a marker and a label can start and still match (default 0.5).
   --only <text>       Only clips whose name contains this text.
+  --hints             Reading: send passage words to Grok as hints, like the live caret stream.
+                      The app's feedback stream does not, so the default is off.
 """
 
 struct Options {
@@ -32,6 +34,7 @@ struct Options {
     var speed = 4.0
     var tolerance = 0.5
     var refresh = false
+    var hints = false
     var only: String?
 
     init(_ args: [String]) throws {
@@ -51,6 +54,7 @@ struct Options {
             case "--tolerance": tolerance = Double(try value()) ?? tolerance
             case "--only": only = try value()
             case "--refresh": refresh = true
+            case "--hints": hints = true
             default: throw CLIError.usage("Unknown option \(flag)")
             }
         }

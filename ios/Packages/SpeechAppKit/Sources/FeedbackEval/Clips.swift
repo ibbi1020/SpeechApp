@@ -11,13 +11,23 @@ struct ClipSpec: Codable {
     let voice: String?
     /// Words per minute for `say`. Leave empty for the voice default.
     let rate: Int?
+    /// Defaults to monologue.
+    let exercise: FeedbackExercise?
+    /// Reading: the passage the speaker was asked to read.
+    let passage: String?
 }
 
 /// `<clip>.labels.json`: what a person (or the generator) says should be flagged.
 struct ClipLabels: Codable {
     var why: String?
     var script: String?
+    var exercise: FeedbackExercise?
+    var passage: String?
     var labels: [FeedbackLabel]
+
+    var context: FeedbackContext {
+        FeedbackContext(exercise: exercise ?? .monologue, passage: passage)
+    }
 }
 
 /// `<clip>.grok.json`: cached Grok words so rules can be re-scored for free.
@@ -71,7 +81,16 @@ struct Clip {
         }
         if FileManager.default.fileExists(atPath: audacityURL.path) {
             let text = try String(contentsOf: audacityURL, encoding: .utf8)
-            return ClipLabels(why: nil, script: nil, labels: FeedbackLabel.parseAudacity(text))
+            // Reading recordings: put the passage in `<clip>.passage.txt` next to the labels.
+            let passageURL = audio.deletingPathExtension().appendingPathExtension("passage.txt")
+            let passage = try? String(contentsOf: passageURL, encoding: .utf8)
+            return ClipLabels(
+                why: nil,
+                script: nil,
+                exercise: passage == nil ? .monologue : .reading,
+                passage: passage,
+                labels: FeedbackLabel.parseAudacity(text)
+            )
         }
         return nil
     }

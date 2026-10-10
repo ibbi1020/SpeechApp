@@ -79,6 +79,9 @@ extension FeedbackLabel {
         case "pause", "silence": .pause
         case "fillers", "filler", "fillercluster": .fillerCluster
         case "restart", "repeat": .restart
+        case "skip", "skipped": .skippedWord
+        case "swap", "swapped": .swappedWord
+        case "slowstart", "slow-start", "turnstart": .slowStart
         default: nil
         }
     }

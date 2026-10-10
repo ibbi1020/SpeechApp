@@ -88,5 +88,69 @@
     "why": "Fillers in an Australian voice. (Karen says “uhh” as “ooh”, so both fillers are “umm”.)",
     "script": "I think, <fillers> umm, the weather there is, umm, </> much warmer",
     "voice": "Karen"
+  },
+  {
+    "name": "reading-clean",
+    "why": "Reading the passage as written gets no markers.",
+    "exercise": "reading",
+    "passage": "A light rain ran along the long river road while riders raced toward the old bridge.",
+    "script": "A light rain ran along the long river road while riders raced toward the old bridge.",
+    "voice": "Samantha"
+  },
+  {
+    "name": "reading-skip-content",
+    "why": "Skipping “old” should be found, with the passage words sent to Grok as hints.",
+    "exercise": "reading",
+    "passage": "A light rain ran along the long river road while riders raced toward the old bridge.",
+    "script": "A light rain ran along the long river road while riders raced toward the [0.3 skip] bridge.",
+    "voice": "Samantha"
+  },
+  {
+    "name": "reading-skip-phrase",
+    "why": "Skipping “along the long” is one marker.",
+    "exercise": "reading",
+    "passage": "A light rain ran along the long river road while riders raced toward the old bridge.",
+    "script": "A light rain ran [0.3 skip] river road while riders raced toward the old bridge.",
+    "voice": "Samantha"
+  },
+  {
+    "name": "reading-swap-minimal-pair",
+    "why": "“sheep” for “ship”: can Grok hear the swap when “ship” is a hint word?",
+    "exercise": "reading",
+    "passage": "The ship left the harbour at dawn and the sheep on the hill watched it sail away.",
+    "script": "The <swap> sheep </> left the harbour at dawn and the sheep on the hill watched it sail away.",
+    "voice": "Samantha"
+  },
+  {
+    "name": "reading-swap-whole-word",
+    "why": "“road” for “river” is a clear misread.",
+    "exercise": "reading",
+    "passage": "A light rain ran along the long river road while riders raced toward the old bridge.",
+    "script": "A light rain ran along the long <swap> road </> road while riders raced toward the old bridge.",
+    "voice": "Samantha"
+  },
+  {
+    "name": "reading-self-correction",
+    "why": "Rereading “the long” is good reading, not an error.",
+    "exercise": "reading",
+    "passage": "A light rain ran along the long river road while riders raced toward the old bridge.",
+    "script": "A light rain ran along the long the long river road while riders raced toward the old bridge.",
+    "voice": "Samantha"
+  },
+  {
+    "name": "reading-pause-not-flagged",
+    "why": "A long pause in Reading is not a reading marker.",
+    "exercise": "reading",
+    "passage": "A light rain ran along the long river road while riders raced toward the old bridge.",
+    "script": "A light rain ran along the long river road [3.0 not pause] while riders raced toward the old bridge.",
+    "voice": "Samantha"
+  },
+  {
+    "name": "reading-stopped-early",
+    "why": "Stopping halfway is in the report, not a listen-back marker.",
+    "exercise": "reading",
+    "passage": "A light rain ran along the long river road while riders raced toward the old bridge.",
+    "script": "A light rain ran along the long river road",
+    "voice": "Samantha"
   }
 ]

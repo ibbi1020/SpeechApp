@@ -5,7 +5,12 @@ public struct FeedbackRuleCase: Codable, Equatable, Sendable {
     public let name: String
     /// What the case protects, in plain words.
     public let why: String
+    /// What was actually said, with the expected markers tagged.
     public let script: String
+    /// Defaults to monologue.
+    public let exercise: FeedbackExercise?
+    /// Reading: the passage the person was asked to read.
+    public let passage: String?
     /// Defaults to the script's own length. Set it to test the cap or spacing on a longer take.
     public let durationSeconds: TimeInterval?
     /// Text the first shown marker's note must contain.
@@ -26,11 +31,14 @@ public struct FeedbackRuleCase: Codable, Equatable, Sendable {
         }
     }
 
+    public var context: FeedbackContext {
+        FeedbackContext(exercise: exercise ?? .monologue, passage: passage)
+    }
+
     public func run(tolerance: TimeInterval = FeedbackEvaluator.defaultTolerance) throws -> Result {
         let layout = try FeedbackScript(script).layout()
         let duration = durationSeconds ?? layout.duration + 0.5
-        let markers = ReviewMarkers.build(words: layout.words, durationSeconds: duration)
-        let candidates = ReviewMarkers.candidates(words: layout.words, durationSeconds: duration)
+        let (candidates, markers) = context.markers(words: layout.words, durationSeconds: duration)
         var noteProblem: String?
         if let noteContains {
             let notes = markers.map(\.note)

@@ -48,7 +48,13 @@ enum GenerateCommand {
 
             let audioURL = outDir.appendingPathComponent("\(spec.name).wav")
             try AudioIO.writeWAV(timeline, sampleRate: sampleRate, to: audioURL)
-            let labels = ClipLabels(why: spec.why, script: spec.script, labels: layout.labels)
+            let labels = ClipLabels(
+                why: spec.why,
+                script: spec.script,
+                exercise: spec.exercise,
+                passage: spec.passage,
+                labels: layout.labels
+            )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             try encoder.encode(labels).write(to: Clip(audio: audioURL).labelsURL)

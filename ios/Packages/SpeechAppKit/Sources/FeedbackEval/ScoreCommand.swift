@@ -28,8 +28,7 @@ enum ScoreCommand {
             }
             let words = grok.recordedWords
             let duration = grok.audioSeconds
-            let markers = ReviewMarkers.build(words: words, durationSeconds: duration)
-            let candidates = ReviewMarkers.candidates(words: words, durationSeconds: duration)
+            let (candidates, markers) = labels.context.markers(words: words, durationSeconds: duration)
             results.append(ClipResult(
                 clip: clip,
                 labels: labels,
@@ -66,12 +65,14 @@ enum ScoreCommand {
 
         out += "## Summary\n\n"
         out += "| Kind | Expected | Detected | Shown when it should be | Extra detections |\n|---|---|---|---|---|\n"
-        for kind in [ReviewMarker.Kind.pause, .fillerCluster, .restart] {
+        let kinds: [ReviewMarker.Kind] = [.pause, .fillerCluster, .restart, .skippedWord, .swappedWord, .slowStart]
+        for kind in kinds {
             let expected = results.flatMap { $0.labels.labels }.filter { $0.kind == kind && $0.expect != .none }.count
             let detected = results.flatMap { $0.candidates.matched }.filter { $0.label.kind == kind }.count
             let mustShow = results.flatMap { $0.labels.labels }.filter { $0.kind == kind && $0.expect == .marker }.count
             let shown = results.flatMap { $0.shown.matched }.filter { $0.label.kind == kind }.count
             let extra = results.flatMap { $0.candidates.extra }.filter { $0.kind == kind }.count
+            if expected == 0, extra == 0 { continue }
             out += "| \(FeedbackReport.name(kind)) | \(expected) | \(detected) | \(shown)/\(mustShow) | \(extra) |\n"
         }
         let clean = results.filter { $0.candidates.isPerfect && $0.shown.isPerfect }.count

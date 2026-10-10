@@ -5,6 +5,8 @@ import Foundation
 @MainActor
 public final class TakeRecorder {
     public private(set) var fileURL: URL?
+    /// Seconds of audio written so far. This is the saved file's timeline.
+    public private(set) var writtenSeconds: TimeInterval = 0
     private var audioFile: AVAudioFile?
     private var writing = false
     private let directory: URL
@@ -17,6 +19,7 @@ public final class TakeRecorder {
         _ = stop()
         let url = directory.appendingPathComponent("take-\(UUID().uuidString).caf")
         fileURL = url
+        writtenSeconds = 0
         writing = true
     }
 
@@ -53,6 +56,7 @@ public final class TakeRecorder {
                 }
             }
             try audioFile.write(from: buffer)
+            writtenSeconds += Double(chunk.samples.count) / chunk.sampleRate
         } catch {
             // Leave the partial file; finalizer will fall back or fail visibly.
         }

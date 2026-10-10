@@ -17,7 +17,7 @@ enum TranscribeCommand {
                 print("cached     \(clip.name)")
                 continue
             }
-            let cache = try await transcribe(clip, relay: relay, speed: options.speed)
+            let cache = try await transcribe(clip, relay: relay, speed: options.speed, hints: options.hints)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
@@ -26,9 +26,14 @@ enum TranscribeCommand {
         }
     }
 
-    static func transcribe(_ clip: Clip, relay: URL, speed: Double) async throws -> GrokCache {
+    static func transcribe(_ clip: Clip, relay: URL, speed: Double, hints: Bool) async throws -> GrokCache {
         let audio = try AudioIO.read(clip.audio)
         let engine = GrokTranscriptionEngine(relayBase: relay, bearerToken: UUID().uuidString)
+        // The app's feedback stream sends no hints. `--hints` reproduces Reading's live
+        // stream instead, which sends the passage words.
+        if hints, let labels = try? clip.labels(), labels.exercise == .reading, let passage = labels.passage {
+            engine.setContextualPhrases(ReadingSession.contextualPhrases(for: .plain(passage), fromIndex: 0))
+        }
         // Subscribe before prepare, like the app, or early words are lost.
         let updates = engine.updates
         let collector = Task { () -> (words: [SpokenToken], text: String) in

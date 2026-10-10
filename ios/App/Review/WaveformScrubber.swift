@@ -81,9 +81,11 @@ struct WaveformScrubber: View {
 
     private func markerColor(_ kind: ReviewMarker.Kind) -> Color {
         switch kind {
-        case .pause: .orange
+        case .pause, .slowStart: .orange
         case .fillerCluster: .yellow
         case .restart: .mint
+        case .skippedWord: .purple
+        case .swappedWord: .pink
         }
     }
 
@@ -92,6 +94,9 @@ struct WaveformScrubber: View {
         case .pause: "Pause marker"
         case .fillerCluster: "Filler cluster marker"
         case .restart: "Restart marker"
+        case .skippedWord: "Skipped word marker"
+        case .swappedWord: "Swapped word marker"
+        case .slowStart: "Slow start marker"
         }
     }
 }
