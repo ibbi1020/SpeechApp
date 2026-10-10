@@ -11,14 +11,15 @@ public final class ConversationSession {
     /// Partner words for the live stage. Empty until the first non-empty caption.
     public private(set) var partnerLine = ""
 
-    /// Opening question until the partner speaks, then the newest partner words.
+    /// Newest partner words. Empty until the partner speaks.
     public var stageLine: String {
-        Self.captionTail(subtitleLine)
+        Self.captionTail(partnerLine)
     }
 
-    /// Full live caption. The subtitle view trims to the screen; do not pre-chop.
+    /// Full live caption. Empty until the partner is speaking.
+    /// The subtitle view trims to the screen; do not pre-chop.
     public var subtitleLine: String {
-        partnerLine.isEmpty ? openQuestion : partnerLine
+        partnerLine
     }
 
     public var elapsed: TimeInterval {
