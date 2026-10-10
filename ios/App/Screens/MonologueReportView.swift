@@ -5,6 +5,10 @@ struct MonologueReportView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let report: MonologueReport
+    let regimenID: UUID?
+
+    @State private var manifest: RecordingManifest?
+    @State private var isLoadingManifest = false
 
     var body: some View {
         ZStack {
@@ -30,6 +34,26 @@ struct MonologueReportView: View {
                             .padding(.top, SpeechSpacing.related)
                     }
 
+                    if RecordingsService.keepRecordings {
+                        Group {
+                            if let manifest {
+                                TakeReviewSection(manifest: manifest, saveError: manifest.saveError)
+                            } else if isLoadingManifest {
+                                TakeReviewSection(
+                                    manifest: RecordingManifest(
+                                        id: regimenID ?? UUID(),
+                                        topic: "",
+                                        reportLines: [],
+                                        comparison: "",
+                                        takes: []
+                                    ),
+                                    saveError: nil
+                                )
+                            }
+                        }
+                        .padding(.top, SpeechSpacing.section)
+                    }
+
                     Button("Back to home", action: goHome)
                         .buttonStyle(SpeechPrimaryButtonStyle())
                         .padding(.top, SpeechSpacing.section)
@@ -41,6 +65,9 @@ struct MonologueReportView: View {
         }
         .speechPageTitle("Your talk")
         .speechBottomBlur()
+        .task(id: regimenID) {
+            await loadManifest()
+        }
     }
 
     private var linesCard: some View {
@@ -63,6 +90,21 @@ struct MonologueReportView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
         )
+    }
+
+    private func loadManifest() async {
+        guard let regimenID else { return }
+        isLoadingManifest = true
+        // Brief retry — the last take may still be writing.
+        for _ in 0..<20 {
+            if let loaded = try? RecordingsService.store.load(id: regimenID) {
+                manifest = loaded
+                isLoadingManifest = false
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        isLoadingManifest = false
     }
 
     private func goHome() {
