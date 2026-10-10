@@ -9,11 +9,12 @@ final class AppModel {
         case home
         case library
         case reading
-        case report(SessionReport)
+        case report(SessionReport, recordingID: UUID?)
         case conversation
-        case conversationReport(ConversationReport)
+        case conversationReport(ConversationReport, recordingID: UUID?)
         case monologue
-        case monologueReport(MonologueReport)
+        case monologueReport(MonologueReport, regimenID: UUID?)
+        case recordings(filter: RecordingManifest.Format?)
         case crisis
     }
 
@@ -50,19 +51,23 @@ final class AppModel {
         route = .reading
     }
 
-    func finish(report: SessionReport) {
+    func finish(report: SessionReport, recordingID: UUID? = nil) {
         ledger.record(report: report)
         StruggleLedgerStore.save(ledger)
-        route = .report(report)
+        route = .report(report, recordingID: recordingID)
     }
 
-    func finishConversation(report: ConversationReport, possibleMinorFlag: Bool = false) {
+    func finishConversation(
+        report: ConversationReport,
+        possibleMinorFlag: Bool = false,
+        recordingID: UUID? = nil
+    ) {
         notePossibleMinorIfNeeded(possibleMinorFlag)
         if report.kind == .crisis {
             route = .crisis
             return
         }
-        route = .conversationReport(report)
+        route = .conversationReport(report, recordingID: recordingID)
     }
 
     func presentCrisis(possibleMinorFlag: Bool = false) {
@@ -100,13 +105,21 @@ final class AppModel {
         route = .monologue
     }
 
-    func finishMonologue(report: MonologueReport, possibleMinorFlag: Bool = false) {
+    func finishMonologue(
+        report: MonologueReport,
+        possibleMinorFlag: Bool = false,
+        regimenID: UUID? = nil
+    ) {
         notePossibleMinorIfNeeded(possibleMinorFlag)
         if report.kind == .crisis {
             route = .crisis
             return
         }
-        route = .monologueReport(report)
+        route = .monologueReport(report, regimenID: regimenID)
+    }
+
+    func openRecordings(filter: RecordingManifest.Format? = nil) {
+        route = .recordings(filter: filter)
     }
 
     func startConversation() {

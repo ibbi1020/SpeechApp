@@ -139,6 +139,53 @@ struct MonologueSessionTakeTests {
         #expect(session.betweenCopy == "Two minutes.")
         #expect(session.takeNumber == 3)
     }
+
+    @MainActor
+    @Test("ingestWords keeps file-timed words on the take and drops pause words")
+    func retainsWords() {
+        let time = ControllableTimeSource(now: 0)
+        let session = makeSession(time: time)
+        session.ready()
+        session.ingestWords([
+            SpokenToken(surface: "I", startTime: 0.1, endTime: 0.2, isFinal: true),
+            SpokenToken(surface: "went", startTime: 0.3, endTime: 0.5, isFinal: true),
+        ])
+        session.pause(atStreamTime: 1.0)
+        // Would be spoken during pause — must not land on the take.
+        session.ingestWords([
+            SpokenToken(surface: "I", startTime: 0.1, endTime: 0.2, isFinal: true),
+            SpokenToken(surface: "went", startTime: 0.3, endTime: 0.5, isFinal: true),
+            SpokenToken(surface: "nope", startTime: 1.2, endTime: 1.4, isFinal: true),
+        ])
+        #expect(session.phase == .paused)
+        session.resume(atStreamTime: 3.0)
+        session.ingestWords([
+            SpokenToken(surface: "I", startTime: 0.1, endTime: 0.2, isFinal: true),
+            SpokenToken(surface: "went", startTime: 0.3, endTime: 0.5, isFinal: true),
+            SpokenToken(surface: "home", startTime: 3.1, endTime: 3.4, isFinal: true),
+        ])
+        time.advance(40)
+        session.done()
+        let words = session.takes.first?.words ?? []
+        #expect(words.map(\.surface) == ["I", "went", "home"])
+        // Stream and file both start at 0; pause 1.0…3.0 is cut, so home at 3.1 maps to 1.1.
+        #expect(words.first?.start == 0.1)
+        #expect(abs((words.last?.start ?? 0) - 1.1) < 0.0001)
+    }
+
+    @MainActor
+    @Test("silence before the first word stays on the file timeline")
+    func leadingSilenceKept() {
+        let time = ControllableTimeSource(now: 0)
+        let session = makeSession(time: time)
+        session.ready()
+        session.ingestWords([
+            SpokenToken(surface: "So", startTime: 2.4, endTime: 2.6, isFinal: true),
+        ])
+        time.advance(40)
+        session.done()
+        #expect(session.takes.first?.words.first?.start == 2.4)
+    }
 }
 
 @Suite("Monologue session crisis and leave")

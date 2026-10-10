@@ -30,6 +30,16 @@ struct HomeView: View {
         }
         .speechPageTitle("Orator", large: true)
         .speechBottomBlur()
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    model.openRecordings()
+                } label: {
+                    Image(systemName: "waveform")
+                }
+                .accessibilityLabel("Your recordings")
+            }
+        }
     }
 
     private func formatRow(

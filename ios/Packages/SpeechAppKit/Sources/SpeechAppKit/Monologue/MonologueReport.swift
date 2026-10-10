@@ -3,7 +3,7 @@ import Foundation
 public struct MonologueReport: Equatable, Sendable, Identifiable {
     public enum Kind: Equatable, Sendable { case thin, full, crisis }
 
-    public struct Line: Equatable, Sendable {
+    public struct Line: Equatable, Hashable, Sendable, Codable {
         public let label: String
         public let value: String
         public init(label: String, value: String) {
@@ -84,7 +84,7 @@ public enum MonologueReportBuilder {
                 value: "\(ConversationPauseTime.count(from: take.ranges))"
             ))
             if let pace = ConversationPace.syllablesPerMinute(
-                transcript: take.transcript,
+                transcript: FillerWords.strippingTranscript(take.transcript),
                 speechSeconds: spoken
             ) {
                 lines.append(MonologueReport.Line(

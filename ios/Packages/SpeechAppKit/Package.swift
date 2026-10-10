@@ -18,6 +18,13 @@ let package = Package(
                 .process("Resources"),
             ]
         ),
+        // Mac-only command for testing the feedback system on audio clips.
+        // Run from the repo root: eval/feedback/run.sh
+        .executableTarget(
+            name: "feedback-eval",
+            dependencies: ["SpeechAppKit"],
+            path: "Sources/FeedbackEval"
+        ),
         .testTarget(
             name: "SpeechAppKitTests",
             dependencies: ["SpeechAppKit"],

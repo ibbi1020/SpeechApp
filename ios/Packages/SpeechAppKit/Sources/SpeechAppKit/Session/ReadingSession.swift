@@ -59,6 +59,10 @@ public final class ReadingSession {
     public private(set) var stuckSpanIndex: Int?
     /// JSONL diagnostics log for this session (share after Stop).
     public private(set) var diagnosticsLogURL: URL?
+    /// Every final timed word Grok returned, fillers included, on the recording's timeline.
+    public private(set) var spokenWords: [RecordedWord] = []
+    /// Receives exactly the audio Grok hears (nothing while paused), for listen-back.
+    @ObservationIgnored public var onRecordedChunk: (@MainActor (AudioChunk) -> Void)?
 
     public let passage: Passage
     public let ledgerAverageRate: Double?
@@ -123,6 +127,7 @@ public final class ReadingSession {
         provisionalMatchedIDs = []
         committedMatchedIDs = []
         heardWordIDs = []
+        spokenWords = []
         stallEventCount = 0
         pcmStore.secureClear()
         liveSkipMarks = []
@@ -356,10 +361,19 @@ public final class ReadingSession {
     }
 
     private func handle(update: TranscriptionUpdate) {
+        // Paused audio never reaches Grok, so these times are already on the
+        // saved recording's timeline. Keep late finals that land during a pause.
+        for token in update.tokens where token.isFinal {
+            if let start = token.startTime, let end = token.endTime {
+                spokenWords.append(RecordedWord(surface: token.surface, start: start, end: end))
+            }
+        }
         guard phase != .paused else { return }
         engineKind = update.engineKind
-        let finals = update.tokens.filter(\.isFinal)
-        let volatileTokens = update.tokens.filter { !$0.isFinal }
+        // Fillers stay in the Grok stream for review elsewhere; they are not
+        // passage words and would inflate Extra if they reached the aligner.
+        let finals = FillerWords.strippingTokens(update.tokens.filter(\.isFinal))
+        let volatileTokens = FillerWords.strippingTokens(update.tokens.filter { !$0.isFinal })
         let hasVolatile = !volatileTokens.isEmpty || (finals.isEmpty && !update.rawText.isEmpty)
         let previousCaret = currentWordID
         let previousHeardCount = heardWordIDs.count
@@ -399,7 +413,7 @@ public final class ReadingSession {
             if let best = aligner.bestScriptAlternative(candidates: candidates), !best.isEmpty {
                 surfaces = best
             } else {
-                surfaces = Self.tokenizeHypothesis(update.rawText)
+                surfaces = Self.tokenizeHypothesis(update.rawText).filter { !FillerWords.isFiller($0) }
             }
             let preview = aligner.previewVolatile(surfaces: surfaces)
             let proposed = preview.currentWordID ?? aligner.currentWordID
@@ -569,6 +583,7 @@ public final class ReadingSession {
         let handleStart = ProcessInfo.processInfo.systemUptime
         pcmStore.append(chunk)
         engine?.append(chunk)
+        onRecordedChunk?(chunk)
 
         let rms = StallDetector.rms(chunk.samples)
         let speaking = rms >= 0.01

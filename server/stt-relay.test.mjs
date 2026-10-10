@@ -13,6 +13,7 @@ test("upstream pins the current STT model and copies keyterms", () => {
   assert.equal(url.searchParams.get("encoding"), "pcm");
   assert.equal(url.searchParams.get("interim_results"), "true");
   assert.equal(url.searchParams.get("smart_turn"), "0.7");
+  assert.equal(url.searchParams.get("filler_words"), "true");
 });
 
 test("keyterms are trimmed, capped, and blank ones dropped", () => {

@@ -15,6 +15,8 @@ export function buildSttUpstreamURL(incomingSearch = "") {
     interim_results: "true",
     smart_turn: "0.7",
     smart_turn_timeout: "3000",
+    // Keep uh/um/er in text and words so review markers can timestamp them.
+    filler_words: "true",
   });
   const terms = incoming
     .getAll("keyterm")

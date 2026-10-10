@@ -16,6 +16,22 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     private let continuation: AsyncStream<MouthEvent>.Continuation
     private let lock = NSLock()
 
+    /// Listen-back: when the partner's voice actually starts and stops coming out of the
+    /// speaker. `finished` fires when the last queued buffer has played, not when Grok
+    /// finishes generating, which can be seconds earlier.
+    enum PartnerPlayback: Sendable {
+        case started
+        case finished(transcript: String)
+    }
+
+    /// Every microphone buffer, for the listen-back recorder. Gate it on the session phase.
+    let micChunks: AsyncStream<AudioChunk>
+    private let micContinuation: AsyncStream<AudioChunk>.Continuation
+    let partnerPlayback: AsyncStream<PartnerPlayback>
+    private let playbackContinuation: AsyncStream<PartnerPlayback>.Continuation
+    private var partnerPlaying = false
+    private var lastResponseTranscript = ""
+
     private var closed = false
     private var emittedFailed = false
     private var prepareTask: Task<Void, Error>?
@@ -53,6 +69,12 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         let pair = AsyncStream<MouthEvent>.makeStream(bufferingPolicy: .unbounded)
         events = pair.stream
         continuation = pair.continuation
+        let mic = AsyncStream<AudioChunk>.makeStream(bufferingPolicy: .bufferingNewest(64))
+        micChunks = mic.stream
+        micContinuation = mic.continuation
+        let playback = AsyncStream<PartnerPlayback>.makeStream(bufferingPolicy: .unbounded)
+        partnerPlayback = playback.stream
+        playbackContinuation = playback.continuation
         super.init()
     }
 
@@ -348,6 +370,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             stopBargeInPoll()
             let release = mutateBargeIn { $0.noteResponseDone() }
             let full = outputTranscript(from: json)
+            lock.withLock { lastResponseTranscript = full }
             continuation.yield(.responseDone(transcript: full))
             finishPartnerResponseAudio(seedTranscript: full)
             if release == .passThrough {
@@ -395,12 +418,13 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     private func handleMicBuffer(_ buffer: AVAudioPCMBuffer) {
         let samples = FileReplayAudioSource.floatSamples(from: buffer)
         let rms = Self.rms(samples)
+        let rate = buffer.format.sampleRate
+        micContinuation.yield(AudioChunk(samples: samples, sampleRate: rate, hostTime: 0))
         let enabled = lock.withLock { () -> Bool in
             inputLevel = rms
             return micEnabled && !closed
         }
         guard enabled else { return }
-        let rate = buffer.format.sampleRate
         let chunks: [Data] = lock.withLock {
             frames.append(samples: samples, sampleRate: rate)
         }
@@ -506,6 +530,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         if idle {
             publishCaptionFromLedger(forceFull: true)
             clearCaptionSyncState()
+            notePartnerPlaybackFinished()
         } else {
             publishCaptionFromLedger(forceFull: false)
         }
@@ -565,6 +590,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         if finish.clear {
             publishCaptionFromLedger(forceFull: true)
             clearCaptionSyncState()
+            notePartnerPlaybackFinished()
         } else if finish.stopClock {
             stopCaptionPlayhead()
         }
@@ -616,6 +642,18 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         if engine.isRunning { player.play() }
         clearCaptionSyncState()
         lock.withLock { outputLevel = 0 }
+        notePartnerPlaybackFinished()
+    }
+
+    private func notePartnerPlaybackFinished() {
+        let transcript: String? = lock.withLock {
+            guard partnerPlaying else { return nil }
+            partnerPlaying = false
+            return lastResponseTranscript
+        }
+        if let transcript {
+            playbackContinuation.yield(.finished(transcript: transcript))
+        }
     }
 
     private func startCaptionSyncLog() {
@@ -694,6 +732,15 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     }
 
     private func notePartnerPlaybackStarted() {
+        let firstForTurn: Bool = lock.withLock {
+            guard !partnerPlaying else { return false }
+            partnerPlaying = true
+            lastResponseTranscript = ""
+            return true
+        }
+        if firstForTurn {
+            playbackContinuation.yield(.started)
+        }
         guard !emittedPlaybackStart else { return }
         emittedPlaybackStart = true
         continuation.yield(.audioDelta)
@@ -834,6 +881,9 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         continuation.yield(.disconnected)
         continuation.finish()
+        notePartnerPlaybackFinished()
+        micContinuation.finish()
+        playbackContinuation.finish()
     }
 
     private static func rms(_ samples: [Float]) -> Float {
