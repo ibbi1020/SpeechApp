@@ -29,7 +29,11 @@ struct RecordingsLibraryView: View {
                 }
 
                 Section {
-                    if manifests.isEmpty {
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    } else if manifests.isEmpty {
                         Text("No recordings yet.")
                             .foregroundStyle(.secondary)
                     } else {
@@ -90,7 +94,8 @@ struct RecordingsLibraryView: View {
         do {
             manifests = try RecordingsService.store.list(format: filter)
         } catch {
-            errorMessage = error.localizedDescription
+            UserFacingFailure.log(error, context: "recordings list")
+            errorMessage = UserFacingFailure.message(for: error)
             manifests = []
         }
     }

@@ -56,6 +56,23 @@ enum MonologueRecordingPipeline {
         report: MonologueReport,
         store: RecordingStore = RecordingsService.store
     ) throws {
+        try saveFailurePlaceholder(
+            regimenID: regimenID,
+            topic: topic,
+            report: report,
+            saveError: UserFacingFailure.diskFull,
+            store: store
+        )
+    }
+
+    /// Saves the report with no audio, and the sentence the person should see.
+    static func saveFailurePlaceholder(
+        regimenID: UUID,
+        topic: String,
+        report: MonologueReport,
+        saveError: String,
+        store: RecordingStore = RecordingsService.store
+    ) throws {
         let manifest = RecordingManifest(
             id: regimenID,
             format: .monologue,
@@ -63,7 +80,7 @@ enum MonologueRecordingPipeline {
             reportLines: report.lines,
             comparison: report.comparison,
             takes: [],
-            saveError: "Couldn't save this recording. Your phone is out of space."
+            saveError: saveError
         )
         try store.save(manifest)
     }

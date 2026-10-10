@@ -58,8 +58,8 @@ enum SingleTakeRecording {
                     comparison: "",
                     takes: [],
                     saveError: outOfSpace
-                        ? "Couldn't save this recording. Your phone is out of space."
-                        : "Couldn't prepare this recording, so there's nothing to play."
+                        ? UserFacingFailure.diskFull
+                        : UserFacingFailure.nothingToPlay
                 ))
             }
         }

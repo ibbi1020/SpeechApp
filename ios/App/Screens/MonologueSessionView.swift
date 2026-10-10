@@ -543,11 +543,13 @@ struct MonologueSessionView: View {
         #if os(iOS)
         let granted = await requestMic()
         guard granted else {
-            listenError = "Microphone permission is required."
+            Self.log.error("microphone permission denied")
+            listenError = UserFacingFailure.microphoneOff
             return
         }
         guard let relay = MintClient.makeIfConfigured(uuid: model.account.accountUUID) else {
-            listenError = "Topic-talk transcription needs the local server."
+            Self.log.error("transcription relay is not configured")
+            listenError = UserFacingFailure.practiceDidNotStart
             return
         }
 
@@ -591,7 +593,8 @@ struct MonologueSessionView: View {
         } catch {
             prepareTask.cancel()
             await startedSource?.stop()
-            listenError = error.localizedDescription
+            UserFacingFailure.log(error, context: "monologue start")
+            listenError = UserFacingFailure.message(for: error)
             return
         }
 
@@ -662,7 +665,8 @@ struct MonologueSessionView: View {
         }
         session.ready()
         #else
-        listenError = "Live mic requires iOS."
+        Self.log.error("live mic is unavailable off iOS")
+        listenError = UserFacingFailure.needsIPhone
         #endif
     }
 
@@ -711,7 +715,8 @@ struct MonologueSessionView: View {
                 time: SystemTimeSource()
             )
         } catch {
-            errorMessage = "Topics didn’t load."
+            UserFacingFailure.log(error, context: "monologue topics")
+            errorMessage = UserFacingFailure.topicsDidNotLoad
         }
     }
 
@@ -819,7 +824,10 @@ struct MonologueSessionView: View {
         } catch TakeFinalizerError.empty {
             try? FileManager.default.removeItem(at: rawURL)
         } catch {
-            saveErrorMessage = "Couldn't save this recording. Your phone is out of space."
+            UserFacingFailure.log(error, context: "monologue save")
+            saveErrorMessage = (error as? RecordingStoreError) == .diskFull
+                ? UserFacingFailure.diskFull
+                : UserFacingFailure.nothingToPlay
             try? FileManager.default.removeItem(at: rawURL)
         }
     }
@@ -836,11 +844,12 @@ struct MonologueSessionView: View {
                     report: report,
                     finishedTakes: finishedTakes
                 )
-            } else if saveErrorMessage != nil {
-                try MonologueRecordingPipeline.saveDiskFullPlaceholder(
+            } else if let saveErrorMessage {
+                try MonologueRecordingPipeline.saveFailurePlaceholder(
                     regimenID: regimenID,
                     topic: session.prompt,
-                    report: report
+                    report: report,
+                    saveError: saveErrorMessage
                 )
             }
         } catch RecordingStoreError.diskFull {

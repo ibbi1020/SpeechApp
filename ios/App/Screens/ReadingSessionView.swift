@@ -1,8 +1,11 @@
 import AVFoundation
+import OSLog
 import SwiftUI
 import SpeechAppKit
 
 struct ReadingSessionView: View {
+    private static let log = Logger(subsystem: "com.speechapp", category: "ReadingSessionView")
+
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -249,11 +252,13 @@ struct ReadingSessionView: View {
         #if os(iOS)
         let granted = await requestMic()
         guard granted else {
-            errorMessage = "Microphone permission is required."
+            Self.log.error("microphone permission denied")
+            errorMessage = UserFacingFailure.microphoneOff
             return
         }
         guard let relay = MintClient.makeIfConfigured(uuid: model.account.accountUUID) else {
-            errorMessage = "Reading transcription needs the local server."
+            Self.log.error("transcription relay is not configured")
+            errorMessage = UserFacingFailure.practiceDidNotStart
             return
         }
 
@@ -309,10 +314,12 @@ struct ReadingSessionView: View {
             prepareTask.cancel()
         } catch {
             prepareTask.cancel()
-            errorMessage = error.localizedDescription
+            UserFacingFailure.log(error, context: "reading start")
+            errorMessage = UserFacingFailure.message(for: error)
         }
         #else
-        errorMessage = "Live mic requires iOS."
+        Self.log.error("live mic is unavailable off iOS")
+        errorMessage = UserFacingFailure.needsIPhone
         #endif
     }
 
