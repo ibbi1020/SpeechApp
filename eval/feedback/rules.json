@@ -1,0 +1,145 @@
+[
+  {
+    "name": "long pause mid-sentence",
+    "why": "A 2.5 s silence while looking for a word is the main thing the player should point at.",
+    "script": "I went to the [2.5 pause] store today",
+    "durationSeconds": 60,
+    "noteContains": "A 3-second pause"
+  },
+  {
+    "name": "pause just under 1.5 s",
+    "why": "Normal thinking pauses must not be flagged.",
+    "script": "I went to the [1.4 not pause] store today",
+    "durationSeconds": 60
+  },
+  {
+    "name": "pause exactly 1.5 s",
+    "why": "The rule is 1.5 s or more. Rounding in word times must not drop it.",
+    "script": "I went to the [1.5 pause] store today",
+    "durationSeconds": 60
+  },
+  {
+    "name": "silence before the first word",
+    "why": "Freezing at the start is a pause too.",
+    "script": "[2.0 pause] So I think we should go",
+    "durationSeconds": 60
+  },
+  {
+    "name": "short silence before the first word",
+    "why": "A normal breath before starting is not a freeze.",
+    "script": "[1.0 not pause] So I think we should go",
+    "durationSeconds": 60
+  },
+  {
+    "name": "silence after the last word",
+    "why": "Stopping early is not a pause inside the talk.",
+    "script": "I think that is all [5.0 not pause]"
+  },
+  {
+    "name": "two fillers within 6 s",
+    "why": "A cluster of fillers marks a moment of searching.",
+    "script": "I <fillers> um think it was really nice and then I went uh </> home",
+    "durationSeconds": 60,
+    "noteContains": "2 fillers"
+  },
+  {
+    "name": "two fillers more than 6 s apart",
+    "why": "Fillers spread across a talk are normal speech, not one stuck moment.",
+    "script": "So <not fillers> um we drove to the coast on a sunny day and the water was calm so we stayed by the beach for a long time until uh </> lunch",
+    "durationSeconds": 60
+  },
+  {
+    "name": "one filler",
+    "why": "A single um is not worth a marker.",
+    "script": "I <not fillers> um </> think so",
+    "durationSeconds": 60
+  },
+  {
+    "name": "three fillers close together",
+    "why": "The note should count all three.",
+    "script": "So <fillers> um I uh think er </> yes",
+    "durationSeconds": 60,
+    "noteContains": "3 fillers in 2 seconds"
+  },
+  {
+    "name": "fillers with punctuation and capitals",
+    "why": "Grok writes “Um,” at sentence starts. It is still a filler.",
+    "script": "<fillers> Um, I went uh, </> home",
+    "durationSeconds": 60
+  },
+  {
+    "name": "restart of one word",
+    "why": "“I I went” is a restart.",
+    "script": "<restart> I I </> went home",
+    "durationSeconds": 60,
+    "noteContains": "started this part again"
+  },
+  {
+    "name": "restart of three words",
+    "why": "“I went to, I went to the store” is a restart.",
+    "script": "<restart> I went to I went to </> the store",
+    "durationSeconds": 60
+  },
+  {
+    "name": "restart with a filler between",
+    "why": "“I, um, I went” is still a restart, and one filler is not a cluster.",
+    "script": "<restart> I um I </> went home",
+    "durationSeconds": 60
+  },
+  {
+    "name": "repeat after a long pause",
+    "why": "If 2 s pass between the copies it is a pause, not a quick restart.",
+    "script": "<not restart> I went [2.0 pause] I went </> home",
+    "durationSeconds": 60
+  },
+  {
+    "name": "emphasis repeat",
+    "why": "“very very good” is emphasis, not a restart.",
+    "script": "It was <not restart> very very </> good",
+    "durationSeconds": 60,
+    "knownIssue": "Any word said twice in a row counts as a restart, including emphasis like “very very”."
+  },
+  {
+    "name": "grammatical repeat",
+    "why": "“I think that that is true” is correct English.",
+    "script": "I think <not restart> that that </> is true",
+    "durationSeconds": 60,
+    "knownIssue": "Any word said twice in a row counts as a restart, including correct “that that”."
+  },
+  {
+    "name": "cap keeps the three longest pauses on a 1-minute take",
+    "why": "A 1-minute take shows at most 3 markers. The longest hesitations win.",
+    "script": "one [9 pause] two [8 pause] three [2 pause maybe] four [7 pause] five [1.6 pause maybe] six",
+    "durationSeconds": 60
+  },
+  {
+    "name": "two close pauses keep the longer",
+    "why": "Markers must sit at least 13% of the take apart, so the scrubber stays tappable.",
+    "script": "I went [4 pause] to the shop [3 pause maybe] for milk",
+    "durationSeconds": 60
+  },
+  {
+    "name": "take under 30 s still gets markers",
+    "why": "Short takes do not count toward the report, but they still get feedback.",
+    "script": "So I [2.0 pause] think it went well",
+    "durationSeconds": 20
+  },
+  {
+    "name": "very short take shows one marker, the biggest",
+    "why": "A 6 s take gets one marker. A 2.3 s filler cluster beats a 1.6 s pause.",
+    "script": "I [1.6 pause maybe] <fillers> um went to uh the er </> store",
+    "durationSeconds": 6
+  },
+  {
+    "name": "pause inside a filler cluster",
+    "why": "One stuck moment should get one marker, not two on top of each other.",
+    "script": "So <fillers> um [2.0 pause maybe] uh </> I think",
+    "durationSeconds": 60
+  },
+  {
+    "name": "clean take",
+    "why": "Fluent speech gets no markers.",
+    "script": "I like to walk to work because it is quiet and I can think about the day",
+    "durationSeconds": 60
+  }
+]

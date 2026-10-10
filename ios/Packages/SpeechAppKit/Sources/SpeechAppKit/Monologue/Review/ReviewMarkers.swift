@@ -33,6 +33,8 @@ public struct ReviewMarker: Equatable, Hashable, Sendable, Codable, Identifiable
 
 public enum ReviewMarkers {
     public static let minimumPause: TimeInterval = 1.5
+    /// Word times are hundredths; subtraction like 2.8 − 1.3 lands just under 1.5.
+    static let timeSlack: TimeInterval = 0.001
     public static let fillerClusterWindow: TimeInterval = 6.0
     public static let minimumFillerCount = 2
     /// Markers closer than this fraction of take length collide; keep the higher score.
@@ -51,21 +53,7 @@ public enum ReviewMarkers {
         let cap = maxMarkers(durationSeconds: durationSeconds)
         guard cap > 0, durationSeconds > 0 else { return [] }
 
-        var candidates: [ReviewMarker] = []
-        candidates.append(contentsOf: pauseMarkers(words: words, durationSeconds: durationSeconds))
-        candidates.append(contentsOf: fillerClusterMarkers(words: words))
-        for restart in RestartDetector.find(in: words) {
-            candidates.append(
-                ReviewMarker(
-                    kind: .restart,
-                    start: restart.start,
-                    end: restart.end,
-                    score: restart.score,
-                    note: note(for: .restart, score: restart.score, end: restart.end, start: restart.start)
-                )
-            )
-        }
-
+        var candidates = candidates(words: words, durationSeconds: durationSeconds)
         candidates.sort { lhs, rhs in
             if lhs.score != rhs.score { return lhs.score > rhs.score }
             return lhs.start < rhs.start
@@ -83,6 +71,28 @@ public enum ReviewMarkers {
         return selected.sorted { $0.start < $1.start }
     }
 
+    /// Every detected moment before the cap and spacing pick which ones to show.
+    public static func candidates(
+        words: [RecordedWord],
+        durationSeconds: TimeInterval
+    ) -> [ReviewMarker] {
+        var found: [ReviewMarker] = []
+        found.append(contentsOf: pauseMarkers(words: words, durationSeconds: durationSeconds))
+        found.append(contentsOf: fillerClusterMarkers(words: words))
+        for restart in RestartDetector.find(in: words) {
+            found.append(
+                ReviewMarker(
+                    kind: .restart,
+                    start: restart.start,
+                    end: restart.end,
+                    score: restart.score,
+                    note: note(for: .restart, score: restart.score, end: restart.end, start: restart.start)
+                )
+            )
+        }
+        return found.sorted { $0.start < $1.start }
+    }
+
     // MARK: - Pauses
 
     private static func pauseMarkers(words: [RecordedWord], durationSeconds: TimeInterval) -> [ReviewMarker] {
@@ -91,7 +101,7 @@ public enum ReviewMarkers {
         var markers: [ReviewMarker] = []
 
         // Leading silence (before first word) can be a marker.
-        if let first = ordered.first, first.start >= minimumPause {
+        if let first = ordered.first, first.start >= minimumPause - timeSlack {
             markers.append(
                 ReviewMarker(
                     kind: .pause,
@@ -108,7 +118,7 @@ public enum ReviewMarkers {
             let gapStart = ordered[index].end
             let gapEnd = ordered[index + 1].start
             let length = gapEnd - gapStart
-            guard length >= minimumPause else { continue }
+            guard length >= minimumPause - timeSlack else { continue }
             markers.append(
                 ReviewMarker(
                     kind: .pause,
@@ -133,7 +143,7 @@ public enum ReviewMarkers {
         while i < fillers.count {
             var j = i
             while j + 1 < fillers.count,
-                  fillers[j + 1].start - fillers[i].start <= fillerClusterWindow
+                  fillers[j + 1].start - fillers[i].start <= fillerClusterWindow + timeSlack
             {
                 j += 1
             }

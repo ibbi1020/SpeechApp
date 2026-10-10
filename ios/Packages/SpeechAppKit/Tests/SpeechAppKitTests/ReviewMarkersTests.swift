@@ -24,6 +24,17 @@ struct ReviewMarkersTests {
         #expect(!markers.contains { $0.start > 2.8 })
     }
 
+    @Test("1.5 s gap from Grok hundredths still counts")
+    func grokRoundingAtThreshold() {
+        // 2.8 − 1.3 is 1.4999999999999998 in floating point.
+        let words = [
+            RecordedWord(surface: "to", start: 1.0, end: 1.3),
+            RecordedWord(surface: "the", start: 2.8, end: 3.0),
+        ]
+        let markers = ReviewMarkers.build(words: words, durationSeconds: 60)
+        #expect(markers.contains { $0.kind == .pause })
+    }
+
     @Test("ignores silences under 1.5s")
     func shortGapIgnored() {
         let words = [
