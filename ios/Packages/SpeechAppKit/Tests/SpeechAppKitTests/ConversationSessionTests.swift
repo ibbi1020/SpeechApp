@@ -461,12 +461,17 @@ struct ConversationSessionTests {
         }
     }
 
-    @Test("stageLine is the open question until the partner speaks")
+    @Test("subtitle stays empty until the partner speaks")
     @MainActor
-    func stageLineStartsAsOpenQuestion() async throws {
+    func subtitleStaysEmptyUntilPartnerSpeaks() async throws {
         let (session, _, _) = makeSession()
-        #expect(session.stageLine == "What did you have for breakfast?")
+        #expect(session.subtitleLine.isEmpty)
+        #expect(session.stageLine.isEmpty)
         try await reachTalking(session)
+        #expect(session.subtitleLine.isEmpty)
+        #expect(session.stageLine.isEmpty)
+        await session.handle(.partnerCaption("What did you have for breakfast?"))
+        #expect(session.subtitleLine == "What did you have for breakfast?")
         #expect(session.stageLine == "What did you have for breakfast?")
     }
 
