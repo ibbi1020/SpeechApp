@@ -63,7 +63,7 @@ enum MonologueRecordingPipeline {
             reportLines: report.lines,
             comparison: report.comparison,
             takes: [],
-            saveError: "Couldn't save this recording. Your phone is out of space."
+            saveError: UserFacingFailure.diskFull
         )
         try store.save(manifest)
     }

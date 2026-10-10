@@ -1,4 +1,5 @@
 import Foundation
+import SpeechAppKit
 
 struct MintResponse: Decodable {
     let clientSecret: String
@@ -23,14 +24,24 @@ struct MintResponse: Decodable {
 
 enum MintError: Error, Equatable { case budget, concurrent, rate, auth, unavailable }
 
+/// Screen copy for an error the app already throws. Mint stays specific; everything else is plain.
+enum ShownError {
+    static func text(for error: Error) -> String {
+        if let mint = error as? MintError {
+            return mint.errorDescription ?? UserFacingFailure.practiceDidNotStart
+        }
+        return UserFacingFailure.message(for: error)
+    }
+}
+
 extension MintError: LocalizedError {
     var errorDescription: String? {
         switch self {
-        case .budget: "This month’s conversations are used."
-        case .concurrent: "A conversation is already in progress."
+        case .budget: "This month’s conversations are used. Try again next month."
+        case .concurrent: "A conversation is already open. Finish it, then try again."
         case .rate: "Too many tries. Wait a few minutes."
-        case .auth: "Couldn’t sign in to Conversation."
-        case .unavailable: "Conversation isn’t available right now."
+        case .auth: "Sign-in didn’t work. Try again."
+        case .unavailable: "Conversation isn’t available right now. Try again."
         }
     }
 }

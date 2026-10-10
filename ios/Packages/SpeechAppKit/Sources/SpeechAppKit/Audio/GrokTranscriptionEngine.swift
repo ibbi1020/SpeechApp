@@ -6,14 +6,7 @@ public enum GrokTranscriptionError: Error, LocalizedError, Equatable {
     case timedOut
 
     public var errorDescription: String? {
-        switch self {
-        case .relayNotConfigured:
-            "Reading transcription needs the local server."
-        case .failed(let message):
-            message
-        case .timedOut:
-            "Grok transcription didn’t answer in time. Check the local server is running and XAI_API_KEY is set."
-        }
+        UserFacingFailure.practiceDidNotStart
     }
 }
 
@@ -301,6 +294,7 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
     }
 
     private func fail(_ error: Error) {
+        UserFacingFailure.log(error, context: "transcription")
         let (readyWait, doneWait) = lock.withLock { () -> (CheckedContinuation<Void, Error>?, CheckedContinuation<Void, Never>?) in
             transcriptFinished = true
             stopped = true

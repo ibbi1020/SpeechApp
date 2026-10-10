@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import Observation
 import OSLog
+import SpeechAppKit
 
 /// Plays a saved take through the loudspeaker.
 ///
@@ -35,7 +36,7 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
             duration = player.duration
             if duration.isNaN || duration < 0 { duration = 0 }
         } catch {
-            playbackError = "Couldn't open this recording."
+            playbackError = UserFacingFailure.nothingToPlay
             Self.log.error("open failed: \(error.localizedDescription, privacy: .public)")
         }
     }
@@ -52,13 +53,13 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
         do {
             try await Self.routeToSpeaker()
         } catch {
-            playbackError = "Couldn't switch on the speaker."
+            playbackError = UserFacingFailure.speakerDidNotStart
             Self.log.error("session failed: \(error.localizedDescription, privacy: .public)")
             return
         }
         player.volume = 1
         guard player.play() else {
-            playbackError = "Playback didn't start."
+            playbackError = UserFacingFailure.playbackDidNotStart
             Self.log.error("AVAudioPlayer.play() returned false")
             isPlaying = false
             return

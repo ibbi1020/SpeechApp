@@ -175,7 +175,7 @@ struct ConversationSessionView: View {
 
     private var failureView: some View {
         VStack(spacing: SpeechSpacing.related) {
-            Text(errorMessage ?? "Connection lost.")
+            Text(errorMessage ?? UserFacingFailure.connectionDropped)
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
@@ -330,7 +330,8 @@ struct ConversationSessionView: View {
                 model.budget.used = model.budget.limit
                 canRetry = false
             }
-            errorMessage = error.localizedDescription
+            UserFacingFailure.log(error, context: "conversation start")
+            errorMessage = ShownError.text(for: error)
             clearLiveSession()
         }
     }
@@ -571,7 +572,7 @@ struct ConversationSessionView: View {
                 listenBack?.discard()
                 listenBack = nil
                 if errorMessage == nil {
-                    errorMessage = "Connection lost."
+                    errorMessage = UserFacingFailure.connectionDropped
                     canRetry = true
                 }
                 markRoutedAndPostEnded()
@@ -642,8 +643,7 @@ private enum ConversationSessionError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingOpens: "Opening prompts didn’t load."
-        case .missingAPIKey: "Conversation isn’t configured. Add XAI_API_KEY to server/.env and rebuild."
+        case .missingOpens, .missingAPIKey: UserFacingFailure.practiceDidNotStart
         }
     }
 }
