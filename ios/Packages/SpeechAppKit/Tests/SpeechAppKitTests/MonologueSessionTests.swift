@@ -168,8 +168,23 @@ struct MonologueSessionTakeTests {
         session.done()
         let words = session.takes.first?.words ?? []
         #expect(words.map(\.surface) == ["I", "went", "home"])
-        // Origin bound to first word (0.1); pause 1.0…3.0 → home at 3.1 maps to 1.0.
-        #expect(words.last?.start == 1.0)
+        // Stream and file both start at 0; pause 1.0…3.0 is cut, so home at 3.1 maps to 1.1.
+        #expect(words.first?.start == 0.1)
+        #expect(abs((words.last?.start ?? 0) - 1.1) < 0.0001)
+    }
+
+    @MainActor
+    @Test("silence before the first word stays on the file timeline")
+    func leadingSilenceKept() {
+        let time = ControllableTimeSource(now: 0)
+        let session = makeSession(time: time)
+        session.ready()
+        session.ingestWords([
+            SpokenToken(surface: "So", startTime: 2.4, endTime: 2.6, isFinal: true),
+        ])
+        time.advance(40)
+        session.done()
+        #expect(session.takes.first?.words.first?.start == 2.4)
     }
 }
 

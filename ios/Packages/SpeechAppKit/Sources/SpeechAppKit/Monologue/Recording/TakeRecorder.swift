@@ -1,31 +1,30 @@
 import AVFoundation
 import Foundation
-import SpeechAppKit
 
 /// Writes mic chunks to a temp CAF while the take clock is running.
 @MainActor
-final class TakeRecorder {
-    private(set) var fileURL: URL?
+public final class TakeRecorder {
+    public private(set) var fileURL: URL?
     private var audioFile: AVAudioFile?
     private var writing = false
     private let directory: URL
 
-    init(directory: URL = FileManager.default.temporaryDirectory) {
+    public init(directory: URL = FileManager.default.temporaryDirectory) {
         self.directory = directory
     }
 
-    func start() throws {
-        stop()
+    public func start() throws {
+        _ = stop()
         let url = directory.appendingPathComponent("take-\(UUID().uuidString).caf")
         fileURL = url
         writing = true
     }
 
-    func setWriting(_ on: Bool) {
+    public func setWriting(_ on: Bool) {
         writing = on
     }
 
-    func append(_ chunk: AudioChunk) {
+    public func append(_ chunk: AudioChunk) {
         guard writing, let fileURL else { return }
         guard !chunk.samples.isEmpty, chunk.sampleRate > 0 else { return }
         do {
@@ -59,7 +58,8 @@ final class TakeRecorder {
         }
     }
 
-    func stop() -> URL? {
+    @discardableResult
+    public func stop() -> URL? {
         writing = false
         audioFile = nil
         let url = fileURL

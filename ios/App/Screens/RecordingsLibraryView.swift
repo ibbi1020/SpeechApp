@@ -124,9 +124,3 @@ struct RecordingsLibraryView: View {
         MonologueReportView(report: report, regimenID: item.id)
     }
 }
-
-extension RecordingManifest: Hashable {
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-    }
-}

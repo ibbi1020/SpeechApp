@@ -1,7 +1,7 @@
 import Foundation
 
-public struct ReviewMarker: Equatable, Sendable, Codable, Identifiable {
-    public enum Kind: String, Equatable, Sendable, Codable {
+public struct ReviewMarker: Equatable, Hashable, Sendable, Codable, Identifiable {
+    public enum Kind: String, Equatable, Hashable, Sendable, Codable {
         case pause
         case fillerCluster
         case restart

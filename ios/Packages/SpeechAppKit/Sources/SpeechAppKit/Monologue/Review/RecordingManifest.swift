@@ -1,13 +1,13 @@
 import Foundation
 
-public struct RecordingManifest: Equatable, Sendable, Codable, Identifiable {
+public struct RecordingManifest: Equatable, Hashable, Sendable, Codable, Identifiable {
     public enum Format: String, Equatable, Sendable, Codable {
         case monologue
         case reading
         case conversation
     }
 
-    public struct Take: Equatable, Sendable, Codable, Identifiable {
+    public struct Take: Equatable, Hashable, Sendable, Codable, Identifiable {
         public var id: Int { index }
         public let index: Int
         public let durationSeconds: TimeInterval

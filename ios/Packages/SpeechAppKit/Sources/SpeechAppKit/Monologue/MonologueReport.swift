@@ -3,7 +3,7 @@ import Foundation
 public struct MonologueReport: Equatable, Sendable, Identifiable {
     public enum Kind: Equatable, Sendable { case thin, full, crisis }
 
-    public struct Line: Equatable, Sendable, Codable {
+    public struct Line: Equatable, Hashable, Sendable, Codable {
         public let label: String
         public let value: String
         public init(label: String, value: String) {

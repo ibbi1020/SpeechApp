@@ -48,7 +48,6 @@ public final class MonologueSession {
     public private(set) var recordingClock = RecordingClock()
     /// Latest stream timestamp seen (words or explicit pause/resume).
     private var lastStreamTime: TimeInterval = 0
-    private var didBindRecordingOrigin = false
 
     public init(
         prompts: [String],
@@ -75,21 +74,11 @@ public final class MonologueSession {
         pausedAt = nil
         origin = time.now
         lastStreamTime = 0
-        didBindRecordingOrigin = false
         recordingClock = RecordingClock()
+        // Each take opens a new Grok stream and a new file on the same first chunk,
+        // so stream time 0 is file time 0.
         recordingClock.beginTake(atStreamTime: 0)
         phase = .taking
-    }
-
-    /// Align the recording clock with the first Grok stream timestamp for this take.
-    public func beginRecording(atStreamTime stream: TimeInterval) {
-        guard phase == .taking || phase == .paused else { return }
-        lastStreamTime = stream
-        didBindRecordingOrigin = true
-        recordingClock.beginTake(atStreamTime: stream)
-        if phase == .paused {
-            recordingClock.pause(atStreamTime: stream)
-        }
     }
 
     public func appendRecordingAudio(duration: TimeInterval) {
@@ -163,9 +152,6 @@ public final class MonologueSession {
                   let streamStart = token.startTime,
                   let streamEnd = token.endTime
             else { continue }
-            if !didBindRecordingOrigin {
-                beginRecording(atStreamTime: streamStart)
-            }
             lastStreamTime = max(lastStreamTime, streamEnd)
             if let word = recordingClock.recordedWord(
                 surface: token.surface,

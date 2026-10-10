@@ -1,9 +1,12 @@
 import AVFoundation
+import OSLog
 import SwiftUI
 import UIKit
 import SpeechAppKit
 
 struct MonologueSessionView: View {
+    private static let log = Logger(subsystem: "com.speechapp", category: "MonologueRecording")
+
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -776,7 +779,7 @@ struct MonologueSessionView: View {
     }
 
     private func handleCrisis(_ session: MonologueSession) async {
-        takeRecorder.stop()
+        _ = takeRecorder.stop()
         try? RecordingsService.store.delete(id: regimenID)
         finishedTakes = []
         await stopListen()
@@ -801,7 +804,10 @@ struct MonologueSessionView: View {
         isFinalizingAudio = true
         defer { isFinalizingAudio = false }
         do {
-            let finalURL = try await TakeFinalizer.finalize(rawCAF: rawURL)
+            let (finalURL, report) = try await TakeFinalizer.finalizeWithReport(rawCAF: rawURL)
+            Self.log.info(
+                "take \(take.index) saved: inputPeak=\(report.inputPeak) denoise=\(report.usedDenoise) delay=\(report.denoiseDelaySeconds) gain=\(report.gain) outputPeak=\(report.outputPeak)"
+            )
             finishedTakes.append(
                 MonologueRecordingPipeline.FinishedTake(
                     index: take.index,

@@ -1,43 +1,70 @@
 import AVFoundation
 import Foundation
-import SpeechAppKit
 
-enum TakeFinalizerError: Error {
+public enum TakeFinalizerError: Error {
     case empty
     case encodeFailed
 }
 
 /// Denoise (AUSoundIsolation) → delay fix → AAC 16 kHz mono 32 kbps.
-enum TakeFinalizer {
-    static let outputSampleRate: Double = 16_000
-    static let bitRate = 32_000
+public enum TakeFinalizer {
+    public static let outputSampleRate: Double = 16_000
+    public static let bitRate = 32_000
+
+    /// What happened to one take, for logs and tests.
+    public struct Report: Sendable, Equatable {
+        public let inputPeak: Float
+        public let usedDenoise: Bool
+        public let denoiseDelaySeconds: TimeInterval
+        public let gain: Float
+        public let outputPeak: Float
+    }
 
     /// Returns a local `.m4a` URL. Falls back to encoding the raw file when denoise fails.
-    static func finalize(rawCAF: URL) async throws -> URL {
+    public static func finalize(rawCAF: URL) async throws -> URL {
+        try await finalizeWithReport(rawCAF: rawCAF).url
+    }
+
+    public static func finalizeWithReport(rawCAF: URL) async throws -> (url: URL, report: Report) {
         let samples = try readFloatMono(url: rawCAF)
         guard !samples.samples.isEmpty else { throw TakeFinalizerError.empty }
 
-        let processed: [Float]
+        var processed: [Float]
         let rate: Double
-        if let denoised = try? denoise(samples: samples.samples, sampleRate: samples.sampleRate) {
-            let delay = DelayEstimator.delaySeconds(
+        var usedDenoise = false
+        var delay: TimeInterval = 0
+        if let denoised = try? denoise(samples: samples.samples, sampleRate: samples.sampleRate),
+           audible(denoised.samples, comparedTo: samples.samples) {
+            delay = DelayEstimator.delaySeconds(
                 reference: samples.samples,
                 delayed: denoised.samples,
                 sampleRate: denoised.sampleRate
             )
             processed = trimLeading(denoised.samples, delaySeconds: delay, sampleRate: denoised.sampleRate)
             rate = denoised.sampleRate
+            usedDenoise = true
         } else {
             processed = samples.samples
             rate = samples.sampleRate
         }
+
+        // `.measurement` mic mode has no automatic gain, so phone takes are often very quiet.
+        let gain = LoudnessNormalizer.gain(for: processed)
+        LoudnessNormalizer.apply(gain: gain, to: &processed)
 
         let resampled = resample(processed, from: rate, to: outputSampleRate)
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("take-final-\(UUID().uuidString).m4a")
         try writeAAC(samples: resampled, sampleRate: outputSampleRate, to: outURL)
         try? FileManager.default.removeItem(at: rawCAF)
-        return outURL
+        let report = Report(
+            inputPeak: peak(samples.samples),
+            usedDenoise: usedDenoise,
+            denoiseDelaySeconds: delay,
+            gain: gain,
+            outputPeak: peak(resampled)
+        )
+        return (outURL, report)
     }
 
     // MARK: - Read / write
@@ -86,16 +113,51 @@ enum TakeFinalizer {
             interleaved: false
         )
         guard let floatFormat else { throw TakeFinalizerError.encodeFailed }
-        let file = try AVAudioFile(forWriting: url, settings: settings)
-        let frameCount = AVAudioFrameCount(samples.count)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: floatFormat, frameCapacity: frameCount) else {
+        // `commonFormat` locks the file's processing format to the PCM we write.
+        // A settings-only AAC file often expects a different layout and encodes silence.
+        let file = try AVAudioFile(
+            forWriting: url,
+            settings: settings,
+            commonFormat: .pcmFormatFloat32,
+            interleaved: false
+        )
+        let writeFormat = file.processingFormat
+        let writeSamples: [Float]
+        if abs(writeFormat.sampleRate - sampleRate) > 0.5 || writeFormat.channelCount != 1 {
+            writeSamples = resample(samples, from: sampleRate, to: writeFormat.sampleRate)
+        } else {
+            writeSamples = samples
+        }
+        let frameCount = AVAudioFrameCount(writeSamples.count)
+        let bufferFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: writeFormat.sampleRate,
+            channels: 1,
+            interleaved: false
+        ) ?? floatFormat
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: bufferFormat, frameCapacity: frameCount) else {
             throw TakeFinalizerError.encodeFailed
         }
         buffer.frameLength = frameCount
-        samples.withUnsafeBufferPointer { src in
-            buffer.floatChannelData?[0].update(from: src.baseAddress!, count: samples.count)
+        writeSamples.withUnsafeBufferPointer { src in
+            buffer.floatChannelData?[0].update(from: src.baseAddress!, count: writeSamples.count)
         }
         try file.write(from: buffer)
+    }
+
+    /// Denoise that comes back as silence must not replace the take.
+    private static func audible(_ candidate: [Float], comparedTo original: [Float]) -> Bool {
+        let originalPeak = peak(original)
+        guard originalPeak > 0.01 else { return peak(candidate) > 0 }
+        return peak(candidate) > originalPeak * 0.02
+    }
+
+    private static func peak(_ samples: [Float]) -> Float {
+        var maxAmp: Float = 0
+        for sample in samples {
+            maxAmp = max(maxAmp, abs(sample))
+        }
+        return maxAmp
     }
 
     // MARK: - Denoise
@@ -128,9 +190,15 @@ enum TakeFinalizer {
         )
         guard let format else { throw TakeFinalizerError.encodeFailed }
 
+        // Manual rendering reads the mixer output. Muting it writes a silent file.
+        // Enable offline mode before connecting, or the graph stays on the hardware output.
+        try engine.enableManualRenderingMode(
+            .offline,
+            format: format,
+            maximumFrameCount: 4096
+        )
         engine.connect(player, to: isolation, format: format)
         engine.connect(isolation, to: engine.mainMixerNode, format: format)
-        engine.mainMixerNode.outputVolume = 0
 
         let frameCount = AVAudioFrameCount(samples.count)
         // Extra silence so the unit can flush its delay line.
@@ -143,11 +211,6 @@ enum TakeFinalizer {
             inBuffer.floatChannelData?[0].update(from: src.baseAddress!, count: samples.count)
         }
 
-        try engine.enableManualRenderingMode(
-            .offline,
-            format: format,
-            maximumFrameCount: 4096
-        )
         try engine.start()
         player.scheduleBuffer(inBuffer, completionHandler: nil)
         if let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: padFrames) {
@@ -158,9 +221,8 @@ enum TakeFinalizer {
 
         var output = [Float]()
         output.reserveCapacity(samples.count + Int(padFrames))
-        let outBuffer = engine.manualRenderingBufferFormat
         guard let renderBuffer = AVAudioPCMBuffer(
-            pcmFormat: outBuffer,
+            pcmFormat: engine.manualRenderingFormat,
             frameCapacity: engine.manualRenderingMaximumFrameCount
         ) else {
             throw TakeFinalizerError.encodeFailed

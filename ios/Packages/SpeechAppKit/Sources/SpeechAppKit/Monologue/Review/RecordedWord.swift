@@ -1,7 +1,7 @@
 import Foundation
 
 /// One spoken word on the saved take's timeline (pause gaps already removed).
-public struct RecordedWord: Equatable, Sendable, Codable, Identifiable {
+public struct RecordedWord: Equatable, Hashable, Sendable, Codable, Identifiable {
     public let id: UUID
     public let surface: String
     public let start: TimeInterval
