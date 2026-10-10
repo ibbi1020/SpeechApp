@@ -358,8 +358,10 @@ public final class ReadingSession {
     private func handle(update: TranscriptionUpdate) {
         guard phase != .paused else { return }
         engineKind = update.engineKind
-        let finals = update.tokens.filter(\.isFinal)
-        let volatileTokens = update.tokens.filter { !$0.isFinal }
+        // Fillers stay in the Grok stream for review elsewhere; they are not
+        // passage words and would inflate Extra if they reached the aligner.
+        let finals = FillerWords.strippingTokens(update.tokens.filter(\.isFinal))
+        let volatileTokens = FillerWords.strippingTokens(update.tokens.filter { !$0.isFinal })
         let hasVolatile = !volatileTokens.isEmpty || (finals.isEmpty && !update.rawText.isEmpty)
         let previousCaret = currentWordID
         let previousHeardCount = heardWordIDs.count
@@ -399,7 +401,7 @@ public final class ReadingSession {
             if let best = aligner.bestScriptAlternative(candidates: candidates), !best.isEmpty {
                 surfaces = best
             } else {
-                surfaces = Self.tokenizeHypothesis(update.rawText)
+                surfaces = Self.tokenizeHypothesis(update.rawText).filter { !FillerWords.isFiller($0) }
             }
             let preview = aligner.previewVolatile(surfaces: surfaces)
             let proposed = preview.currentWordID ?? aligner.currentWordID

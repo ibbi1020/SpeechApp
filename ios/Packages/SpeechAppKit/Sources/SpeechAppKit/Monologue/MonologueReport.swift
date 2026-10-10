@@ -84,7 +84,7 @@ public enum MonologueReportBuilder {
                 value: "\(ConversationPauseTime.count(from: take.ranges))"
             ))
             if let pace = ConversationPace.syllablesPerMinute(
-                transcript: take.transcript,
+                transcript: FillerWords.strippingTranscript(take.transcript),
                 speechSeconds: spoken
             ) {
                 lines.append(MonologueReport.Line(
