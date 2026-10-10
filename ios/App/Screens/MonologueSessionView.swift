@@ -844,11 +844,12 @@ struct MonologueSessionView: View {
                     report: report,
                     finishedTakes: finishedTakes
                 )
-            } else if saveErrorMessage != nil {
-                try MonologueRecordingPipeline.saveDiskFullPlaceholder(
+            } else if let saveErrorMessage {
+                try MonologueRecordingPipeline.saveFailurePlaceholder(
                     regimenID: regimenID,
                     topic: session.prompt,
-                    report: report
+                    report: report,
+                    saveError: saveErrorMessage
                 )
             }
         } catch RecordingStoreError.diskFull {

@@ -155,7 +155,7 @@ struct RootView: View {
                 ContentUnavailableView(
                     "No passages",
                     systemImage: "text.book.closed",
-                    description: Text("The catalog didn’t load.")
+                    description: Text("Passages didn’t load. Go back and try again.")
                 )
             }
         }

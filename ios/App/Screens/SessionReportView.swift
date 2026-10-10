@@ -297,7 +297,7 @@ struct SessionReportView: View {
                         }
                         .buttonStyle(SpeechSecondaryButtonStyle())
                     } else {
-                        Text("Log file missing.")
+                        Text("There’s no log to share.")
                             .font(.footnote)
                             .foregroundStyle(.tertiary)
                     }
