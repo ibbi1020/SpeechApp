@@ -33,7 +33,12 @@ public struct ReviewMarker: Equatable, Hashable, Sendable, Codable, Identifiable
 
 public enum ReviewMarkers {
     public static let minimumPause: TimeInterval = 1.5
-    /// Word times are hundredths; subtraction like 2.8 − 1.3 lands just under 1.5.
+    /// Grok word edges sit inside the sound, so the gap between two words reads
+    /// about 0.2 s longer than the real silence (eval: 1.0 s → 1.2 s, 1.3 s → 1.51 s).
+    public static let wordEdgePadding: TimeInterval = 0.2
+    /// Gap between two words that means a real 1.5 s silence.
+    public static var minimumWordGap: TimeInterval { minimumPause + wordEdgePadding }
+    /// Word times are hundredths; subtraction like 2.9 − 1.2 lands just under 1.7.
     static let timeSlack: TimeInterval = 0.001
     public static let fillerClusterWindow: TimeInterval = 6.0
     public static let minimumFillerCount = 2
@@ -118,14 +123,16 @@ public enum ReviewMarkers {
             let gapStart = ordered[index].end
             let gapEnd = ordered[index + 1].start
             let length = gapEnd - gapStart
-            guard length >= minimumPause - timeSlack else { continue }
+            guard length >= minimumWordGap - timeSlack else { continue }
+            // Score and wording use the real silence, not the padded word gap.
+            let silence = length - wordEdgePadding
             markers.append(
                 ReviewMarker(
                     kind: .pause,
                     start: gapStart,
                     end: gapEnd,
-                    score: length,
-                    note: note(for: .pause, score: length, end: gapEnd, start: gapStart)
+                    score: silence,
+                    note: note(for: .pause, score: silence, end: gapEnd, start: gapStart)
                 )
             )
         }

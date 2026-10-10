@@ -43,6 +43,9 @@ One line says what is spoken and what should be flagged. Used by `rules.json` an
 - `<fillers> … </>` and `<restart> … </>` wrap words that should be flagged.
   `<restart maybe>`: the cap may hide it. `<not restart>`: must not be flagged.
 - `maybe` matters when a take has more moments than its marker cap (3 per minute, at most 7).
+- In `rules.json` a silence is the gap between two words as Grok reports it. Grok word edges add
+  about 0.2 s, so a pause marker needs a 1.7 s word gap (a real 1.5 s silence). In `clips.json` a
+  silence is real audio, so `[1.5]` there is a true 1.5 s pause.
 
 ## Files
 

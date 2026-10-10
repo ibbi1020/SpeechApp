@@ -71,7 +71,7 @@ public enum FeedbackReport {
                     widest = max(widest, ordered[index].start - ordered[index - 1].end)
                 }
             }
-            if widest < ReviewMarkers.minimumPause {
+            if widest < ReviewMarkers.minimumWordGap {
                 return "transcript: word times show only a \(String(format: "%.2f", widest)) s gap here. Heard \(heardText)."
             }
             return "rules: transcript shows a \(String(format: "%.2f", widest)) s gap. Heard \(heardText)."

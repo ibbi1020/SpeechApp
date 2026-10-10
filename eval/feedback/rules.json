@@ -1,21 +1,21 @@
 [
   {
     "name": "long pause mid-sentence",
-    "why": "A 2.5 s silence while looking for a word is the main thing the player should point at.",
+    "why": "A 2.5 s word gap (about 2.3 s of real silence) while looking for a word is the main thing the player should point at.",
     "script": "I went to the [2.5 pause] store today",
     "durationSeconds": 60,
-    "noteContains": "A 3-second pause"
+    "noteContains": "A 2-second pause"
   },
   {
-    "name": "pause just under 1.5 s",
-    "why": "Normal thinking pauses must not be flagged.",
-    "script": "I went to the [1.4 not pause] store today",
+    "name": "word gap of 1.6 s",
+    "why": "Grok word gaps read about 0.2 s long. 1.6 s is a real 1.4 s breath and must not be flagged.",
+    "script": "I went to the [1.6 not pause] store today",
     "durationSeconds": 60
   },
   {
-    "name": "pause exactly 1.5 s",
-    "why": "The rule is 1.5 s or more. Rounding in word times must not drop it.",
-    "script": "I went to the [1.5 pause] store today",
+    "name": "word gap of exactly 1.7 s",
+    "why": "1.7 s between Grok words is a real 1.5 s silence. Rounding in word times must not drop it.",
+    "script": "I went to the [1.7 pause] store today",
     "durationSeconds": 60
   },
   {
@@ -81,6 +81,12 @@
     "durationSeconds": 60
   },
   {
+    "name": "restart of a short function word",
+    "why": "“to to the store” is a stumble, not emphasis.",
+    "script": "I went <restart> to to </> the store",
+    "durationSeconds": 60
+  },
+  {
     "name": "restart with a filler between",
     "why": "“I, um, I went” is still a restart, and one filler is not a cluster.",
     "script": "<restart> I um I </> went home",
@@ -96,20 +102,24 @@
     "name": "emphasis repeat",
     "why": "“very very good” is emphasis, not a restart.",
     "script": "It was <not restart> very very </> good",
-    "durationSeconds": 60,
-    "knownIssue": "Any word said twice in a row counts as a restart, including emphasis like “very very”."
+    "durationSeconds": 60
   },
   {
     "name": "grammatical repeat",
     "why": "“I think that that is true” is correct English.",
     "script": "I think <not restart> that that </> is true",
-    "durationSeconds": 60,
-    "knownIssue": "Any word said twice in a row counts as a restart, including correct “that that”."
+    "durationSeconds": 60
+  },
+  {
+    "name": "emphasis no no",
+    "why": "“No no, that is fine” is emphasis.",
+    "script": "<not restart> No no </> that is fine",
+    "durationSeconds": 60
   },
   {
     "name": "cap keeps the three longest pauses on a 1-minute take",
     "why": "A 1-minute take shows at most 3 markers. The longest hesitations win.",
-    "script": "one [9 pause] two [8 pause] three [2 pause maybe] four [7 pause] five [1.6 pause maybe] six",
+    "script": "one [9 pause] two [8 pause] three [2 pause maybe] four [7 pause] five [1.8 pause maybe] six",
     "durationSeconds": 60
   },
   {
@@ -126,8 +136,8 @@
   },
   {
     "name": "very short take shows one marker, the biggest",
-    "why": "A 6 s take gets one marker. A 2.3 s filler cluster beats a 1.6 s pause.",
-    "script": "I [1.6 pause maybe] <fillers> um went to uh the er </> store",
+    "why": "A 6 s take gets one marker. A 2.3 s filler cluster beats a 1.8 s word gap.",
+    "script": "I [1.8 pause maybe] <fillers> um went to uh the er </> store",
     "durationSeconds": 6
   },
   {

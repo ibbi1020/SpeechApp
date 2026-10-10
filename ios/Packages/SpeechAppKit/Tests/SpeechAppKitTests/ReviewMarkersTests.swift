@@ -24,15 +24,26 @@ struct ReviewMarkersTests {
         #expect(!markers.contains { $0.start > 2.8 })
     }
 
-    @Test("1.5 s gap from Grok hundredths still counts")
+    @Test("1.7 s word gap from Grok hundredths still counts")
     func grokRoundingAtThreshold() {
-        // 2.8 − 1.3 is 1.4999999999999998 in floating point.
+        // 2.9 − 1.2 is just under 1.7 in floating point.
         let words = [
-            RecordedWord(surface: "to", start: 1.0, end: 1.3),
-            RecordedWord(surface: "the", start: 2.8, end: 3.0),
+            RecordedWord(surface: "to", start: 1.0, end: 1.2),
+            RecordedWord(surface: "the", start: 2.9, end: 3.0),
         ]
         let markers = ReviewMarkers.build(words: words, durationSeconds: 60)
         #expect(markers.contains { $0.kind == .pause })
+    }
+
+    @Test("word gap under 1.7 s is a normal breath")
+    func paddedGapIgnored() {
+        // A real 1.3 s silence reads as about 1.5 s between Grok words.
+        let words = [
+            RecordedWord(surface: "to", start: 1.0, end: 1.37),
+            RecordedWord(surface: "the", start: 2.88, end: 3.0),
+        ]
+        let markers = ReviewMarkers.build(words: words, durationSeconds: 60)
+        #expect(!markers.contains { $0.kind == .pause })
     }
 
     @Test("ignores silences under 1.5s")
@@ -82,9 +93,9 @@ struct ReviewMarkersTests {
         ]
         let markers = ReviewMarkers.build(words: words, durationSeconds: 60)
         #expect(markers.count <= 3)
-        // Longest gap (19.8) should be present; short 2.8s gap near the 4.8s one should yield.
-        #expect(markers.contains { abs($0.score - 19.8) < 0.01 })
-        #expect(!markers.contains { abs($0.score - 2.8) < 0.01 })
+        // Scores are real silence (gap − 0.2 s). Longest (19.6) stays; the 2.6 near the 4.6 yields.
+        #expect(markers.contains { abs($0.score - 19.6) < 0.01 })
+        #expect(!markers.contains { abs($0.score - 2.6) < 0.01 })
         // Selected markers stay in time order for the scrubber.
         let starts = markers.map(\.start)
         #expect(starts == starts.sorted())

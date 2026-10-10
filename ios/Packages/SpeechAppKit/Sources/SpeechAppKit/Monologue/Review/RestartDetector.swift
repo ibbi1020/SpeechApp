@@ -2,6 +2,14 @@ import Foundation
 
 /// Same 1–3 words said again right away ("I went, I went to").
 public enum RestartDetector {
+    /// Single words that English repeats on purpose: emphasis ("very very good",
+    /// "no no") and grammar ("that that", "had had"). Repeating one of these is not a restart.
+    public static let intendedDoubles: Set<String> = [
+        "very", "really", "so", "much", "many", "more", "too", "far", "way", "long",
+        "big", "little", "bye", "no", "yes", "yeah", "okay", "ok", "ha", "hey", "please",
+        "that", "had",
+    ]
+
     public struct Candidate: Equatable, Sendable {
         public let start: TimeInterval
         public let end: TimeInterval
@@ -30,6 +38,7 @@ public enum RestartDetector {
                 let a = first.map { ScriptWord.normalize($0.surface) }
                 let b = second.map { ScriptWord.normalize($0.surface) }
                 guard a == b, a.allSatisfy({ !$0.isEmpty }) else { continue }
+                if n == 1, intendedDoubles.contains(a[0]) { continue }
                 // "Right away": gap between the two copies under 1.5s.
                 let gap = second.first!.start - first.last!.end
                 guard gap >= 0, gap <= 1.5 else { continue }
