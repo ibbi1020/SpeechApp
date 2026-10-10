@@ -43,6 +43,12 @@ public final class MonologueSession {
     private var pausedAt: TimeInterval?
     private var liveRanges: [ConversationSpeechInterval] = []
     private var liveTranscript: String = ""
+    private var liveWords: [RecordedWord] = []
+    /// Maps Grok stream time → saved-file time. Driven by the app recorder.
+    public private(set) var recordingClock = RecordingClock()
+    /// Latest stream timestamp seen (words or explicit pause/resume).
+    private var lastStreamTime: TimeInterval = 0
+    private var didBindRecordingOrigin = false
 
     public init(
         prompts: [String],
@@ -64,22 +70,48 @@ public final class MonologueSession {
         store.lastPrompt = prompt
         liveRanges = []
         liveTranscript = ""
+        liveWords = []
         pausedAccumulated = 0
         pausedAt = nil
         origin = time.now
+        lastStreamTime = 0
+        didBindRecordingOrigin = false
+        recordingClock = RecordingClock()
+        recordingClock.beginTake(atStreamTime: 0)
         phase = .taking
     }
 
-    public func pause() {
+    /// Align the recording clock with the first Grok stream timestamp for this take.
+    public func beginRecording(atStreamTime stream: TimeInterval) {
+        guard phase == .taking || phase == .paused else { return }
+        lastStreamTime = stream
+        didBindRecordingOrigin = true
+        recordingClock.beginTake(atStreamTime: stream)
+        if phase == .paused {
+            recordingClock.pause(atStreamTime: stream)
+        }
+    }
+
+    public func appendRecordingAudio(duration: TimeInterval) {
+        recordingClock.appendAudio(duration: duration)
+    }
+
+    public func pause(atStreamTime stream: TimeInterval? = nil) {
         guard phase == .taking else { return }
         pausedAt = time.now
+        let stamp = stream ?? lastStreamTime
+        lastStreamTime = stamp
+        recordingClock.pause(atStreamTime: stamp)
         phase = .paused
     }
 
-    public func resume() {
+    public func resume(atStreamTime stream: TimeInterval? = nil) {
         guard phase == .paused, let pausedAt else { return }
         pausedAccumulated += time.now - pausedAt
         self.pausedAt = nil
+        let stamp = stream ?? lastStreamTime
+        lastStreamTime = stamp
+        recordingClock.resume(atStreamTime: stamp)
         phase = .taking
     }
 
@@ -121,6 +153,31 @@ public final class MonologueSession {
         liveRanges = ranges
     }
 
+    /// Final spoken tokens with Grok stream times. Remapped onto the file timeline;
+    /// tokens that fall inside a pause are dropped. Replaces the live word list.
+    public func ingestWords(_ tokens: [SpokenToken]) {
+        guard phase == .taking else { return }
+        var mapped: [RecordedWord] = []
+        for token in tokens {
+            guard token.isFinal,
+                  let streamStart = token.startTime,
+                  let streamEnd = token.endTime
+            else { continue }
+            if !didBindRecordingOrigin {
+                beginRecording(atStreamTime: streamStart)
+            }
+            lastStreamTime = max(lastStreamTime, streamEnd)
+            if let word = recordingClock.recordedWord(
+                surface: token.surface,
+                streamStart: streamStart,
+                streamEnd: streamEnd
+            ) {
+                mapped.append(word)
+            }
+        }
+        liveWords = mapped
+    }
+
     private func rememberTranscript(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -147,11 +204,13 @@ public final class MonologueSession {
                 index: takeNumber,
                 wallSeconds: wall,
                 ranges: liveRanges,
-                transcript: liveTranscript
+                transcript: liveTranscript,
+                words: liveWords
             )
         )
         liveRanges = []
         liveTranscript = ""
+        liveWords = []
     }
 
     private func emitReport(reason: MonologueEndReason) {
