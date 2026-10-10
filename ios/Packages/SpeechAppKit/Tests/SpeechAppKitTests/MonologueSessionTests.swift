@@ -68,6 +68,24 @@ struct MonologueSessionClockTests {
     }
 
     @MainActor
+    @Test("opening does not bring back the saved topic")
+    func doesNotReopenSavedTopic() {
+        let store = InMemoryMonologuePromptStore(lastPrompt: "bravo")
+        var seen = Set<String>()
+        for seed in UInt64(1)...20 {
+            let session = MonologueSession(
+                prompts: ["alpha", "bravo", "charlie"],
+                store: store,
+                time: ControllableTimeSource(),
+                rng: SplitMix64(seed: seed)
+            )
+            #expect(session.prompt != "bravo")
+            seen.insert(session.prompt)
+        }
+        #expect(seen.count > 1)
+    }
+
+    @MainActor
     @Test("Another topic does not start a take")
     func skipStaysPlanning() {
         let session = MonologueSession(
@@ -75,8 +93,9 @@ struct MonologueSessionClockTests {
             store: InMemoryMonologuePromptStore(),
             time: ControllableTimeSource()
         )
+        let before = session.prompt
         session.skipTopic()
-        #expect(session.prompt == "two")
+        #expect(session.prompt != before)
         #expect(session.phase == .planning)
     }
 }
