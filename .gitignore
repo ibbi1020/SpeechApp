@@ -21,3 +21,9 @@ logs/
 
 # Local visual-companion mockups
 .superpowers/
+
+# Feedback eval: generated audio, your own voice recordings, Grok caches, reports
+eval/feedback/clips/generated/
+eval/feedback/clips/real/*
+!eval/feedback/clips/real/README.md
+eval/feedback/out/
