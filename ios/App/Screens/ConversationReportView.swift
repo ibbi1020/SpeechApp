@@ -5,6 +5,7 @@ struct ConversationReportView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let report: ConversationReport
+    var recordingID: UUID? = nil
 
     var body: some View {
         ZStack {
@@ -20,6 +21,11 @@ struct ConversationReportView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.top, SpeechSpacing.related)
+                    }
+
+                    if recordingID != nil {
+                        RecordingReviewLoader(recordingID: recordingID)
+                            .padding(.top, SpeechSpacing.section)
                     }
 
                     if let logPath = report.captionSyncLogPath {

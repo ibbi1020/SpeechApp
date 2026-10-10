@@ -23,10 +23,12 @@ struct ClipLabels: Codable {
     var script: String?
     var exercise: FeedbackExercise?
     var passage: String?
+    /// Conversation: when the partner was talking (silent on the user's microphone).
+    var partnerTurns: [PartnerTurn]?
     var labels: [FeedbackLabel]
 
     var context: FeedbackContext {
-        FeedbackContext(exercise: exercise ?? .monologue, passage: passage)
+        FeedbackContext(exercise: exercise ?? .monologue, passage: passage, partnerTurns: partnerTurns)
     }
 }
 

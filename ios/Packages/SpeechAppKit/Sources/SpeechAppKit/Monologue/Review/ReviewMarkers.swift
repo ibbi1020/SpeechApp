@@ -94,7 +94,7 @@ public enum ReviewMarkers {
         durationSeconds: TimeInterval
     ) -> [ReviewMarker] {
         var found: [ReviewMarker] = []
-        found.append(contentsOf: pauseMarkers(words: words, durationSeconds: durationSeconds))
+        found.append(contentsOf: pauseMarkers(words: words, includeLeading: true))
         found.append(contentsOf: fillerClusterMarkers(words: words))
         for restart in RestartDetector.find(in: words) {
             found.append(
@@ -112,13 +112,14 @@ public enum ReviewMarkers {
 
     // MARK: - Pauses
 
-    private static func pauseMarkers(words: [RecordedWord], durationSeconds: TimeInterval) -> [ReviewMarker] {
-        _ = durationSeconds
+    /// `includeLeading`: silence before the first word counts (Monologue). Conversation
+    /// measures that wait as a slow start instead.
+    static func pauseMarkers(words: [RecordedWord], includeLeading: Bool) -> [ReviewMarker] {
         let ordered = words.sorted { $0.start < $1.start }
         var markers: [ReviewMarker] = []
 
         // Leading silence (before first word) can be a marker.
-        if let first = ordered.first, first.start >= minimumPause - timeSlack {
+        if includeLeading, let first = ordered.first, first.start >= minimumPause - timeSlack {
             markers.append(
                 ReviewMarker(
                     kind: .pause,
@@ -153,7 +154,7 @@ public enum ReviewMarkers {
 
     // MARK: - Filler clusters
 
-    private static func fillerClusterMarkers(words: [RecordedWord]) -> [ReviewMarker] {
+    static func fillerClusterMarkers(words: [RecordedWord]) -> [ReviewMarker] {
         let fillers = words.filter(\.isFiller).sorted { $0.start < $1.start }
         guard fillers.count >= minimumFillerCount else { return [] }
 

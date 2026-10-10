@@ -6,6 +6,10 @@ import Foundation
 ///     So [2.0 pause] I went <fillers> um to the uh </> store
 ///
 /// - `[2.5]` is 2.5 s of silence. Add `pause`, `pause maybe`, or `not pause` to label it.
+///   Reading uses `[0.2 skip]` where a passage word was left out; Conversation uses
+///   `[2.5 slowstart]` for the wait before answering.
+/// - `{2.0 What do you do on weekends?}` is the partner talking for 2 s (Conversation).
+///   The user's microphone is silent then.
 /// - `<fillers> … </>` and `<restart> … </>` wrap words that should be flagged.
 ///   `<restart maybe>` means the cap may hide it; `<not restart>` means it must not be flagged.
 /// - Anything else is a spoken word.
@@ -13,6 +17,7 @@ public struct FeedbackScript: Equatable, Sendable {
     public enum Item: Equatable, Sendable {
         case word(String)
         case silence(TimeInterval, Label?)
+        case partner(TimeInterval, String)
         case open(Label)
         case close
     }
@@ -32,10 +37,12 @@ public struct FeedbackScript: Equatable, Sendable {
         public let words: [RecordedWord]
         public let labels: [FeedbackLabel]
         public let duration: TimeInterval
+        public var partnerTurns: [PartnerTurn] = []
     }
 
     public enum ParseError: Error, Equatable {
         case badSilence(String)
+        case badPartner(String)
         case badTag(String)
         case unclosedTag
         case strayClose
@@ -54,6 +61,13 @@ public struct FeedbackScript: Equatable, Sendable {
                 }
                 let label = inner.count > 1 ? try Self.label(Array(inner.dropFirst()), token: token) : nil
                 items.append(.silence(seconds, label))
+            } else if token.hasPrefix("{") {
+                let inner = token.dropFirst().dropLast()
+                let parts = inner.split(separator: " ", maxSplits: 1).map(String.init)
+                guard let first = parts.first, let seconds = TimeInterval(first), seconds >= 0 else {
+                    throw ParseError.badPartner(token)
+                }
+                items.append(.partner(seconds, parts.count > 1 ? parts[1] : ""))
             } else if token.hasPrefix("</") {
                 guard depth > 0 else { throw ParseError.strayClose }
                 depth -= 1
@@ -81,7 +95,7 @@ public struct FeedbackScript: Equatable, Sendable {
         for item in items {
             switch item {
             case .word(let word): run.append(word)
-            case .silence(let seconds, _):
+            case .silence(let seconds, _), .partner(let seconds, _):
                 flush()
                 out.append(.silence(seconds))
             case .open, .close: flush()
@@ -112,6 +126,7 @@ public struct FeedbackScript: Equatable, Sendable {
         var words: [RecordedWord] = []
         var labels: [FeedbackLabel] = []
         var openSpans: [(label: Label, firstWord: Int)] = []
+        var partnerTurns: [PartnerTurn] = []
         var clock: TimeInterval = 0
         var lastWasSpeech = false
         var pending: [String] = []
@@ -141,6 +156,11 @@ public struct FeedbackScript: Equatable, Sendable {
                 if let label {
                     labels.append(FeedbackLabel(kind: label.kind, start: start, end: clock, expect: label.expect))
                 }
+            case .partner(let seconds, let text):
+                flushSpeech()
+                partnerTurns.append(PartnerTurn(text: text, start: clock, end: clock + seconds))
+                clock += seconds
+                lastWasSpeech = false
             case .open(let label):
                 flushSpeech()
                 openSpans.append((label, words.count))
@@ -156,7 +176,12 @@ public struct FeedbackScript: Equatable, Sendable {
             }
         }
         flushSpeech()
-        return Layout(words: words, labels: labels.sorted { $0.start < $1.start }, duration: clock)
+        return Layout(
+            words: words,
+            labels: labels.sorted { $0.start < $1.start },
+            duration: clock,
+            partnerTurns: partnerTurns
+        )
     }
 
     private static func tokens(_ text: String) -> [String] {
@@ -168,15 +193,15 @@ public struct FeedbackScript: Equatable, Sendable {
                 index = text.index(after: index)
                 continue
             }
-            if char == "[" || char == "<" {
-                let closer: Character = char == "[" ? "]" : ">"
+            if char == "[" || char == "<" || char == "{" {
+                let closer: Character = char == "[" ? "]" : char == "<" ? ">" : "}"
                 let end = text[index...].firstIndex(of: closer) ?? text.index(before: text.endIndex)
                 out.append(String(text[index...end]))
                 index = text.index(after: end)
                 continue
             }
             var end = index
-            while end < text.endIndex, !text[end].isWhitespace, text[end] != "[", text[end] != "<" {
+            while end < text.endIndex, !text[end].isWhitespace, !"[<{".contains(text[end]) {
                 end = text.index(after: end)
             }
             out.append(String(text[index..<end]))

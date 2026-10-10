@@ -53,6 +53,7 @@ enum GenerateCommand {
                 script: spec.script,
                 exercise: spec.exercise,
                 passage: spec.passage,
+                partnerTurns: layout.partnerTurns.isEmpty ? nil : layout.partnerTurns,
                 labels: layout.labels
             )
             let encoder = JSONEncoder()

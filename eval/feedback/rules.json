@@ -224,5 +224,69 @@
     "exercise": "reading",
     "passage": "The ship sailed past the old lighthouse at dawn while the river ran fast.",
     "script": "The ship sailed past the old lighthouse"
+  },
+  {
+    "name": "conversation: slow start",
+    "why": "Taking 3 s to start answering is the freeze Conversation trains against.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you do on weekends?} [3.0 slowstart] Usually I go hiking with friends",
+    "durationSeconds": 60,
+    "noteContains": "After “What do you do on weekends?”, you took 3 seconds"
+  },
+  {
+    "name": "conversation: quick answer",
+    "why": "Answering within a second is normal timing, even for L2 speakers.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you do on weekends?} [1.0 not slowstart] Usually I go hiking with friends",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: wait just under the line",
+    "why": "About 1.9 s is inside a beginner's normal range. Not flagged.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you do?} [2.0 not slowstart] I work at a bakery",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: wait just over the line",
+    "why": "About 2.1 s is past a beginner's normal range.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you do?} [2.2 slowstart] I work at a bakery",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: the partner's turn is not a pause",
+    "why": "Silence on the mic while the partner talks is not the user pausing.",
+    "exercise": "conversation",
+    "script": "I like hiking {3.0 Where do you go?} [0.5 not slowstart] Mostly the hills near home",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: pause inside an answer",
+    "why": "A long freeze mid-answer is flagged, the same as in Monologue.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you do?} [0.6] I work at a [2.5 pause] bakery near home",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: fillers inside an answer",
+    "why": "A filler cluster mid-answer is flagged.",
+    "exercise": "conversation",
+    "script": "{2.0 Why that job?} [0.5] I <fillers> um think it was uh </> the hours",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: fillers split by the partner are not a cluster",
+    "why": "One um before the partner speaks and one after are two separate answers.",
+    "exercise": "conversation",
+    "script": "I think <not fillers> um {2.0 Really?} [0.5] uh </> yes",
+    "durationSeconds": 60
+  },
+  {
+    "name": "conversation: no answer before the partner speaks again",
+    "why": "If the partner talks again before the user answers, there is no answer to time.",
+    "exercise": "conversation",
+    "script": "{2.0 Hi there.} [4.0 not slowstart] {2.0 Are you still there?} [0.5] Yes sorry",
+    "durationSeconds": 60
   }
 ]

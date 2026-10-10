@@ -119,13 +119,24 @@ struct TakeReviewSection: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                SyncedTranscriptView(
-                    words: take.words,
-                    currentTime: player.currentTime,
-                    onWordTap: { word in
-                        player.seek(to: word.start, andPlay: true)
-                    }
-                )
+                if let turns = take.partnerTurns, !turns.isEmpty {
+                    ConversationTranscriptView(
+                        words: take.words,
+                        partnerTurns: turns,
+                        currentTime: player.currentTime,
+                        onWordTap: { word in
+                            player.seek(to: word.start, andPlay: true)
+                        }
+                    )
+                } else {
+                    SyncedTranscriptView(
+                        words: take.words,
+                        currentTime: player.currentTime,
+                        onWordTap: { word in
+                            player.seek(to: word.start, andPlay: true)
+                        }
+                    )
+                }
             }
         }
         .padding(24)

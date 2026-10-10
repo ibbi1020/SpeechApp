@@ -38,6 +38,8 @@ public struct FeedbackRuleCase: Codable, Equatable, Sendable {
     public func run(tolerance: TimeInterval = FeedbackEvaluator.defaultTolerance) throws -> Result {
         let layout = try FeedbackScript(script).layout()
         let duration = durationSeconds ?? layout.duration + 0.5
+        var context = context
+        context.partnerTurns = layout.partnerTurns
         let (candidates, markers) = context.markers(words: layout.words, durationSeconds: duration)
         var noteProblem: String?
         if let noteContains {

@@ -33,6 +33,20 @@ problem. For each miss it says whether the **transcript** or the **rules** are t
 - Problems are listed as: not detected, detected but not expected, wrong kind,
   detected but hidden by the cap, shown but should not be.
 
+## Markers per exercise
+
+| Exercise | Markers | Why |
+|---|---|---|
+| Monologue | long pause, filler cluster, restart | 4/3/2 trains utterance fluency |
+| Reading | skipped word, swapped word (ranked by functional load) | The passage is known, so mistakes are about the words, not timing (Munro & Derwing 2006) |
+| Conversation | long pause and filler cluster inside an answer, slow start (2 s+ before answering) | Answer timing is the interactive skill. L2 beginners average ~1 s, listeners read meaning into gaps from ~0.7 s (Kendrick & Torreira 2015) |
+
+Set `"exercise": "reading"` with `"passage"`, or `"exercise": "conversation"`, on a rule case or clip.
+
+Reading's live stream sends the passage words to Grok as hints. With hints Grok writes the passage
+word even when another was said ("ship" for "sheep"), so the app runs a second, unhinted stream
+for feedback. The CLI matches that by default; `--hints` reproduces the live stream instead.
+
 ## Script format
 
 One line says what is spoken and what should be flagged. Used by `rules.json` and `clips.json`.
@@ -42,6 +56,9 @@ One line says what is spoken and what should be flagged. Used by `rules.json` an
 - `[2.5]` is 2.5 s of silence. Add `pause`, `pause maybe`, or `not pause`.
 - `<fillers> … </>` and `<restart> … </>` wrap words that should be flagged.
   `<restart maybe>`: the cap may hide it. `<not restart>`: must not be flagged.
+- Reading: `[0.2 skip]` where a passage word was left out, `<swap> sheep </>` around a wrong word.
+- Conversation: `{2.0 What do you do?}` is the partner talking for 2 s (silent on the user's mic),
+  then `[3.0 slowstart]` for the wait before answering.
 - `maybe` matters when a take has more moments than its marker cap (3 per minute, at most 7).
 - In `rules.json` a silence is the gap between two words as Grok reports it. Grok word edges add
   about 0.2 s, so a pause marker needs a 1.7 s word gap (a real 1.5 s silence). In `clips.json` a
@@ -62,6 +79,9 @@ One line says what is spoken and what should be flagged. Used by `rules.json` an
 - The Mac voice says "um"/"uh" unnaturally. Spell them `umm,` / `uhh,` with commas, or Grok hears "I'm".
   Karen says "uhh" as "ooh". Real recordings are still the best test for fillers.
 - Pauses and restarts from `say` are reliable.
+- Reading without hints: Grok sometimes mishears a word boundary ("A light rain" → "Allied rain"),
+  which shows as a false swap (`reading-skip-phrase`). The marker asks "what did you say?", so the
+  reader hears that they read it right.
 
 ## Later: public datasets
 

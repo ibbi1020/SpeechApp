@@ -28,6 +28,9 @@ Cover the moments you care about. Do each on purpose:
 
 You can also write `my-clip.labels.json` by hand (same format as the generated clips).
 
+Reading clips: label `skip` or `swap`, and save the passage text as `my-clip.passage.txt`
+next to the clip so the rules know what should have been read.
+
 ## Run
 
 From the repo root:

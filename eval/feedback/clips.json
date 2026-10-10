@@ -152,5 +152,40 @@
     "passage": "A light rain ran along the long river road while riders raced toward the old bridge.",
     "script": "A light rain ran along the long river road",
     "voice": "Samantha"
+  },
+  {
+    "name": "conversation-slow-start",
+    "why": "A 3 s wait after the partner's question should be flagged.",
+    "exercise": "conversation",
+    "script": "{2.5 What do you usually do on weekends?} [3.0 slowstart] Usually I go hiking with my friends near the lake",
+    "voice": "Samantha"
+  },
+  {
+    "name": "conversation-quick-answer",
+    "why": "Answering within a second is normal and must not be flagged.",
+    "exercise": "conversation",
+    "script": "{2.5 What do you usually do on weekends?} [0.8 not slowstart] Usually I go hiking with my friends near the lake",
+    "voice": "Samantha"
+  },
+  {
+    "name": "conversation-pause-mid-answer",
+    "why": "A long freeze inside an answer is flagged.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you do for work?} [0.6] I work at a small [2.5 pause] bakery near my home",
+    "voice": "Samantha"
+  },
+  {
+    "name": "conversation-fillers",
+    "why": "A filler cluster inside an answer is flagged.",
+    "exercise": "conversation",
+    "script": "{2.0 Why did you pick that job?} [0.6] I think, <fillers> umm, it was the hours and, uhh, </> the people",
+    "voice": "Samantha"
+  },
+  {
+    "name": "conversation-two-turns",
+    "why": "Two questions: the first answered quickly, the second after a long wait. Only the second is a slow start.",
+    "exercise": "conversation",
+    "script": "{2.0 Where did you grow up?} [0.7 not slowstart] In a small town by the sea {2.5 What did you like most about it?} [3.5 slowstart] The quiet mornings on the beach",
+    "voice": "Daniel"
   }
 ]

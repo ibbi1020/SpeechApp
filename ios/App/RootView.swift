@@ -134,8 +134,8 @@ struct RootView: View {
     @ViewBuilder
     private var conversationDestination: some View {
         switch model.route {
-        case .conversationReport(let report):
-            ConversationReportView(report: report)
+        case .conversationReport(let report, let recordingID):
+            ConversationReportView(report: report, recordingID: recordingID)
         case .crisis where model.hostedFormat == .conversation:
             CrisisReferralView()
         default:

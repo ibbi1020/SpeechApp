@@ -11,7 +11,7 @@ final class AppModel {
         case reading
         case report(SessionReport, recordingID: UUID?)
         case conversation
-        case conversationReport(ConversationReport)
+        case conversationReport(ConversationReport, recordingID: UUID?)
         case monologue
         case monologueReport(MonologueReport, regimenID: UUID?)
         case recordings(filter: RecordingManifest.Format?)
@@ -57,13 +57,17 @@ final class AppModel {
         route = .report(report, recordingID: recordingID)
     }
 
-    func finishConversation(report: ConversationReport, possibleMinorFlag: Bool = false) {
+    func finishConversation(
+        report: ConversationReport,
+        possibleMinorFlag: Bool = false,
+        recordingID: UUID? = nil
+    ) {
         notePossibleMinorIfNeeded(possibleMinorFlag)
         if report.kind == .crisis {
             route = .crisis
             return
         }
-        route = .conversationReport(report)
+        route = .conversationReport(report, recordingID: recordingID)
     }
 
     func presentCrisis(possibleMinorFlag: Bool = false) {
