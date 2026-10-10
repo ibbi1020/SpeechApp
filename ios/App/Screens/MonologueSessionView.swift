@@ -36,6 +36,14 @@ struct MonologueSessionView: View {
     // update's rawText replaces this rather than being appended.
     @State private var hypothesis: String = ""
     @State private var committedRanges: [ConversationSpeechInterval] = []
+    @State private var committedSpokenTokens: [SpokenToken] = []
+    @State private var lastStreamTime: TimeInterval = 0
+    @State private var takeRecorder = TakeRecorder()
+    @State private var regimenID = UUID()
+    @State private var finishedTakes: [MonologueRecordingPipeline.FinishedTake] = []
+    @State private var finalizeTask: Task<Void, Never>?
+    @State private var isFinalizingAudio = false
+    @State private var saveErrorMessage: String?
 
     /// Fog the notes page for the 3-2-1 after I’m ready. The take clock stays stopped until it ends.
     private var isFogged: Bool {
@@ -74,9 +82,12 @@ struct MonologueSessionView: View {
                         onConfirm: {
                             showLeaveConfirm = false
                             Task {
-                                await stopListen()
-                                session?.confirmLeave()
-                                routeIfFinished()
+                                if let session {
+                                    await finishCurrentTake(session, leaving: true)
+                                } else {
+                                    await stopListen()
+                                    routeIfFinished()
+                                }
                             }
                         },
                         onDismiss: { showLeaveConfirm = false }
@@ -102,6 +113,16 @@ struct MonologueSessionView: View {
                 }
                 .accessibilityLabel("Back")
             }
+            if session?.phase == .planning || session?.phase == .between {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        model.openRecordings(filter: .monologue)
+                    } label: {
+                        Image(systemName: "waveform")
+                    }
+                    .accessibilityLabel("Your talks")
+                }
+            }
         }
         .background {
             NavigationPopLock(isLocked: showLeaveConfirm)
@@ -114,10 +135,22 @@ struct MonologueSessionView: View {
             Task {
                 let wasTaking = session?.phase == .taking
                 await session?.tick()
-                if wasTaking, session?.phase != .taking {
-                    await stopListen()
+                if wasTaking, let session, session.phase != .taking {
+                    // Ceiling hit — same as Done for this take.
+                    if session.phase == .between || session.phase == .report {
+                        await captureTakeAudio(session)
+                        if session.phase == .report || session.phase == .crisis {
+                            await persistRegimenIfNeeded(session)
+                            await stopListen()
+                            routeIfFinished()
+                        } else {
+                            await stopListen()
+                            // Between takes: listening restarts on next I’m ready.
+                        }
+                    } else if session.phase == .crisis {
+                        await handleCrisis(session)
+                    }
                 }
-                routeIfFinished()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { note in
@@ -125,7 +158,8 @@ struct MonologueSessionView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
-                session?.pause()
+                session?.pause(atStreamTime: lastStreamTime)
+                takeRecorder.setWriting(false)
             }
         }
         .onDisappear {
@@ -405,9 +439,11 @@ struct MonologueSessionView: View {
         ) {
             Button {
                 if session.phase == .paused {
-                    session.resume()
+                    session.resume(atStreamTime: lastStreamTime)
+                    takeRecorder.setWriting(RecordingsService.keepRecordings)
                 } else {
-                    session.pause()
+                    session.pause(atStreamTime: lastStreamTime)
+                    takeRecorder.setWriting(false)
                 }
             } label: {
                 Image(systemName: session.phase == .paused ? "play.fill" : "pause.fill")
@@ -418,9 +454,7 @@ struct MonologueSessionView: View {
         } trailing: {
             Button {
                 Task {
-                    await stopListen()
-                    session.done()
-                    routeIfFinished()
+                    await finishCurrentTake(session)
                 }
             } label: {
                 Image(systemName: "checkmark")
@@ -573,6 +607,7 @@ struct MonologueSessionView: View {
 
                 let timedTokens: [(isFinal: Bool, interval: ConversationSpeechInterval)] = update.tokens.compactMap { token in
                     guard let start = token.startTime, let end = token.endTime else { return nil }
+                    lastStreamTime = max(lastStreamTime, end)
                     return (isFinal: token.isFinal, interval: ConversationSpeechInterval(start: start, end: end))
                 }
                 let finals = timedTokens.filter(\.isFinal).map(\.interval)
@@ -585,10 +620,14 @@ struct MonologueSessionView: View {
                     .map(\.interval)
                 session.ingestRanges(committedRanges + volatileTail)
 
+                let finalSpoken = update.tokens.filter { $0.isFinal && $0.startTime != nil && $0.endTime != nil }
+                if !finalSpoken.isEmpty {
+                    committedSpokenTokens.append(contentsOf: finalSpoken)
+                    session.ingestWords(committedSpokenTokens)
+                }
+
                 if session.phase == .crisis {
-                    // Don't wait for the next timer tick — stop and route now.
-                    await stopListen()
-                    routeIfFinished()
+                    await handleCrisis(session)
                     break
                 }
             }
@@ -596,11 +635,28 @@ struct MonologueSessionView: View {
 
         audioTask = Task {
             for await chunk in source.chunks {
+                // Only feed Grok and the file while the take clock is running so
+                // stream time and the saved file stay aligned across pauses.
+                guard session.phase == .taking else {
+                    speechEnergy = 0
+                    continue
+                }
                 engine.append(chunk)
+                takeRecorder.append(chunk)
+                let duration = Double(chunk.samples.count) / max(chunk.sampleRate, 1)
+                session.appendRecordingAudio(duration: duration)
                 speechEnergy = ListenDrive.normalized(rms: StallDetector.rms(chunk.samples))
             }
         }
 
+        hypothesis = ""
+        committedRanges = []
+        committedSpokenTokens = []
+        lastStreamTime = 0
+        if RecordingsService.keepRecordings {
+            try? takeRecorder.start()
+            takeRecorder.setWriting(true)
+        }
         session.ready()
         #else
         listenError = "Live mic requires iOS."
@@ -615,8 +671,10 @@ struct MonologueSessionView: View {
     }
 
     /// Cancels the pump Tasks and stops engine/source. Never stopped on user Pause —
-    /// resume continues the same engine.
+    /// resume continues the same engine. Does not finalize the take recorder —
+    /// call `captureTakeAudio` for that.
     private func stopListen() async {
+        takeRecorder.setWriting(false)
         audioTask?.cancel()
         audioTask = nil
         transcriptTask?.cancel()
@@ -664,7 +722,8 @@ struct MonologueSessionView: View {
             return
         }
         if ConversationRoutePause.shouldPause(reason: raw) {
-            session?.pause()
+            session?.pause(atStreamTime: lastStreamTime)
+            takeRecorder.setWriting(false)
         }
     }
 
@@ -686,10 +745,106 @@ struct MonologueSessionView: View {
         guard !didRouteFinish, let session else { return }
         if session.phase == .report || session.phase == .crisis, let report = session.report {
             didRouteFinish = true
+            let id: UUID? = (report.kind == .crisis || !RecordingsService.keepRecordings)
+                ? nil
+                : regimenID
             model.finishMonologue(
                 report: report,
-                possibleMinorFlag: session.possibleMinorFlag
+                possibleMinorFlag: session.possibleMinorFlag,
+                regimenID: id
             )
+        }
+    }
+
+    /// Done / leave: stop mic, snapshot the take, finalize audio, then route.
+    private func finishCurrentTake(_ session: MonologueSession, leaving: Bool = false) async {
+        await stopListen()
+        if leaving {
+            session.confirmLeave()
+        } else {
+            session.done()
+        }
+        if session.phase == .crisis {
+            await handleCrisis(session)
+            return
+        }
+        await captureTakeAudio(session)
+        if session.phase == .report || leaving {
+            await persistRegimenIfNeeded(session)
+        }
+        routeIfFinished()
+    }
+
+    private func handleCrisis(_ session: MonologueSession) async {
+        takeRecorder.stop()
+        try? RecordingsService.store.delete(id: regimenID)
+        finishedTakes = []
+        await stopListen()
+        routeIfFinished()
+    }
+
+    /// Finalize the just-finished take's audio into `finishedTakes`.
+    private func captureTakeAudio(_ session: MonologueSession) async {
+        guard RecordingsService.keepRecordings else {
+            _ = takeRecorder.stop()
+            return
+        }
+        guard let take = session.takes.last, !take.words.isEmpty else {
+            _ = takeRecorder.stop()
+            return
+        }
+        if finishedTakes.contains(where: { $0.index == take.index }) {
+            _ = takeRecorder.stop()
+            return
+        }
+        guard let rawURL = takeRecorder.stop() else { return }
+        isFinalizingAudio = true
+        defer { isFinalizingAudio = false }
+        do {
+            let finalURL = try await TakeFinalizer.finalize(rawCAF: rawURL)
+            finishedTakes.append(
+                MonologueRecordingPipeline.FinishedTake(
+                    index: take.index,
+                    durationSeconds: take.wallSeconds,
+                    words: take.words,
+                    audioURL: finalURL
+                )
+            )
+        } catch TakeFinalizerError.empty {
+            try? FileManager.default.removeItem(at: rawURL)
+        } catch {
+            saveErrorMessage = "Couldn't save this recording. Your phone is out of space."
+            try? FileManager.default.removeItem(at: rawURL)
+        }
+    }
+
+    private func persistRegimenIfNeeded(_ session: MonologueSession) async {
+        guard RecordingsService.keepRecordings else { return }
+        guard let report = session.report, report.kind != .crisis else { return }
+        do {
+            if let saveErrorMessage {
+                try MonologueRecordingPipeline.saveDiskFullPlaceholder(
+                    regimenID: regimenID,
+                    topic: session.prompt,
+                    report: report
+                )
+                _ = saveErrorMessage
+            } else if !finishedTakes.isEmpty {
+                _ = try MonologueRecordingPipeline.save(
+                    regimenID: regimenID,
+                    topic: session.prompt,
+                    report: report,
+                    finishedTakes: finishedTakes
+                )
+            }
+        } catch RecordingStoreError.diskFull {
+            try? MonologueRecordingPipeline.saveDiskFullPlaceholder(
+                regimenID: regimenID,
+                topic: session.prompt,
+                report: report
+            )
+        } catch {
+            // Report still shows; player will be empty.
         }
     }
 
