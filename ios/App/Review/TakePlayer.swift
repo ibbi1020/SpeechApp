@@ -31,7 +31,6 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
             let player = try AVAudioPlayer(contentsOf: url)
             player.delegate = self
             player.volume = 1
-            player.prepareToPlay()
             self.player = player
             duration = player.duration
             if duration.isNaN || duration < 0 { duration = 0 }
@@ -42,12 +41,16 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
     }
 
     func play() {
+        Task { await startPlayback() }
+    }
+
+    private func startPlayback() async {
         guard let player else { return }
         if duration > 0, player.currentTime >= duration - 0.05 {
             player.currentTime = 0
         }
         do {
-            try Self.routeToSpeaker()
+            try await Self.routeToSpeaker()
         } catch {
             playbackError = "Couldn't switch on the speaker."
             Self.log.error("session failed: \(error.localizedDescription, privacy: .public)")
@@ -108,15 +111,46 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
 
     /// Record mode has no speaker. Play-and-record plus the speaker override
     /// is what actually comes out of the phone after a take.
-    private nonisolated static func routeToSpeaker() throws {
+    /// Deactivate first, off the main thread: changing the category while the
+    /// session is active is what the hang warnings are about.
+    private nonisolated static func routeToSpeaker() async throws {
         let session = AVAudioSession.sharedInstance()
+        await deactivate(session)
         try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
         try session.overrideOutputAudioPort(.speaker)
-        try session.setActive(true)
+        try await activate(session)
         let outputs = session.currentRoute.outputs.map(\.portType.rawValue).joined(separator: ",")
         log.info(
             "playback category=\(session.category.rawValue, privacy: .public) outputs=\(outputs, privacy: .public) volume=\(session.outputVolume)"
         )
+    }
+
+    private nonisolated static func deactivate(_ session: AVAudioSession) async {
+        if #available(iOS 27, *) {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                session.deactivate(options: []) { _, _ in
+                    continuation.resume()
+                }
+            }
+        } else {
+            try? session.setActive(false, options: [.notifyOthersOnDeactivation])
+        }
+    }
+
+    private nonisolated static func activate(_ session: AVAudioSession) async throws {
+        if #available(iOS 27, *) {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                session.activate(options: []) { activated, error in
+                    if let error, !activated {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume()
+                    }
+                }
+            }
+        } else {
+            try session.setActive(true)
+        }
     }
 
     private func startTicker() {
