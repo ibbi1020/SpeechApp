@@ -1,66 +1,80 @@
 import SwiftUI
 import SpeechAppKit
 
+/// One figure, two words, one verb. The format choice comes after the commitment,
+/// not before it.
 struct HomeView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// 0 is the coarse plate, 1 the fine one. The hold resolves it.
+    @State private var resolve: Double = 0
 
     var body: some View {
         ZStack {
-            SpeechScreenBackground()
+            DitherPlate(
+                name: "PlateHome",
+                coarseName: reduceMotion ? nil : "PlateHomeCoarse",
+                resolve: reduceMotion ? 1 : resolve
+            )
+            DitherPlateScrim()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    formatRow(title: "Read a passage") {
-                        model.route = .library
-                    }
-                    formatRow(
-                        title: "Start a conversation",
-                        disabled: !model.budget.startEnabled
-                    ) {
-                        model.requestStartConversation()
-                    }
-                    formatRow(title: "Talk about something") {
-                        model.requestStartMonologue()
-                    }
-                }
-                .padding(.horizontal, SpeechSpacing.page)
-                .padding(.top, SpeechSpacing.related)
-                .padding(.bottom, 40)
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                Spacer(minLength: SpeechSpacing.section)
+                HoldToBeginButton(
+                    title: "Begin",
+                    onHoldChange: resolvePlate,
+                    onComplete: model.chooseFormat
+                )
             }
+            .padding(.horizontal, SpeechSpacing.page)
+            .padding(.top, SpeechSpacing.related)
+            .padding(.bottom, SpeechSpacing.page)
         }
-        .speechPageTitle("Orator", large: true)
-        .speechBottomBlur()
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    model.openRecordings()
-                } label: {
-                    Image(systemName: "waveform")
-                }
-                .accessibilityLabel("Your recordings")
+        .navigationTitle(EntryGreeting.kicker)
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear { resolve = 0 }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: SpeechSpacing.cluster) {
+                Text(EntryGreeting.kicker)
+                    .speechType(.label)
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+                Text(EntryGreeting.line(hasBegunBefore: model.hasBegunBefore))
+                    .speechType(.h1)
+                    .foregroundStyle(.primary)
             }
+            .accessibilityElement(children: .combine)
+
+            Spacer(minLength: SpeechSpacing.related)
+
+            Button {
+                model.openRecordings()
+            } label: {
+                Image(systemName: "waveform")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Your recordings")
         }
     }
 
-    private func formatRow(
-        title: String,
-        disabled: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.body)
-                .foregroundStyle(.primary)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+    private func resolvePlate(_ holding: Bool) {
+        guard !reduceMotion else { return }
+        withAnimation(
+            holding
+                ? .linear(duration: HoldToBegin.defaultDuration)
+                : SpeechMotion.settle
+        ) {
+            resolve = holding ? 1 : 0
         }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .opacity(disabled ? 0.45 : 1)
-        .glassEffect(.regular.interactive(), in: .capsule)
     }
 }

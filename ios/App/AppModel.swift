@@ -7,6 +7,7 @@ import SpeechAppKit
 final class AppModel {
     enum Route: Equatable {
         case home
+        case formats
         case library
         case reading
         case report(SessionReport, recordingID: UUID?)
@@ -23,6 +24,12 @@ final class AppModel {
         case conversation, monologue
     }
 
+    /// Which pre-session surface the navigation stack is rooted on. Held separately
+    /// from `route` so popping a session returns to the screen it was started from.
+    enum EntrySurface: Equatable {
+        case home, formats
+    }
+
     var hostedFormat: HostedFormat = .conversation
 
     var route: Route = .home
@@ -37,6 +44,16 @@ final class AppModel {
         month: currentCalendarMonth()
     )
 
+    /// Drives Home's two-word line. Set when a session actually starts, so
+    /// "Once more" only ever appears to someone who has practised.
+    var hasBegunBefore = UserDefaults.standard.bool(forKey: AppModel.hasBegunKey)
+
+    private static let hasBegunKey = "entry.hasBegun"
+
+    var entry: EntrySurface = .home
+
+    var isChoosingFormat: Bool { entry == .formats }
+
     var featuredPassage: Passage? {
         NextPassagePicker.pick(catalog: catalog, ledger: ledger)
     }
@@ -48,6 +65,7 @@ final class AppModel {
 
     func selectPassage(_ passage: Passage) {
         currentPassage = passage
+        noteBegun()
         route = .reading
     }
 
@@ -79,6 +97,7 @@ final class AppModel {
         if currentPassage == nil {
             currentPassage = NextPassagePicker.pick(catalog: catalog, ledger: ledger)
         }
+        noteBegun()
         route = .reading
     }
 
@@ -87,7 +106,32 @@ final class AppModel {
     }
 
     func goHome() {
+        entry = .home
         route = .home
+    }
+
+    func chooseFormat() {
+        entry = .formats
+        route = .formats
+    }
+
+    /// Popping a pushed screen lands back on whichever entry surface opened it.
+    func dismissToEntry() {
+        route = entry == .formats ? .formats : .home
+    }
+
+    func start(_ kind: PracticeFormat.Kind) {
+        switch kind {
+        case .reading: chooseAnotherPassage()
+        case .monologue: requestStartMonologue()
+        case .conversation: requestStartConversation()
+        }
+    }
+
+    private func noteBegun() {
+        guard !hasBegunBefore else { return }
+        hasBegunBefore = true
+        UserDefaults.standard.set(true, forKey: Self.hasBegunKey)
     }
 
     func requestStartConversation() {
@@ -102,6 +146,7 @@ final class AppModel {
     }
 
     func startMonologue() {
+        noteBegun()
         route = .monologue
     }
 
@@ -124,6 +169,7 @@ final class AppModel {
 
     func startConversation() {
         guard budget.startEnabled else { return }
+        noteBegun()
         route = .conversation
     }
 
