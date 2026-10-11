@@ -14,6 +14,11 @@ final class ConversationListenBack {
     private var playbackTask: Task<Void, Never>?
     private var partnerTurns: [PartnerTurn] = []
     private var openPartnerStart: TimeInterval?
+    private var heardWords: [RecordedWord] = []
+    /// Answer-window indices already reported to the session (one slip per answer).
+    private var notifiedLanguageAnswers = Set<Int>()
+    /// Fired when a qualifying non-English span appears in an answer.
+    var onLanguageSlip: ((TimeInterval) -> Void)?
 
     init(mouth: LiveConversationMouth, relayBase: URL, bearerToken: String) {
         self.mouth = mouth
@@ -23,6 +28,9 @@ final class ConversationListenBack {
     /// `isLive` says whether the talk is running (not paused, not over).
     func start(isLive: @escaping @MainActor () -> Bool) async {
         try? recorder.start()
+        transcriber.onFinalWords = { [weak self] batch in
+            self?.considerLanguage(batch)
+        }
         await transcriber.start()
         let recorder = recorder
         let transcriber = transcriber
@@ -49,6 +57,21 @@ final class ConversationListenBack {
             let start = openPartnerStart ?? now
             openPartnerStart = nil
             partnerTurns.append(PartnerTurn(text: transcript, start: start, end: max(start, now)))
+        }
+    }
+
+    private func considerLanguage(_ batch: [RecordedWord]) {
+        heardWords.append(contentsOf: batch)
+        // Scan every answer window. Streaming STT often finishes after the partner
+        // has already replied; limiting to "words after last partner end" dropped
+        // those slips, so the live nudge never reached its turn threshold.
+        for slip in ConversationMarkers.liveOtherLanguageSlips(
+            words: heardWords,
+            partnerTurns: partnerTurns,
+            alreadyNotified: notifiedLanguageAnswers
+        ) {
+            notifiedLanguageAnswers.insert(slip.index)
+            onLanguageSlip?(slip.end)
         }
     }
 
@@ -101,6 +124,7 @@ final class ConversationListenBack {
         micTask = nil
         playbackTask?.cancel()
         playbackTask = nil
+        transcriber.onFinalWords = nil
     }
 
     private func discardTranscriber() {

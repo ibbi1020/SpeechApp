@@ -32,4 +32,50 @@ struct ConversationMarkersTests {
         #expect(note.contains("…"))
         #expect(note.contains("3 seconds"))
     }
+
+    @Test("other-language span becomes a candidate with the ask note")
+    func otherLanguageCandidate() {
+        let turns = [PartnerTurn(text: "What do you do?", start: 0, end: 2)]
+        var words: [RecordedWord] = []
+        let spanish = ["Pero", "a", "veces", "prefiero", "quedarme", "en", "casa"]
+        for (index, surface) in spanish.enumerated() {
+            let start = 2.5 + Double(index) * 0.4
+            words.append(RecordedWord(surface: surface, start: start, end: start + 0.3))
+        }
+        let found = ConversationMarkers.candidates(words: words, partnerTurns: turns, durationSeconds: 60)
+        let slip = found.first { $0.kind == .otherLanguage }
+        #expect(slip != nil)
+        #expect(slip?.note == ConversationMarkers.otherLanguageNote)
+        #expect(slip?.score ?? 0 > 1)
+    }
+
+    @Test("live slips still count when STT arrives after the partner has already replied")
+    func liveSlipAfterPartnerReply() {
+        // Open (0–2), user Spanish (2.5–5), partner continue (5.5–10). Finals land late.
+        let turns = [
+            PartnerTurn(text: "What do you do?", start: 0, end: 2),
+            PartnerTurn(text: "Nice.", start: 5.5, end: 10),
+        ]
+        var words: [RecordedWord] = []
+        let spanish = ["Pero", "a", "veces", "prefiero", "quedarme", "en", "casa"]
+        for (index, surface) in spanish.enumerated() {
+            let start = 2.5 + Double(index) * 0.4
+            words.append(RecordedWord(surface: surface, start: start, end: start + 0.3))
+        }
+        let slips = ConversationMarkers.liveOtherLanguageSlips(
+            words: words,
+            partnerTurns: turns,
+            alreadyNotified: []
+        )
+        #expect(slips.count == 1)
+        #expect(slips[0].index == 1)
+        #expect(slips[0].end > 2.5)
+
+        let again = ConversationMarkers.liveOtherLanguageSlips(
+            words: words,
+            partnerTurns: turns,
+            alreadyNotified: [slips[0].index]
+        )
+        #expect(again.isEmpty)
+    }
 }

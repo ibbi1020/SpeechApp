@@ -82,6 +82,7 @@ extension FeedbackLabel {
         case "skip", "skipped": .skippedWord
         case "swap", "swapped": .swappedWord
         case "slowstart", "slow-start", "turnstart": .slowStart
+        case "otherlanguage", "other-language", "lang", "codeswitch", "code-switch": .otherLanguage
         default: nil
         }
     }

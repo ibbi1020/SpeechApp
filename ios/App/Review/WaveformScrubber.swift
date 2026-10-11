@@ -86,6 +86,7 @@ struct WaveformScrubber: View {
         case .restart: .mint
         case .skippedWord: .purple
         case .swappedWord: .pink
+        case .otherLanguage: .indigo
         }
     }
 
@@ -97,6 +98,7 @@ struct WaveformScrubber: View {
         case .skippedWord: "Skipped word marker"
         case .swappedWord: "Swapped word marker"
         case .slowStart: "Slow start marker"
+        case .otherLanguage: "Other language marker"
         }
     }
 }

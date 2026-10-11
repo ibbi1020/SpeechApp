@@ -18,6 +18,7 @@ public enum FeedbackReport {
         case .skippedWord: "skip"
         case .swappedWord: "swap"
         case .slowStart: "slow start"
+        case .otherLanguage: "other language"
         }
     }
 
@@ -93,6 +94,8 @@ public enum FeedbackReport {
             return "Heard \(heardText). If the wrong word is missing here, Grok corrected it to the passage word (passage words are sent as hints)."
         case .slowStart:
             return "Heard \(heardText) after the partner stopped."
+        case .otherLanguage:
+            return "Heard \(heardText). Check whether the transcript kept the other language or forced English."
         }
     }
 }

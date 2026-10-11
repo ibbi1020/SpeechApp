@@ -202,5 +202,54 @@
     "exercise": "conversation",
     "script": "{2.0 What did you do on Sunday?} [0.6] On Sunday <restart> I went to I went to </> the market with my sister",
     "voice": "Samantha"
+  },
+  {
+    "name": "conversation-spanish-answer",
+    "why": "A whole answer in Spanish should be marked other-language. Paulina speaks Spanish; partner turns are silence on the mic. Accented-English false positives need real recordings — this clip only proves detection fires on clear L1.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you usually do on weekends?} [0.5] <otherlanguage> Prefiero quedarme en casa y cocinar con mi familia </>",
+    "voice": "Paulina"
+  },
+  {
+    "name": "conversation-switch-midanswer",
+    "why": "The real case: a few English words, a Spanish stretch, then English again. A whole-answer switch is rare; mid-answer switching is what learners do.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you usually do on weekends?} [0.5] I usually go out with friends <otherlanguage> pero a veces prefiero quedarme en casa </> and then I cook",
+    "voice": "Paulina"
+  },
+  {
+    "name": "conversation-hindi-answer",
+    "why": "A whole answer in Hindi. Checks whether Grok returns Devanagari (script detection) or romanises it (needs the word list).",
+    "exercise": "conversation",
+    "script": "{2.0 What do you usually do on weekends?} [0.5] <otherlanguage> मैं अपने परिवार के साथ घर पर रहना पसंद करता हूँ </>",
+    "voice": "Lekha"
+  },
+  {
+    "name": "conversation-hindi-switch",
+    "why": "English answer with a Hindi stretch in the middle — the South Asian code-switch the app is built for.",
+    "exercise": "conversation",
+    "script": "{2.0 What did you do on Sunday?} [0.5] On Sunday I went to the market <otherlanguage> लेकिन मुझे घर पर रहना पसंद है </> with my sister",
+    "voice": "Lekha"
+  },
+  {
+    "name": "conversation-urdu-roman-switch",
+    "why": "An English speaker switching to Urdu. Checks what Grok returns when the stream is English-dominant: Urdu script, or romanised Latin text the detector cannot read.",
+    "exercise": "conversation",
+    "script": "{2.0 What did you do on Sunday?} [0.5] On Sunday I went to the market <otherlanguage> mujhe ghar par rehna pasand hai </> with my sister",
+    "voice": "Samantha"
+  },
+  {
+    "name": "conversation-two-slips-long-gap",
+    "why": "Two code-switching answers with a real 12 s partner turn between them. Run at --speed 1: the live stream has to survive the silence, or the second answer is never heard and the live nudge can never reach its second turn.",
+    "exercise": "conversation",
+    "script": "{3.0 What do you usually do on weekends?} [0.5] <otherlanguage> prefiero quedarme en casa con mi familia </> {12.0 That sounds lovely. Tell me more about your family and the food you cook together when everyone is at home on a Sunday} [0.5] <otherlanguage> mi madre cocina muy bien y siempre comemos juntos </>",
+    "voice": "Paulina"
+  },
+  {
+    "name": "conversation-spanish-switch-english-voice",
+    "why": "A Spanish stretch inside an English-dominant answer spoken by an English voice — closer to a learner's accent than a native Spanish voice.",
+    "exercise": "conversation",
+    "script": "{2.0 What do you usually do on weekends?} [0.5] I usually go out with friends <otherlanguage> pero a veces prefiero quedarme en casa </> and then I cook",
+    "voice": "Samantha"
   }
 ]

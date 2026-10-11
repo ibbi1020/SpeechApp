@@ -4,8 +4,9 @@ public enum ConversationCue: Equatable, Sendable {
     case open(question: String)
     case wrapWarn
     case wrapClose
-    // codeSwitch / fillerOk exist for later. v1 must not send them.
+    /// Spoken repair after sustained non-English. Gated by `ConversationLiveNudge`.
     case codeSwitch
+    /// Permission aside for a filler pattern. Still off until acoustic eval.
     case fillerOk
 }
 
@@ -30,8 +31,13 @@ public enum ConversationCueAssembler {
             aside = "Answer briefly (≤2 sentences). In the same turn, one short aside: about two minutes left. Hand the floor at most once. Stay on the topic. \(doNotAnnounceTimer)"
         case .wrapClose:
             aside = "Close the conversation in character. No new question. \(doNotAnnounceTimer)"
-        case .codeSwitch, .fillerOk:
-            aside = "" // v1 must not reach here
+        case .codeSwitch:
+            // Spec: never name their language; fold the aside into the next reply.
+            aside = """
+            Reply in a few short sentences to what they just said. In the same turn, one short aside: try that last bit in English; messy is ok. Do not name their other language. Do not correct grammar. Hand the floor at most once. \(doNotAnnounceTimer)
+            """
+        case .fillerOk:
+            aside = "" // still off until acoustic filler eval
         }
         return withTimerGuard("""
         \(prefix)
@@ -57,7 +63,8 @@ public enum ConversationCueAssembler {
     public static func v1MaySend(_ cue: ConversationCue) -> Bool {
         switch cue {
         case .open, .wrapWarn, .wrapClose: return true
-        case .codeSwitch, .fillerOk: return false
+        case .codeSwitch: return ConversationLiveNudge.spokenCodeSwitchEnabled
+        case .fillerOk: return false
         }
     }
 
@@ -68,7 +75,8 @@ public enum ConversationCueAssembler {
         case .open: return transcript.contains("?")
         case .wrapWarn: return t.contains("two minute") || t.contains("2 minute")
         case .wrapClose: return !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .codeSwitch, .fillerOk: return false
+        case .codeSwitch: return t.contains("english") || t.contains("messy")
+        case .fillerOk: return false
         }
     }
 }
