@@ -15,6 +15,9 @@ Cover the moments you care about. Do each on purpose:
 4. A normal 1 s thinking pause. This must **not** be flagged.
 5. A clean take with no trouble.
 6. "very very good" or "that that". This must **not** be a restart.
+7. A few seconds in another language mid-answer (label `otherlanguage`).
+8. Strongly accented English only — label `not otherlanguage`. Needed before the live
+   code-switch nudge ships without the DEBUG flag (precision gate).
 
 ## Label in Audacity
 

@@ -11,6 +11,8 @@ public struct ReviewMarker: Equatable, Hashable, Sendable, Codable, Identifiable
         case swappedWord
         /// Conversation: a long wait before answering the partner.
         case slowStart
+        /// Conversation: a sustained stretch spoken in a language other than English.
+        case otherLanguage
     }
 
     public let id: UUID
@@ -209,7 +211,7 @@ public enum ReviewMarkers {
             return fillerNote(count: 2, seconds: score)
         case .restart:
             return "You started this part again. Listen: did the second try say it better?"
-        case .skippedWord, .swappedWord, .slowStart:
+        case .skippedWord, .swappedWord, .slowStart, .otherLanguage:
             // Built by ReadingMarkers / ConversationMarkers, which know the words involved.
             return ""
         }

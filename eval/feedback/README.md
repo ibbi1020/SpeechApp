@@ -64,6 +64,14 @@ One line says what is spoken and what should be flagged. Used by `rules.json` an
 - Reading: `[0.2 skip]` where a passage word was left out, `<swap> sheep </>` around a wrong word.
 - Conversation: `{2.0 What do you do?}` is the partner talking for 2 s (silent on the user's mic),
   then `[3.0 slowstart]` for the wait before answering.
+- Conversation other-language: `<otherlanguage> pero a veces prefiero … </>` around a sustained
+  non-English stretch. Non-Latin script (Urdu, Devanagari, …) counts from 3 words; Latin-script
+  switches need 4, because one three-word window can just as easily be a loanword
+  ("we cook daal"). Romanised Urdu/Hindi is caught by how *un*-English the window reads,
+  not by naming the language — `NLLanguageRecognizer` cannot name it.
+  A single loanword must use `<not otherlanguage>`.
+  Clear TTS L1 (e.g. Paulina Spanish) proves detection fires; accented-English false positives
+  need real recordings before the spoken live nudge ships without the DEBUG flag.
 - `maybe` matters when a take has more moments than its marker cap (3 per minute, at most 7).
 - In `rules.json` a silence is the gap between two words as Grok reports it. Grok word edges add
   about 0.2 s, so a pause marker needs a 1.7 s word gap (a real 1.5 s silence). In `clips.json` a

@@ -65,7 +65,9 @@ enum ScoreCommand {
 
         out += "## Summary\n\n"
         out += "| Kind | Expected | Detected | Shown when it should be | Extra detections |\n|---|---|---|---|---|\n"
-        let kinds: [ReviewMarker.Kind] = [.pause, .fillerCluster, .restart, .skippedWord, .swappedWord, .slowStart]
+        let kinds: [ReviewMarker.Kind] = [
+            .pause, .fillerCluster, .restart, .skippedWord, .swappedWord, .slowStart, .otherLanguage,
+        ]
         for kind in kinds {
             let expected = results.flatMap { $0.labels.labels }.filter { $0.kind == kind && $0.expect != .none }.count
             let detected = results.flatMap { $0.candidates.matched }.filter { $0.label.kind == kind }.count

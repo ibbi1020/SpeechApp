@@ -331,5 +331,20 @@
     "exercise": "conversation",
     "script": "{2.0 What did you do on Sunday?} [0.6] On Sunday <restart> I went to I went to </> the market",
     "durationSeconds": 60
+  },
+  {
+    "name": "conversation: other language span",
+    "why": "A sustained stretch in Spanish mid-answer is marked for listen-back (#34).",
+    "exercise": "conversation",
+    "script": "{2.0 What do you do?} [0.5] I work and <otherlanguage> pero a veces prefiero quedarme en casa </> near home",
+    "durationSeconds": 60,
+    "noteContains": "switched languages"
+  },
+  {
+    "name": "conversation: single loanword is not a switch",
+    "why": "One borrowed word is not a sustained language switch.",
+    "exercise": "conversation",
+    "script": "{2.0 What did you eat?} [0.5] I had a <not otherlanguage> taco </> yesterday with friends",
+    "durationSeconds": 60
   }
 ]

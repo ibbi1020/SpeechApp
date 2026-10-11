@@ -86,4 +86,23 @@ struct ConversationCueTests {
         #expect(!prefix.localizedCaseInsensitiveContains("always ask"))
         #expect(!prefix.localizedCaseInsensitiveContains("always end"))
     }
+
+    @Test("codeSwitch aside asks for English without naming their language")
+    func codeSwitchAside() {
+        let previous = ConversationLiveNudge.spokenCodeSwitchEnabled
+        ConversationLiveNudge.spokenCodeSwitchEnabled = true
+        defer { ConversationLiveNudge.spokenCodeSwitchEnabled = previous }
+
+        #expect(ConversationCueAssembler.v1MaySend(.codeSwitch))
+        let text = ConversationCueAssembler.instructions(
+            prefix: "PREFIX",
+            stance: "STANCE",
+            cue: .codeSwitch
+        )
+        #expect(text.contains("PREFIX"))
+        #expect(text.localizedCaseInsensitiveContains("english"))
+        #expect(text.localizedCaseInsensitiveContains("messy"))
+        #expect(!text.localizedCaseInsensitiveContains("spanish"))
+        #expect(ConversationCueAssembler.heard(.codeSwitch, in: "Try that last bit in English — messy is ok."))
+    }
 }

@@ -353,6 +353,9 @@ struct ConversationSessionView: View {
               let relay = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
         else { return }
         let recorder = ConversationListenBack(mouth: live, relayBase: relay.base, bearerToken: relay.uuid.uuidString)
+        recorder.onLanguageSlip = { end in
+            session.noteOtherLanguageSpan(end: end)
+        }
         listenBack = recorder
         await recorder.start {
             session.phase == .talking || session.phase == .wrapping

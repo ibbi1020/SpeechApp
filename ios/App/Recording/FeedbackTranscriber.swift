@@ -14,6 +14,8 @@ final class FeedbackTranscriber {
     private let engine: GrokTranscriptionEngine
     private var collector: Task<[RecordedWord], Never>?
     private(set) var failed = false
+    /// Fired on the main actor when new final timed words arrive (Conversation live nudge).
+    var onFinalWords: (([RecordedWord]) -> Void)?
 
     init(relayBase: URL, bearerToken: String) {
         engine = GrokTranscriptionEngine(relayBase: relayBase, bearerToken: bearerToken)
@@ -22,13 +24,19 @@ final class FeedbackTranscriber {
     func start() async {
         // Subscribe before prepare, or early words are lost.
         let updates = engine.updates
-        collector = Task {
+        collector = Task { @MainActor [weak self] in
             var words: [RecordedWord] = []
             for await update in updates {
-                for token in update.tokens where token.isFinal {
-                    guard let start = token.startTime, let end = token.endTime else { continue }
-                    words.append(RecordedWord(surface: token.surface, start: start, end: end))
+                let batch = update.tokens.compactMap { token -> RecordedWord? in
+                    guard token.isFinal,
+                          let start = token.startTime,
+                          let end = token.endTime
+                    else { return nil }
+                    return RecordedWord(surface: token.surface, start: start, end: end)
                 }
+                guard !batch.isEmpty else { continue }
+                words.append(contentsOf: batch)
+                self?.onFinalWords?(batch)
             }
             return words
         }
