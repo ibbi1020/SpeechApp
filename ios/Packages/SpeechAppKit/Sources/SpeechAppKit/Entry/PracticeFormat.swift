@@ -34,19 +34,19 @@ public struct PracticeFormat: Identifiable, Equatable, Sendable {
         PracticeFormat(
             kind: .reading,
             title: "Reading",
-            line: "Read a known passage aloud, and hear your own pronunciation sentence by sentence.",
+            line: "Read a passage aloud. Hear every sound.",
             plateName: "PlateReading"
         ),
         PracticeFormat(
             kind: .monologue,
             title: "Monologue",
-            line: "One familiar topic, three takes. Four minutes, then three, then two.",
+            line: "One topic, three takes, less time each.",
             plateName: "PlateMonologue"
         ),
         PracticeFormat(
             kind: .conversation,
             title: "Conversation",
-            line: "Fifteen minutes with a partner who has opinions. No script.",
+            line: "Fifteen minutes with a partner. No script.",
             plateName: "PlateConversation"
         )
     ]

@@ -76,6 +76,10 @@ private struct FormatPlateView: View {
                 .speechType(.body)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                // Keeps the line clear of the figure's head, which sits right of centre.
+                .containerRelativeFrame(.horizontal, alignment: .leading) { width, _ in
+                    width * 0.6
+                }
         }
         .padding(.top, SpeechSpacing.related)
         .accessibilityElement(children: .combine)

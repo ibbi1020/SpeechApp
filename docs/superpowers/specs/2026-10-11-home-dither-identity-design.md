@@ -74,9 +74,11 @@ the three rows; they are not cards.
 
 | Order | Heading | Line | Figure |
 | --- | --- | --- | --- |
-| 1 | Reading | Read a known passage aloud, and hear your own pronunciation sentence by sentence. | Seated scholar reading from a scroll |
-| 2 | Monologue | One familiar topic, three takes. Four minutes, then three, then two. | Lone orator, arm extended, mid-word |
-| 3 | Conversation | Fifteen minutes with a partner who has opinions. No script. | Two figures in dialogue, as equals |
+| 1 | Reading | Read a passage aloud. Hear every sound. | Seated scholar reading from a scroll |
+| 2 | Monologue | One topic, three takes, less time each. | Lone orator, arm extended, mid-word |
+| 3 | Conversation | Fifteen minutes with a partner. No script. | Two figures in dialogue, as equals |
+
+The line is capped at 60% of the screen width so it never runs over the figure.
 
 Each screen carries a back control to home, a three-dot index, and a start button. Conversation shows
 its monthly allowance as a quiet label (`3 of 20 this month`) instead of appearing disabled, and when
