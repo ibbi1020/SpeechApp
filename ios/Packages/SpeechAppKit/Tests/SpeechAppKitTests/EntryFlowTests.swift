@@ -3,58 +3,21 @@ import Testing
 
 @Suite("Entry greeting")
 struct EntryGreetingTests {
-    @Test("a first-ever open says First words")
+    @Test("a first-ever open says Find your voice")
     func firstRun() {
-        #expect(EntryGreeting.line(hasBegunBefore: false) == "First words")
+        #expect(EntryGreeting.line(hasBegunBefore: false) == "Find your voice")
     }
 
-    @Test("every open after the first session says Once more")
+    @Test("every open after the first session says Speak with poise")
     func returning() {
-        #expect(EntryGreeting.line(hasBegunBefore: true) == "Once more")
+        #expect(EntryGreeting.line(hasBegunBefore: true) == "Speak with poise")
     }
 
-    @Test("both lines are two words")
-    func twoWords() {
+    @Test("both lines stay between two and three words")
+    func shortLines() {
         for line in [EntryGreeting.line(hasBegunBefore: false), EntryGreeting.line(hasBegunBefore: true)] {
-            #expect(line.split(separator: " ").count == 2)
+            #expect((2...3).contains(line.split(separator: " ").count))
         }
-    }
-}
-
-@Suite("Hold to begin")
-struct HoldToBeginTests {
-    @Test("an untouched hold is at zero")
-    func start() {
-        #expect(HoldToBegin().fraction(elapsed: 0) == 0)
-        #expect(HoldToBegin().isComplete(elapsed: 0) == false)
-    }
-
-    @Test("halfway through the duration is half filled")
-    func midway() {
-        let hold = HoldToBegin(duration: 1.25)
-        #expect(hold.fraction(elapsed: 0.625) == 0.5)
-        #expect(hold.isComplete(elapsed: 0.625) == false)
-    }
-
-    @Test("the fraction clamps at one and never overshoots")
-    func clamped() {
-        let hold = HoldToBegin(duration: 1.25)
-        #expect(hold.fraction(elapsed: 5) == 1)
-        #expect(hold.fraction(elapsed: -3) == 0)
-    }
-
-    @Test("completion lands exactly at the duration")
-    func completes() {
-        let hold = HoldToBegin(duration: 1.25)
-        #expect(hold.isComplete(elapsed: 1.25))
-        #expect(hold.isComplete(elapsed: 1.2499) == false)
-    }
-
-    @Test("a zero duration completes immediately instead of dividing by zero")
-    func zeroDuration() {
-        let hold = HoldToBegin(duration: 0)
-        #expect(hold.fraction(elapsed: 0) == 1)
-        #expect(hold.isComplete(elapsed: 0))
     }
 }
 

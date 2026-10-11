@@ -2,33 +2,25 @@ import SwiftUI
 
 /// A full-bleed dithered plate. Draft 1 ships these as bundled images; nearest-neighbour
 /// sampling is deliberate so the dots stay hard-edged when the plate is scaled up.
-///
-/// `resolve` cross-fades a coarse plate into the fine one: 0 is coarse, 1 is fine.
-/// Both plates are opaque, so the coarse one occludes rather than washing out the fine one.
 struct DitherPlate: View {
     let name: String
-    var coarseName: String?
-    var resolve: Double = 1
+    /// Lowers the image by this fraction of the screen height, for plates whose figure
+    /// sits high enough to run into the copy. The gap it opens at the top is black.
+    var drop: CGFloat = 0
 
     var body: some View {
-        ZStack {
-            Color.black
-            plate(name)
-            if let coarseName, resolve < 1 {
-                plate(coarseName).opacity(1 - resolve)
-            }
+        GeometryReader { proxy in
+            Image(name)
+                .resizable()
+                .interpolation(.none)
+                .scaledToFill()
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .offset(y: proxy.size.height * drop)
+                .clipped()
         }
+        .background(Color.black)
         .ignoresSafeArea()
         .accessibilityHidden(true)
-    }
-
-    private func plate(_ name: String) -> some View {
-        Image(name)
-            .resizable()
-            .interpolation(.none)
-            .scaledToFill()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
     }
 }
 

@@ -41,36 +41,21 @@ Full-bleed figure on black: a standing orator at rest, composed, not speaking.
 
 | Region | Content |
 | --- | --- |
-| Top left | `ORATOR` in the label role, uppercase. Under it the state line at h1. |
+| Top left | The state line at h1. No app name. |
 | Top right | The existing recordings button, unchanged. |
 | Middle | The figure, bleeding past the safe area. |
-| Bottom | One capsule: `Begin`. |
+| Bottom | One white capsule: `Begin`, a plain tap. |
 
-State line is `First words` before the user has ever started a session, `Once more` after. Two words,
-about craft rather than a streak.
+State line is `Find your voice` before the user has ever started a session, `Speak with poise` after.
+Two or three words, meant to encourage rather than count a streak.
 
-### The one interaction
-
-`Begin` is a press and hold of 1.25s. It is the only ceremony on the screen — the slow-down has to be
-real, and it has to be one gesture rather than a maze.
-
-While held:
-
-- A fill sweeps across the capsule so the remaining time is visible.
-- Haptics tick on press and land a solid impact on completion.
-- The figure's dither resolves from coarse dots to fine, so the statue comes into focus under the
-  thumb.
-
-Releasing early springs everything back, critically damped. Under Reduce Motion the resolve becomes a
-plain cross-fade and the spring becomes a short ease.
-
-Holding is what makes the user stop for a beat before speaking, and the dither resolving points the
-app's own visual promise at the person using it.
+An earlier draft made `Begin` a press and hold that resolved the figure from coarse dots to fine. It
+was removed: one tap is enough ceremony here.
 
 ## Format screens
 
-The hold completes and home cross-fades into a horizontal pager of three full screens. These replace
-the three rows; they are not cards.
+`Begin` cross-fades into one fixed screen that shows a single exercise at a time. These replace the
+three rows; they are not cards.
 
 | Order | Heading | Line | Figure |
 | --- | --- | --- | --- |
@@ -80,7 +65,9 @@ the three rows; they are not cards.
 
 The line is capped at 60% of the screen width so it never runs over the figure.
 
-Each screen carries a back control to home, a three-dot index, and a start button. Conversation shows
+A horizontal swipe changes the exercise in place. The figure cross-fades and the copy slides a short
+way in the swipe direction; the back control, the three-dot index and the start button stay put. The
+swipe resists at the first and last exercise. VoiceOver changes exercise with the adjustable action. Conversation shows
 its monthly allowance as a quiet label (`3 of 20 this month`) instead of appearing disabled, and when
 the month is spent the button says so in words.
 
@@ -89,15 +76,14 @@ library, Monologue to its planning page, Conversation straight into the session.
 
 ## Structure
 
-`AppModel.Route` gains `.formats`. Home and the format pager are both pre-session surfaces, so they
+`AppModel.Route` gains `.formats`. Home and the format chooser are both pre-session surfaces, so they
 live inside one `EntryFlowView` that owns the existing navigation destinations. That keeps every
 current push path — library → reading → report, conversation, monologue, recordings — exactly as it
 is, with no new nesting.
 
-Three pieces of logic move into SpeechAppKit so they can be tested without a view:
+Two pieces of logic move into SpeechAppKit so they can be tested without a view:
 
 - `EntryGreeting` — the state line from whether the user has begun a session before.
-- `HoldToBegin` — elapsed time to a 0…1 fraction and a completion flag.
 - `PracticeFormat` — the three formats, their copy, and what the start control says given the
   conversation budget.
 
