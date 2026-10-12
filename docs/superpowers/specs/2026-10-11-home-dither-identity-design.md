@@ -76,10 +76,19 @@ library, Monologue to its planning page, Conversation straight into the session.
 
 ## Structure
 
-`AppModel.Route` gains `.formats`. Home and the format chooser are both pre-session surfaces, so they
-live inside one `EntryFlowView` that owns the existing navigation destinations. That keeps every
-current push path — library → reading → report, conversation, monologue, recordings — exactly as it
-is, with no new nesting.
+`AppModel.Route` gains `.formats`. Home and the chooser are one surface in two states inside
+`EntryFlowView`, which also owns the existing navigation destinations. That keeps every current push
+path — library → reading → report, conversation, monologue, recordings — exactly as it is.
+
+### Motion
+
+Timings are taken from FocusFlight, measured frame by frame off a screen recording. Its screen changes
+land in about a quarter second, and its primary button never leaves the screen — `Start Journey`
+becomes `Book My Flight` in place while the map and copy change around it.
+
+So: every swap uses `SpeechMotion.swap`, a no-bounce spring of 0.25s. Going from home to the chooser
+cross-fades the figure and the copy, and the white button stays where it is and changes its label.
+Under Reduce Motion everything becomes a 0.2s fade.
 
 Two pieces of logic move into SpeechAppKit so they can be tested without a view:
 

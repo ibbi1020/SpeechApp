@@ -9,6 +9,9 @@ enum SpeechMotion {
     static let settle = Animation.spring(response: 0.35, dampingFraction: 1.0)
     /// Slightly snappier press / highlight.
     static let press = Animation.spring(response: 0.22, dampingFraction: 1.0)
+    /// One surface or piece of copy replacing another. Measured off FocusFlight, whose
+    /// screen changes land in about a quarter second.
+    static let swap = Animation.spring(duration: 0.25, bounce: 0)
     /// Passage auto-scroll — reading-app ease, not a snap.
     static let scroll = Animation.easeInOut(duration: 0.45)
 }
