@@ -26,8 +26,10 @@ struct CeremonyScaffold: View {
         )
     }
 
+    /// Blur curve, not the spring: every change on this surface is now a dissolve,
+    /// and a spring on a blur radius reads as the lens hunting for focus.
     private var motion: Animation {
-        reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.swap
+        SpeechBlur.motion(reduceMotion: reduceMotion)
     }
 
     var body: some View {
@@ -38,7 +40,7 @@ struct CeremonyScaffold: View {
             if model.ceremonyStep == .breathe {
                 BreathCircle(fill: breathFill)
                     .ignoresSafeArea()
-                    .transition(.opacity)
+                    .transition(SpeechBlur.dissolve)
             }
 
             VStack(alignment: .leading, spacing: 0) {
@@ -51,15 +53,19 @@ struct CeremonyScaffold: View {
                 ZStack {
                     step
                         .id(model.ceremonyStep)
-                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8)))
+                        .transition(SpeechBlur.dissolve)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.top, SpeechSpacing.section)
                 .padding(.bottom, SpeechSpacing.section)
 
+                // The button is the one thing that never unmounts, so its label has to
+                // carry the step change on its own. Blur does that without the capsule
+                // resizing mid-word, which is what a width-animating swap would do.
                 Button(action: commit) {
-                    Text(control.title)
-                        .contentTransition(.opacity)
+                    BlurDissolve(control.title, size: SpeechStartMetrics.labelSize) { title in
+                        Text(title)
+                    }
                 }
                 .buttonStyle(SpeechStartButtonStyle())
                 .disabled(control.isEnabled == false)

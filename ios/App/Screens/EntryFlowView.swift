@@ -8,17 +8,19 @@ struct EntryFlowView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var motion: Animation {
-        reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.swap
+        SpeechBlur.motion(reduceMotion: reduceMotion)
     }
 
     var body: some View {
         Group {
+            // Home and the ceremony are the same surface in two states, so neither
+            // slides. Home blurs out of focus and the ceremony resolves into it.
             if model.isInCeremony {
                 CeremonyScaffold()
-                    .transition(.opacity)
+                    .transition(SpeechBlur.dissolve)
             } else {
                 home
-                    .transition(.opacity)
+                    .transition(SpeechBlur.dissolve)
             }
         }
         .animation(motion, value: model.isInCeremony)

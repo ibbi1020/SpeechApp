@@ -104,6 +104,9 @@ struct ConversationSessionView: View {
                     }
                     .accessibilityHidden(isFogged || showStopConfirm)
                     .allowsHitTesting(!isFogged && !showStopConfirm)
+                    // The stop card does not sit on a flat scrim: the conversation
+                    // behind it blurs and dims as one layer.
+                    .blurBackdrop(showStopConfirm)
             }
 
             if isFogged {
@@ -124,7 +127,7 @@ struct ConversationSessionView: View {
                     },
                     onDismiss: { showStopConfirm = false }
                 )
-                .transition(.opacity)
+                .transition(SpeechBlur.dissolve)
             }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)

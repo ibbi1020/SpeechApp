@@ -114,7 +114,58 @@ Not defined yet.
 
 ## Motion
 
-Not defined yet.
+Source of truth: `SpeechAppKit/Design/BlurMotion.swift` for the numbers, `ios/App/Design/SpeechBlur.swift` for the SwiftUI vocabulary.
+
+### Blur is the transition
+
+Nothing slides and nothing scales between states. What is leaving blurs out of focus; what is arriving resolves into it. This is measured off FocusFlight, where every screen change, label change and modal works this way.
+
+Blur does a job that opacity alone cannot: a cross-fade of two sharp layers reads as two things overlaid, and the eye tries to read both. Blurring the outgoing layer removes it as something readable before it is gone, so only one thing is ever legible.
+
+### The three moves
+
+| Move | Radius | Duration | Use for |
+| --- | --- | --- | --- |
+| Dissolve | 20pt, or 0.4 × type size for text | 280ms, ease-in-out | One surface or line of copy replaced by another |
+| Burst | 30pt | 120ms, ease-in-out | A control leaving with nothing taking its place |
+| Backdrop | 28pt + 55% black scrim | 300ms, ease-in-out | Content pushed behind a modal |
+
+Picking the right move matters more than the numbers.
+
+- **Dissolve** is the default. Both ends blur: out over the first 45% of the duration, in over the remaining 55%. Measured end to end at 290ms on the reference; ours lands at ~250ms.
+- **Burst** is harder and faster because nothing replaces the element, so the eye should release it rather than track it out. The reference's confirm button hit 18pt within a single frame and was down to a sixth of its opacity by 120ms.
+- **Backdrop** holds for as long as the modal is up — it is a state, not a transition. The scrim is required: a Gaussian blur preserves mean brightness, so blur alone does not push anything back.
+
+### Text blur scales with type size
+
+`BlurMotion.textRadius(forSize:)` returns four tenths of the point size, with a 6pt floor. A fixed radius lands wrong in both directions: 20pt erases a caption into a grey bar, and 6pt leaves a 51pt headline perfectly readable. The reference's 51pt header dissolves through about 20pt, which is where four tenths comes from.
+
+### Changing text in place
+
+`BlurDissolve` shows one value at a time. Cross-fading two strings in a `ZStack` sizes the container to the taller one, so a two-line heading replacing a one-line heading leaves a gap below it for the whole transition — and the point of the move is that nothing shifts. So the old value blurs out, the swap happens under the blur unanimated, and the new value resolves in.
+
+### Curves
+
+| Token | Curve | Use |
+| --- | --- | --- |
+| `SpeechBlur.motion` | ease-in-out 280ms | Anything driving a blur dissolve |
+| `SpeechMotion.settle` | spring, response 0.35, damping 1.0 | Layout settling, not blur |
+| `SpeechMotion.press` | spring, response 0.22, damping 1.0 | Press and highlight |
+| `SpeechMotion.scroll` | ease-in-out 450ms | Passage auto-scroll |
+
+Blur never gets a spring. Overshoot on a blur radius reads as a lens hunting for focus.
+
+### Reduce Motion and Reduce Transparency
+
+Reduce Motion drops the blur ramp entirely and leaves a 200ms fade — a blur ramp is exactly the kind of motion that setting exists to avoid. `BlurVeil` and `BlurPhase.dissolved(radius:reduceMotion:)` both handle this, so callers do not each have to remember.
+
+Reduce Transparency drops the backdrop blur and raises its scrim to 72%, since the scrim then carries the whole separation on its own.
+
+### What stays sharp
+
+Numbers use `.contentTransition(.numericText())`, not blur. Digits rolling is the system's own idiom for a value counting, and blurring them loses that.
+
+The reading countdown fog is deliberately softer than a backdrop at 7pt (`SpeechCountdown.fogBlurRadius`). The passage behind it should stay present and shaped, just not readable, because that is the thing you are about to read.
 
 ## Iconography
 

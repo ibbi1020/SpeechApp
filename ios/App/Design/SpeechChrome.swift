@@ -213,7 +213,7 @@ struct ReadingCountdownOverlay: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 260)
                     .offset(y: SpeechCountdown.digitSize / 2 + 22)
-                    .transition(.opacity)
+                    .transition(SpeechBlur.dissolve)
             }
         }
         .animation(

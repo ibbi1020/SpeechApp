@@ -23,12 +23,15 @@ struct BreatheStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: SpeechSpacing.related) {
-            Text(instruction)
-                .ceremonyType(.display)
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-                .contentTransition(.opacity)
-                .animation(SpeechMotion.swap, value: instruction)
+            // "Breathe in" and "Breathe out" are the same length and sit in the same
+            // place, so a cross-fade between them is hard to read as a change at all.
+            // Blurring out and back in reads as one word being replaced by another.
+            BlurDissolve(instruction, size: CeremonyType.metrics(.display).size) { line in
+                Text(line)
+                    .ceremonyType(.display)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Text(CeremonyCopy.breatheLine)
                 .ceremonyType(.body)

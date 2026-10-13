@@ -20,10 +20,13 @@ struct VocalStep: View {
         Group {
             if phase == .explain {
                 explain
+                    .transition(SpeechBlur.dissolve)
             } else {
                 playing
+                    .transition(SpeechBlur.dissolve)
             }
         }
+        .animation(SpeechBlur.motion(reduceMotion: reduceMotion), value: phase)
         .task(id: phase) {
             guard phase == .playing else { return }
             await run()

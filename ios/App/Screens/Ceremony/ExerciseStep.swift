@@ -43,23 +43,31 @@ struct ExerciseStep: View {
             for: selected, counts: counts, proposed: offer.proposed
         )
         let note = PracticeFormat.startControl(for: selected, budget: model.budget).note
+        // Picking a different exercise rewrites all three lines. They dissolve through
+        // blur rather than cross-fading, so the heading never reads as two overlaid
+        // sentences mid-swap. Each line blurs at its own type size.
         return VStack(alignment: .leading, spacing: SpeechSpacing.cluster) {
-            Text(format?.line ?? "")
-                .ceremonyType(.display)
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-                .contentTransition(.opacity)
+            BlurDissolve(format?.line ?? "", size: CeremonyType.metrics(.display).size) { line in
+                Text(line)
+                    .ceremonyType(.display)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let history {
-                Text(history)
-                    .ceremonyType(.body)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, SpeechSpacing.cluster)
+                BlurDissolve(history, size: CeremonyType.metrics(.body).size) { line in
+                    Text(line)
+                        .ceremonyType(.body)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, SpeechSpacing.cluster)
             }
             if let note {
-                Text(note)
-                    .ceremonyType(.body)
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, SpeechSpacing.cluster)
+                BlurDissolve(note, size: CeremonyType.metrics(.body).size) { line in
+                    Text(line)
+                        .ceremonyType(.body)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.top, SpeechSpacing.cluster)
             }
         }
         .animation(SpeechMotion.swap, value: selected)
