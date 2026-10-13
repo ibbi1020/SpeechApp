@@ -3,6 +3,9 @@ import UIKit
 
 /// Text roles for the app.
 ///
+/// Headings and chrome are SF Pro. Instrument Serif is only for text someone reads
+/// through: a passage, a prompt, a subtitle, a transcript. Use `reading(_:relativeTo:)`.
+///
 /// Headings use a perfect fourth (4/3): each step is one-third larger than the one below.
 /// Body stays at 16pt. Sizes are rounded to whole points.
 ///
@@ -46,13 +49,13 @@ enum SpeechType {
     static func metrics(_ role: Role) -> Metrics {
         switch role {
         case .h1:
-            Metrics(size: stepped(4), trackingEm: -0.025, lineHeight: 1.1, relativeTo: .largeTitle, usesSerif: true, systemWeight: .regular)
+            Metrics(size: stepped(4), trackingEm: -0.025, lineHeight: 1.1, relativeTo: .largeTitle, usesSerif: false, systemWeight: .semibold)
         case .h2:
-            Metrics(size: stepped(3), trackingEm: -0.02, lineHeight: 1.12, relativeTo: .largeTitle, usesSerif: true, systemWeight: .regular)
+            Metrics(size: stepped(3), trackingEm: -0.02, lineHeight: 1.12, relativeTo: .largeTitle, usesSerif: false, systemWeight: .semibold)
         case .h3:
-            Metrics(size: stepped(2), trackingEm: -0.015, lineHeight: 1.15, relativeTo: .title, usesSerif: true, systemWeight: .regular)
+            Metrics(size: stepped(2), trackingEm: -0.015, lineHeight: 1.15, relativeTo: .title, usesSerif: false, systemWeight: .semibold)
         case .h4:
-            Metrics(size: stepped(1), trackingEm: -0.01, lineHeight: 1.2, relativeTo: .title3, usesSerif: true, systemWeight: .regular)
+            Metrics(size: stepped(1), trackingEm: -0.01, lineHeight: 1.2, relativeTo: .title3, usesSerif: false, systemWeight: .semibold)
         case .body:
             Metrics(size: bodySize, trackingEm: 0, lineHeight: 1.45, relativeTo: .body, usesSerif: false, systemWeight: .regular)
         case .subtext:
@@ -60,6 +63,15 @@ enum SpeechType {
         case .label:
             Metrics(size: 12, trackingEm: 0.06, lineHeight: 1.25, relativeTo: .caption, usesSerif: false, systemWeight: .semibold)
         }
+    }
+
+    /// Instrument Serif at `size` when Dynamic Type is Large, scaling with `style`.
+    static func reading(_ size: CGFloat, relativeTo style: Font.TextStyle) -> Font {
+        .custom(instrumentSerif, size: size, relativeTo: style)
+    }
+
+    static func readingUIFont(size: CGFloat) -> UIFont {
+        UIFont(name: instrumentSerif, size: size) ?? .systemFont(ofSize: size)
     }
 
     static func font(_ role: Role, size: CGFloat) -> Font {

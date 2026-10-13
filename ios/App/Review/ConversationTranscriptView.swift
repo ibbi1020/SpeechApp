@@ -44,7 +44,7 @@ struct ConversationTranscriptView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             if let partner = block.partner, !partner.text.isEmpty {
                                 Text(partner.text)
-                                    .font(.subheadline.italic())
+                                    .font(SpeechType.reading(15, relativeTo: .subheadline))
                                     .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -55,7 +55,7 @@ struct ConversationTranscriptView: View {
                                             onWordTap(word)
                                         } label: {
                                             Text(word.surface)
-                                                .font(.system(.body, design: .serif))
+                                                .font(SpeechType.reading(17, relativeTo: .body))
                                                 .padding(.horizontal, 4)
                                                 .padding(.vertical, 2)
                                                 .background {

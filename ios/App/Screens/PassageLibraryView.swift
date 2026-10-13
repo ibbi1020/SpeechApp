@@ -12,7 +12,7 @@ struct PassageLibraryView: View {
                     .speechType(.h1)
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    // Room for the serif swashes. A negative top inset clips them.
+                    // Room above the large heading. A tight top inset clips it.
                     .padding(.top, 12)
                     .listRowInsets(EdgeInsets(
                         top: 0,

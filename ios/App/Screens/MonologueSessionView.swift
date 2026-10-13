@@ -243,7 +243,7 @@ struct MonologueSessionView: View {
                     stageDuration(minutes)
 
                     Text(session.prompt)
-                        .font(.system(size: 22, weight: .regular, design: .serif))
+                        .font(SpeechType.reading(22, relativeTo: .title2))
                         .lineSpacing(8)
                         .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -279,8 +279,7 @@ struct MonologueSessionView: View {
     private func stageDuration(_ minutes: Int) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text("\(minutes)")
-                .font(.custom(SpeechType.instrumentSerif, size: stageDurationSize))
-                .tracking(stageDurationSize * SpeechType.metrics(.h1).trackingEm)
+                .font(.system(size: stageDurationSize, weight: .semibold))
                 .monospacedDigit()
                 .contentTransition(reduceMotion ? .opacity : .numericText(countsDown: true))
             Text(minutes == 1 ? "minute" : "minutes")
@@ -395,7 +394,7 @@ struct MonologueSessionView: View {
     private func liveCanvas(_ session: MonologueSession) -> some View {
         ZStack {
             Text(session.prompt)
-                .font(.system(.subheadline, design: .serif))
+                .font(SpeechType.reading(15, relativeTo: .subheadline))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)

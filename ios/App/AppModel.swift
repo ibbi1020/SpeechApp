@@ -23,6 +23,12 @@ final class AppModel {
         case conversation, monologue
     }
 
+    /// Which pre-session surface the navigation stack is rooted on. Held separately
+    /// from `route` so popping a session returns to the screen it was started from.
+    enum EntrySurface: Equatable {
+        case home, ceremony
+    }
+
     var hostedFormat: HostedFormat = .conversation
 
     var route: Route = .home
@@ -37,6 +43,25 @@ final class AppModel {
         month: currentCalendarMonth()
     )
 
+    /// Drives Home's two-word line. Set when a session actually starts, so
+    /// "Once more" only ever appears to someone who has practised.
+    var hasBegunBefore = UserDefaults.standard.bool(forKey: AppModel.hasBegunKey)
+
+    private static let hasBegunKey = "entry.hasBegun"
+
+    var entry: EntrySurface = .home
+
+    /// Where the user is inside the ceremony. Ignored while `entry` is `.home`.
+    var ceremonyStep: CeremonyStep = Ceremony.first
+
+    /// The exercise the user settled on. Nil until the exercise step proposes one.
+    var chosenKind: PracticeFormat.Kind?
+
+    /// Sessions in the last 7 days. Filled when the ceremony begins.
+    var weeklyCounts = WeeklyPracticeCounts()
+
+    var isInCeremony: Bool { entry == .ceremony }
+
     var featuredPassage: Passage? {
         NextPassagePicker.pick(catalog: catalog, ledger: ledger)
     }
@@ -48,6 +73,7 @@ final class AppModel {
 
     func selectPassage(_ passage: Passage) {
         currentPassage = passage
+        noteBegun()
         route = .reading
     }
 
@@ -79,6 +105,7 @@ final class AppModel {
         if currentPassage == nil {
             currentPassage = NextPassagePicker.pick(catalog: catalog, ledger: ledger)
         }
+        noteBegun()
         route = .reading
     }
 
@@ -87,7 +114,67 @@ final class AppModel {
     }
 
     func goHome() {
+        entry = .home
         route = .home
+    }
+
+    func beginCeremony() {
+        ceremonyStep = Ceremony.first
+        chosenKind = nil
+        weeklyCounts = weeklyPracticeCounts()
+        entry = .ceremony
+        route = .home
+    }
+
+    func advanceCeremony() {
+        guard let next = Ceremony.next(after: ceremonyStep) else { return }
+        ceremonyStep = next
+    }
+
+    /// Back through the ceremony. The first step returns home.
+    func retreatCeremony() {
+        if let previous = Ceremony.previous(before: ceremonyStep) {
+            ceremonyStep = previous
+        } else {
+            goHome()
+        }
+    }
+
+    /// The hum step is the only place a ceremony opens an exercise.
+    func finishCeremony() {
+        let kind = chosenKind ?? .conversation
+        if kind == .conversation, budget.startEnabled == false { return }
+        start(kind)
+    }
+
+    /// Sessions in the last 7 days, for the exercise proposal.
+    func weeklyPracticeCounts(now: Date = .now) -> WeeklyPracticeCounts {
+        let manifests = (try? RecordingsService.store.list()) ?? []
+        let stamps = manifests.map { PracticeStamp(format: $0.format, createdAt: $0.createdAt) }
+        return ExerciseOfferMaker.counts(of: stamps, now: now)
+    }
+
+    /// Popping a pushed screen lands back on the root. The ceremony, if that's
+    /// where the session started, is still the root's state.
+    func dismissToEntry() {
+        route = .home
+        guard entry == .ceremony else { return }
+        ceremonyStep = Ceremony.first
+        chosenKind = nil
+    }
+
+    func start(_ kind: PracticeFormat.Kind) {
+        switch kind {
+        case .reading: chooseAnotherPassage()
+        case .monologue: requestStartMonologue()
+        case .conversation: requestStartConversation()
+        }
+    }
+
+    private func noteBegun() {
+        guard !hasBegunBefore else { return }
+        hasBegunBefore = true
+        UserDefaults.standard.set(true, forKey: Self.hasBegunKey)
     }
 
     func requestStartConversation() {
@@ -102,6 +189,7 @@ final class AppModel {
     }
 
     func startMonologue() {
+        noteBegun()
         route = .monologue
     }
 
@@ -124,6 +212,7 @@ final class AppModel {
 
     func startConversation() {
         guard budget.startEnabled else { return }
+        noteBegun()
         route = .conversation
     }
 

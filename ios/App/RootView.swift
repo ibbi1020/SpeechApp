@@ -6,7 +6,7 @@ struct RootView: View {
 
     var body: some View {
         NavigationStack {
-            HomeView()
+            EntryFlowView()
                 .navigationDestination(isPresented: libraryPresented) {
                     PassageLibraryView()
                         .navigationDestination(isPresented: sessionPresented) {
@@ -37,7 +37,7 @@ struct RootView: View {
                 if case .recordings = model.route { return true }
                 return false
             },
-            set: { if !$0, case .recordings = model.route { model.goHome() } }
+            set: { if !$0, case .recordings = model.route { model.dismissToEntry() } }
         )
     }
 
@@ -53,7 +53,7 @@ struct RootView: View {
                 if !presented {
                     switch model.route {
                     case .library, .reading, .report:
-                        model.goHome()
+                        model.dismissToEntry()
                     default:
                         break
                     }
@@ -86,14 +86,14 @@ struct RootView: View {
     private var conversationPresented: Binding<Bool> {
         Binding(
             get: { isOnConversationStack },
-            set: { if !$0, isOnConversationStack { model.goHome() } }
+            set: { if !$0, isOnConversationStack { model.dismissToEntry() } }
         )
     }
 
     private var monologuePresented: Binding<Bool> {
         Binding(
             get: { isOnMonologueStack },
-            set: { if !$0, isOnMonologueStack { model.goHome() } }
+            set: { if !$0, isOnMonologueStack { model.dismissToEntry() } }
         )
     }
 
