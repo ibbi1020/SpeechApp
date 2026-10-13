@@ -389,7 +389,7 @@ private struct ReadingFollowAlong: View {
             ForEach(words) { word in
                 let isCurrent = word.id == currentWordID
                 Text(word.surface)
-                    .font(.system(size: 22, weight: .regular, design: .serif))
+                    .font(SpeechType.reading(22, relativeTo: .title2))
                     .foregroundStyle(dimmed ? .tertiary : .primary)
                     .underline(isCurrent, color: dimmed ? Color.secondary : Color.primary)
                     .id(word.id)

@@ -7,7 +7,6 @@ import SpeechAppKit
 final class AppModel {
     enum Route: Equatable {
         case home
-        case formats
         case library
         case reading
         case report(SessionReport, recordingID: UUID?)
@@ -27,7 +26,7 @@ final class AppModel {
     /// Which pre-session surface the navigation stack is rooted on. Held separately
     /// from `route` so popping a session returns to the screen it was started from.
     enum EntrySurface: Equatable {
-        case home, formats
+        case home, ceremony
     }
 
     var hostedFormat: HostedFormat = .conversation
@@ -52,7 +51,16 @@ final class AppModel {
 
     var entry: EntrySurface = .home
 
-    var isChoosingFormat: Bool { entry == .formats }
+    /// Where the user is inside the ceremony. Ignored while `entry` is `.home`.
+    var ceremonyStep: CeremonyStep = Ceremony.first
+
+    /// The exercise the user settled on. Nil until the exercise step proposes one.
+    var chosenKind: PracticeFormat.Kind?
+
+    /// Sessions in the last 7 days. Filled when the ceremony begins.
+    var weeklyCounts = WeeklyPracticeCounts()
+
+    var isInCeremony: Bool { entry == .ceremony }
 
     var featuredPassage: Passage? {
         NextPassagePicker.pick(catalog: catalog, ledger: ledger)
@@ -110,14 +118,49 @@ final class AppModel {
         route = .home
     }
 
-    func chooseFormat() {
-        entry = .formats
-        route = .formats
+    func beginCeremony() {
+        ceremonyStep = Ceremony.first
+        chosenKind = nil
+        weeklyCounts = weeklyPracticeCounts()
+        entry = .ceremony
+        route = .home
     }
 
-    /// Popping a pushed screen lands back on whichever entry surface opened it.
+    func advanceCeremony() {
+        guard let next = Ceremony.next(after: ceremonyStep) else { return }
+        ceremonyStep = next
+    }
+
+    /// Back through the ceremony. The first step returns home.
+    func retreatCeremony() {
+        if let previous = Ceremony.previous(before: ceremonyStep) {
+            ceremonyStep = previous
+        } else {
+            goHome()
+        }
+    }
+
+    /// The hum step is the only place a ceremony opens an exercise.
+    func finishCeremony() {
+        let kind = chosenKind ?? .conversation
+        if kind == .conversation, budget.startEnabled == false { return }
+        start(kind)
+    }
+
+    /// Sessions in the last 7 days, for the exercise proposal.
+    func weeklyPracticeCounts(now: Date = .now) -> WeeklyPracticeCounts {
+        let manifests = (try? RecordingsService.store.list()) ?? []
+        let stamps = manifests.map { PracticeStamp(format: $0.format, createdAt: $0.createdAt) }
+        return ExerciseOfferMaker.counts(of: stamps, now: now)
+    }
+
+    /// Popping a pushed screen lands back on the root. The ceremony, if that's
+    /// where the session started, is still the root's state.
     func dismissToEntry() {
-        route = entry == .formats ? .formats : .home
+        route = .home
+        guard entry == .ceremony else { return }
+        ceremonyStep = Ceremony.first
+        chosenKind = nil
     }
 
     func start(_ kind: PracticeFormat.Kind) {

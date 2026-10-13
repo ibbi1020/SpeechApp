@@ -28,12 +28,11 @@ struct PracticeFormatTests {
         #expect(PracticeFormat.all.map(\.kind) == [.reading, .monologue, .conversation])
     }
 
-    @Test("every format has a heading, a line and a plate")
+    @Test("every format has a heading and a line")
     func copyPresent() {
         for format in PracticeFormat.all {
             #expect(format.title.isEmpty == false)
             #expect(format.line.isEmpty == false)
-            #expect(format.plateName.isEmpty == false)
         }
     }
 

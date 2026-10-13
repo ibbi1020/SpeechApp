@@ -23,7 +23,7 @@ struct SpeechSubtitle: View {
     private static let fadeDuration = 0.2
 
     private var subtitleFont: Font {
-        .system(size: fontSize, weight: .regular, design: .serif)
+        .custom(SpeechType.instrumentSerif, size: fontSize)
     }
 
     private var lineHeight: CGFloat {
@@ -373,9 +373,7 @@ struct SpeechSubtitle: View {
     }
 
     private func measure(_ string: String) -> CGFloat {
-        let base = UIFont.systemFont(ofSize: fontSize, weight: .regular)
-        let descriptor = base.fontDescriptor.withDesign(.serif) ?? base.fontDescriptor
-        let font = UIFont(descriptor: descriptor, size: fontSize)
+        let font = SpeechType.readingUIFont(size: fontSize)
         return (string as NSString).size(withAttributes: [.font: font]).width
     }
 

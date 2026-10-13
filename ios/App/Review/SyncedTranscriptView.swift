@@ -38,7 +38,7 @@ struct SyncedTranscriptView: View {
                             onWordTap(word)
                         } label: {
                             Text(word.surface)
-                                .font(.system(.body, design: .serif))
+                                .font(SpeechType.reading(17, relativeTo: .body))
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 2)
                                 .background {

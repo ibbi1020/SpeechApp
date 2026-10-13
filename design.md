@@ -8,20 +8,20 @@ Sizes below are what you see at the **Large** Dynamic Type setting. Larger and s
 
 ### Fonts
 
-Three faces. Headings use the bundled serif. Everything else uses SF Pro, the iOS system font.
+Two jobs. Headings and chrome use SF Pro. Text someone reads — a passage, a prompt, a subtitle, a transcript — uses Instrument Serif, through `SpeechType.reading(_:relativeTo:)`.
 
 | Face | Source | Weight | Roles |
 | --- | --- | --- | --- |
-| Instrument Serif | `font/InstrumentSerif-Regular.ttf` | Regular (400) | h1, h2, h3, h4 |
+| SF Pro | System | Semibold (600) | h1, h2, h3, h4, label |
 | SF Pro | System | Regular (400) | body, subtext |
-| SF Pro | System | Semibold (600) | label |
+| Instrument Serif | `font/InstrumentSerif-Regular.ttf` | Regular (400) | reading text only |
 
 Instrument Serif is the only file we ship.
 
 - Family name: Instrument Serif
 - PostScript name: `InstrumentSerif-Regular`
 - Registered in `UIAppFonts` (`ios/App/Info.plist` and `ios/project.yml`)
-- One cut only. Headings do not switch to a bold serif.
+- One cut only. Reading text does not switch to a bold serif.
 
 SF Pro is not bundled. SwiftUI’s system font draws it.
 
@@ -46,10 +46,10 @@ Line height is the target height of one line, as a multiple of the point size. T
 
 | Role | Size | Face | Tracking | Line height | Dynamic Type bucket |
 | --- | --- | --- | --- | --- | --- |
-| h1 | 51 | Instrument Serif Regular | −0.025 em (−1.28pt) | 1.10 (56.1pt) | Large Title |
-| h2 | 38 | Instrument Serif Regular | −0.020 em (−0.76pt) | 1.12 (42.6pt) | Large Title |
-| h3 | 28 | Instrument Serif Regular | −0.015 em (−0.42pt) | 1.15 (32.2pt) | Title |
-| h4 | 21 | Instrument Serif Regular | −0.010 em (−0.21pt) | 1.20 (25.2pt) | Title 3 |
+| h1 | 51 | SF Pro Semibold | −0.025 em (−1.28pt) | 1.10 (56.1pt) | Large Title |
+| h2 | 38 | SF Pro Semibold | −0.020 em (−0.76pt) | 1.12 (42.6pt) | Large Title |
+| h3 | 28 | SF Pro Semibold | −0.015 em (−0.42pt) | 1.15 (32.2pt) | Title |
+| h4 | 21 | SF Pro Semibold | −0.010 em (−0.21pt) | 1.20 (25.2pt) | Title 3 |
 | body | 16 | SF Pro Regular | 0 | 1.45 (23.2pt) | Body |
 | subtext | 14 | SF Pro Regular | 0 | 1.40 (19.6pt) | Subheadline |
 | label | 12 | SF Pro Semibold | +0.060 em (+0.72pt) | 1.25 (15pt) | Caption |

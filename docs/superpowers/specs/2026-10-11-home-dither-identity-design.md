@@ -1,5 +1,9 @@
 # Home — dither identity, draft 1
 
+> Superseded for implementation. The dither plates and the composition rules in this draft were
+> dropped. The entry flow that replaced them is `docs/scoping-entry-ritual.md` §8. This file stays
+> as the record of the draft.
+
 Draft run. The goal is to find out whether a dot-dither visual identity lands, not to ship a final
 look. Everything here is replaceable.
 

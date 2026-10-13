@@ -25,8 +25,6 @@ public struct PracticeFormat: Identifiable, Equatable, Sendable {
     public let kind: Kind
     public let title: String
     public let line: String
-    /// Asset catalog name of the dithered plate.
-    public let plateName: String
 
     public var id: Kind { kind }
 
@@ -34,20 +32,17 @@ public struct PracticeFormat: Identifiable, Equatable, Sendable {
         PracticeFormat(
             kind: .reading,
             title: "Reading",
-            line: "Read a passage aloud. Hear every sound.",
-            plateName: "PlateReading"
+            line: "Read a passage aloud. Hear every sound."
         ),
         PracticeFormat(
             kind: .monologue,
             title: "Monologue",
-            line: "One topic, three takes, less time each.",
-            plateName: "PlateMonologue"
+            line: "One topic, three takes, less time each."
         ),
         PracticeFormat(
             kind: .conversation,
             title: "Conversation",
-            line: "Fifteen minutes with a partner. No script.",
-            plateName: "PlateConversation"
+            line: "Fifteen minutes with a partner. No script."
         )
     ]
 
