@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Ceremony background — three fields</title>
+<title>Ceremony background — the dithered horizon</title>
 <style>
   :root {
     --paper: #e8e1d4;
@@ -51,11 +51,7 @@
   .meter > i { display: block; height: 100%; width: 0; background: #3b82f6; transition: width .06s linear; }
   .hint { font-size: 12.5px; color: var(--muted); }
 
-  .stage {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px;
-    max-width: 1280px; margin: 22px auto 60px; padding: 0 24px;
-  }
-  @media (max-width: 1080px) { .stage { grid-template-columns: 1fr; max-width: 460px; } }
+  .stage { max-width: 420px; margin: 22px auto 60px; padding: 0 24px; }
   .col > h2 {
     font-size: 16.5px; font-weight: 650; margin: 0 0 3px; letter-spacing: -0.01em;
   }
@@ -111,8 +107,11 @@
   .rail > div {
     flex: 1; height: 58px; border-radius: 16px; display: grid; place-items: center;
     font-size: 13px; font-weight: 620; letter-spacing: -0.01em;
+    /* Glass, not a tint. Over the dithered field a 7% white wash lets the dots
+       read straight through the label; the blur gives the pill a seat. */
     background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14);
-    color: rgba(255,255,255,.6); cursor: pointer; text-align: center; padding: 0 6px;
+    backdrop-filter: blur(16px) saturate(1.1); -webkit-backdrop-filter: blur(16px) saturate(1.1);
+    color: rgba(255,255,255,.72); cursor: pointer; text-align: center; padding: 0 6px;
     transition: background .22s ease, color .22s ease, box-shadow .22s ease;
   }
   .rail > div.sel { background: #fff; color: #000; box-shadow: none; }
@@ -147,16 +146,21 @@
 <body>
 
 <header>
-  <h1>Ceremony background — three fields</h1>
+  <h1>Ceremony background — the dithered horizon</h1>
   <p class="lede">
     One object, anchored off the bottom edge, <b>dead still unless the user is doing something</b>.
-    All three phones run the same ceremony clock and the same driver; only the render differs.
     Measured off <code>inspo/ScreenRecording…MP4</code>: FocusFlight's background sits at a
     frame-to-frame delta of <b>0.000</b> when idle, jumps to 10–17 during a gesture, and returns to
     0.000 the instant the finger lifts.
   </p>
   <p class="lede">
-    <b>Drag up and down on any phone</b> to drive the field by hand — that is the 1:1 gesture
+    It is <b>one field with one driver</b>. The dither is a filter on it, not a second background:
+    every step leaves it on except <b>breathe</b>, which drops to the smooth band of light because a
+    breath needs something continuous to follow. The switch happens <b>under the blur dissolve</b>,
+    so the two renders are never seen on top of each other.
+  </p>
+  <p class="lede">
+    <b>Drag up and down on the phone</b> to drive the field by hand — that is the 1:1 gesture
     coupling. Then turn on <b>Ambient drift</b> to feel what FocusFlight deliberately refuses.
   </p>
 </header>
@@ -188,18 +192,19 @@
 <div class="stage" id="stage"></div>
 
 <div class="note">
-  <h3>What each variant is</h3>
+  <h3>The field, per step</h3>
   <ul>
-    <li><b>A — Horizon of light.</b> One volumetric glow rising off the bottom edge. Extends the
-      blur-then-crop Gaussian pipeline already in <code>AuroraPill.swift</code>. Warms with time of day.</li>
-    <li><b>B — Horizon, dithered.</b> Identical field, quantised through an ordered Bayer matrix to
-      two tones. Revives the parked dot-dither identity without the figure that was the actual
-      problem, and fixes gradient banding on OLED black.</li>
-    <li><b>C — Resonance bands.</b> Horizontal lines that bend where the voice pushes them.
-      Literally a picture of sound. Reads more instrument than calm.</li>
+    <li><b>Home, exercise, hum — dithered.</b> The horizon quantised through an ordered 8×8 Bayer
+      matrix at a <code>w/112</code> dot pitch. Revives the parked dot-dither identity without the
+      orator figure that was the actual problem, and kills gradient banding on OLED black.</li>
+    <li><b>Breathe — the smooth band of light.</b> Same geometry, same driver, dither off. The dots
+      quantise growth into visible steps, which fights a four-second inhale; the continuous glow
+      is the pacer.</li>
+    <li><b>The handoff</b> is the shipped blur dissolve — 28pt radius, 280ms, 45% out then 55% in,
+      with the render swapped unanimated at the midpoint. Same move as the text.</li>
   </ul>
 
-  <h3>Behaviour common to all three</h3>
+  <h3>Behaviour in both renders</h3>
   <ul>
     <li><b>Still at rest.</b> No ambient loop. A background that always moves cannot respond.</li>
     <li><b>Brightness rises with commitment.</b> Measured arc in the reference: 33.5 at home →
@@ -227,11 +232,14 @@ const FORMATS = [
 const BREATH = { settle: 3, inhale: 4, exhale: 6 };
 
 // Brightness arc, normalised from the measured means (33.5 / 80.8 / 107.4 of 255).
+// `dither` picks the render: 1 is the dot field, 0 is the smooth band of light.
+// Breathe is the one step that drops the dither, because the breath wants a
+// continuous thing to follow and the dots quantise the growth into steps.
 const STEPS = {
-  home:     { gain: 0.30, cta: "Begin",     sub: null },
-  exercise: { gain: 0.52, cta: "This one",  sub: null },
-  breathe:  { gain: 0.64, cta: "Done",      sub: "Follow the circle. It grows as you breathe in." },
-  hum:      { gain: 0.88, cta: "Ready",     sub: "Take a breath first." },
+  home:     { gain: 0.30, dither: 1, cta: "Begin",    sub: null },
+  exercise: { gain: 0.52, dither: 1, cta: "This one", sub: null },
+  breathe:  { gain: 0.64, dither: 0, cta: "Done",     sub: "Follow the circle. It grows as you breathe in." },
+  hum:      { gain: 0.88, dither: 1, cta: "Ready",    sub: "Take a breath first." },
 };
 
 const state = {
@@ -245,7 +253,6 @@ const state = {
   dragging: false,
   t0: performance.now(),
   stepAt: performance.now(),
-  pitch: 0.5,
 };
 
 /* ----------------------------------------------------------------------------
@@ -269,6 +276,30 @@ function dissolveText(el, next) {
     el.textContent = next;
     el.style.transition = "none";
     // Force a reflow so the unanimated swap is never seen sharp in the old place.
+    void el.offsetWidth;
+    el.style.transition = `filter ${inn}ms cubic-bezier(0,0,.2,1), opacity ${inn}ms cubic-bezier(0,0,.2,1)`;
+    el.style.filter = "blur(0px)";
+    el.style.opacity = "";
+  }, out);
+}
+
+/* The field's current render mix. Snapped under the blur, never tweened in
+   the open, so the two renders are never visible on top of each other. */
+const render = { dither: STEPS.home.dither };
+
+function dissolveField(next) {
+  const el = phones[0].canvas;
+  if (render.dither === next) return;   // a brightness-only change needs no veil
+  const out = DISSOLVE * 0.45, inn = DISSOLVE * 0.55;
+
+  el.style.transition = `filter ${out}ms cubic-bezier(.4,0,1,1), opacity ${out}ms cubic-bezier(.4,0,1,1)`;
+  el.style.filter = "blur(28px)";       // BlurMotion.backdropRadius: a big soft object
+  el.style.opacity = "0";
+
+  clearTimeout(el._dz);
+  el._dz = setTimeout(() => {
+    render.dither = next;
+    el.style.transition = "none";
     void el.offsetWidth;
     el.style.transition = `filter ${inn}ms cubic-bezier(0,0,.2,1), opacity ${inn}ms cubic-bezier(0,0,.2,1)`;
     el.style.filter = "blur(0px)";
@@ -302,14 +333,13 @@ function field(w, h, level, gain) {
   };
 }
 
-/** A — Horizon of light: one soft glow centred on the bottom edge. */
-function drawHorizon(ctx, w, h, level, gain, warm) {
-  ctx.clearRect(0, 0, w, h);
+/** The smooth horizon: one soft glow centred below the bottom edge. */
+function drawSmooth(ctx, w, h, level, gain, warm, weight) {
   const c = palette(warm);
   const { cx, cy, radius, intensity } = field(w, h, level, gain);
 
   const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-  const peak = 0.52 * intensity;
+  const peak = 0.52 * intensity * weight;
   g.addColorStop(0.00, `rgba(${c.r},${c.g},${c.b},${peak})`);
   g.addColorStop(0.35, `rgba(${c.r * 0.72 | 0},${c.g * 0.6 | 0},${c.b * 0.72 | 0},${peak * 0.42})`);
   g.addColorStop(0.72, `rgba(${c.r * 0.3 | 0},${c.g * 0.3 | 0},${c.b * 0.45 | 0},${peak * 0.13})`);
@@ -321,7 +351,7 @@ function drawHorizon(ctx, w, h, level, gain, warm) {
   // rather than a vignette. One line only; two starts to look like a logo.
   ctx.beginPath();
   ctx.arc(cx, cy, radius * 0.995, Math.PI, 2 * Math.PI);
-  ctx.strokeStyle = `rgba(255,255,255,${0.1 + 0.16 * level})`;
+  ctx.strokeStyle = `rgba(255,255,255,${(0.1 + 0.16 * level) * weight})`;
   ctx.lineWidth = Math.max(1, w * 0.0026);
   ctx.stroke();
 }
@@ -337,13 +367,14 @@ const BAYER = (() => {
   return m.map(row => row.map(v => (v + 0.5) / 64));
 })();
 
-/** B — the same horizon, quantised to two tones through the Bayer matrix. */
-function drawDithered(ctx, w, h, level, gain, warm) {
+/** The same horizon, quantised to two tones through the Bayer matrix. */
+function drawDots(ctx, w, h, level, gain, warm, weight) {
   const cell = Math.max(2, Math.round(w / 112));   // dot pitch
   const cols = Math.ceil(w / cell), rows = Math.ceil(h / cell);
   const c = palette(warm);
 
-  ctx.clearRect(0, 0, w, h);
+  ctx.save();
+  ctx.globalAlpha = weight;
   ctx.fillStyle = `rgb(${c.r},${c.g},${c.b})`;
 
   const { cx, cy, radius, intensity } = field(w, h, level, gain);
@@ -364,68 +395,27 @@ function drawDithered(ctx, w, h, level, gain, warm) {
       }
     }
   }
+  ctx.restore();
 }
 
-/** C — Resonance bands: horizontal lines that bend where the voice pushes. */
-function drawBands(ctx, w, h, level, gain, warm, t) {
+/* One field, two renders. `dither` is a filter on the field, not a different
+   background: breathe turns it off, everything else leaves it on. The switch
+   itself happens under the blur dissolve, so the crossfade is never seen. */
+function drawField(ctx, w, h, level, gain, warm, dither) {
   ctx.clearRect(0, 0, w, h);
-  const c = palette(warm);
-  const n = 22;
-  const baseTop = h * 0.46;
-  const amp = h * 0.052 * level;
-  const k = 1.4 + state.pitch * 3.2;          // spatial frequency from pitch
-  const { intensity } = field(w, h, level, gain);
-
-  for (let i = 0; i < n; i++) {
-    const f = i / (n - 1);
-    const y0 = baseTop + (h * 0.62) * Math.pow(f, 1.25);
-    // Lines fade toward the top; brightness rises with the driver.
-    const a = (0.06 + 0.5 * f) * intensity;
-    ctx.beginPath();
-    const steps = 48;
-    for (let s = 0; s <= steps; s++) {
-      const x = (s / steps) * w;
-      const u = s / steps;
-      // A standing wave: nodes pinned at the edges, belly in the middle.
-      const envelope = Math.sin(Math.PI * u);
-      const y = y0 - amp * envelope * Math.sin(Math.PI * k * u + t * 0.0016 + i * 0.18) * (0.35 + f);
-      s === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    }
-    ctx.strokeStyle = `rgba(${c.r},${c.g},${c.b},${a})`;
-    ctx.lineWidth = Math.max(1, w * 0.0022);
-    ctx.stroke();
-  }
+  if (dither < 1) drawSmooth(ctx, w, h, level, gain, warm, 1 - dither);
+  if (dither > 0) drawDots(ctx, w, h, level, gain, warm, dither);
 }
-
-const VARIANTS = [
-  {
-    key: "A", name: "Horizon of light",
-    blurb: "One volumetric glow off the bottom edge. Reuses the Gaussian pipeline already in AuroraPill. Calmest of the three, and the least likely to date.",
-    draw: drawHorizon,
-  },
-  {
-    key: "B", name: "Horizon, dithered",
-    blurb: "The same field through an ordered Bayer matrix. Brings back the dot-dither identity without the figure, and kills gradient banding on OLED black.",
-    draw: drawDithered,
-  },
-  {
-    key: "C", name: "Resonance bands",
-    blurb: "Standing waves pinned at the edges, bending where the voice pushes. The most literal picture of sound; also the most insistent.",
-    draw: drawBands,
-  },
-];
 
 /* ----------------------------------------------------------------------------
-   Build the three phones.
+   Build the phone.
 ---------------------------------------------------------------------------- */
 
 const stage = document.getElementById("stage");
-const phones = VARIANTS.map(v => {
+const phones = [(() => {
   const col = document.createElement("div");
   col.className = "col";
   col.innerHTML = `
-    <h2><span>${v.key}</span>${v.name}</h2>
-    <p>${v.blurb}</p>
     <div class="phone"><div class="screen">
       <canvas></canvas>
       <div class="statusbar"><span>9:41</span><span>􀙇 􀛨</span></div>
@@ -448,7 +438,7 @@ const phones = VARIANTS.map(v => {
   const screen = col.querySelector(".screen");
   const canvas = col.querySelector("canvas");
   const o = {
-    variant: v, screen, canvas, ctx: canvas.getContext("2d"),
+    screen, canvas, ctx: canvas.getContext("2d"),
     heading: col.querySelector(".heading"),
     sub: col.querySelector(".sub"),
     cta: col.querySelector(".cta span"),
@@ -491,7 +481,7 @@ const phones = VARIANTS.map(v => {
   screen.addEventListener("pointercancel", release);
 
   return o;
-});
+})()];
 
 function resize() {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -624,17 +614,13 @@ function frame(now) {
   // Light smoothing so mic noise does not jitter the field. Drag is already 1:1.
   state.level = state.dragging ? target : state.level + (target - state.level) * 0.18;
 
-  if (state.mic || state.fake) {
-    state.pitch = 0.35 + 0.4 * state.level;
-  }
-
   const gain = STEPS[state.step].gain;
   // Ambient drift is the thing the reference refuses. Off by default.
   const drift = state.drift ? 0.055 * (1 + Math.sin(now / 2600)) : 0;
   const lvl = Math.max(0, Math.min(1, state.level + drift));
 
   for (const p of phones) {
-    p.variant.draw(p.ctx, p.w, p.h, lvl, gain, state.evening, now);
+    drawField(p.ctx, p.w, p.h, lvl, gain, state.evening, render.dither);
     if (state.step === "hum") {
       const pr = Math.min(1, ((now - state.stepAt) / 1000) / 10);
       p.toneFill.style.width = (pr * 100) + "%";
@@ -664,12 +650,13 @@ document.querySelectorAll("[data-step]").forEach(b => {
     b.classList.add("on");
     state.step = b.dataset.step;
     state.stepAt = performance.now();
+    dissolveField(STEPS[state.step].dither);
     syncAll();
     hint({
       home: "Home is still by design. Nothing moves until you do.",
       exercise: "Picking an exercise dissolves the copy and shifts the field a little.",
-      breathe: "Paced at six a minute — four in, six out. The field is the pacer.",
-      hum: "Turn on the mic or the fake voice. Your voice is the only thing moving it.",
+      breathe: "Dither off — the breath needs something continuous to follow.",
+      hum: "Dither back on. Turn on the mic or the fake voice; your voice is the only thing moving it.",
     }[state.step]);
   });
 });
