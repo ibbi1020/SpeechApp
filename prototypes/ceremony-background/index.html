@@ -154,10 +154,9 @@
     0.000 the instant the finger lifts.
   </p>
   <p class="lede">
-    It is <b>one field with one driver</b>. The dither is a filter on it, not a second background:
-    every step leaves it on except <b>breathe</b>, which drops to the smooth band of light because a
-    breath needs something continuous to follow. The switch happens <b>under the blur dissolve</b>,
-    so the two renders are never seen on top of each other.
+    It is <b>one field with one driver</b>. The dither is a filter on it, not a second background,
+    and every step leaves it on. <b>Breathe</b> adds a dotted rim so the circle has an edge to
+    follow. That change happens <b>under the blur dissolve</b>, so the rim never pops in.
   </p>
   <p class="lede">
     <b>Drag up and down on the phone</b> to drive the field by hand — that is the 1:1 gesture
@@ -194,14 +193,14 @@
 <div class="note">
   <h3>The field, per step</h3>
   <ul>
-    <li><b>Home, exercise, hum — dithered.</b> The horizon quantised through an ordered 8×8 Bayer
+    <li><b>Home, exercise, hum — dithered, no rim.</b> The horizon quantised through an ordered 8×8 Bayer
       matrix at a <code>w/112</code> dot pitch. Revives the parked dot-dither identity without the
       orator figure that was the actual problem, and kills gradient banding on OLED black.</li>
-    <li><b>Breathe — the smooth band of light.</b> Same geometry, same driver, dither off. The dots
-      quantise growth into visible steps, which fights a four-second inhale; the continuous glow
-      is the pacer.</li>
-    <li><b>The handoff</b> is the shipped blur dissolve — 28pt radius, 280ms, 45% out then 55% in,
-      with the render swapped unanimated at the midpoint. Same move as the text.</li>
+    <li><b>Breathe — dithered, with a rim.</b> Same geometry, same driver, same dots, plus a band of
+      dots at the edge of the field. Without it the dots read as a glow, not a circle.</li>
+    <li><b>The handoff</b> into and out of breathe is the shipped blur dissolve — 28pt radius,
+      280ms, 45% out then 55% in, with the rim swapped unanimated at the midpoint. Same move as
+      the text.</li>
   </ul>
 
   <h3>Behaviour in both renders</h3>
@@ -233,13 +232,13 @@ const BREATH = { settle: 3, inhale: 4, exhale: 6 };
 
 // Brightness arc, normalised from the measured means (33.5 / 80.8 / 107.4 of 255).
 // `dither` picks the render: 1 is the dot field, 0 is the smooth band of light.
-// Breathe is the one step that drops the dither, because the breath wants a
-// continuous thing to follow and the dots quantise the growth into steps.
+// `rim` adds a dotted edge to the field. Breathe needs it: without an edge the
+// dots read as a glow, and the step asks the user to follow a circle.
 const STEPS = {
-  home:     { gain: 0.30, dither: 1, cta: "Begin",    sub: null },
-  exercise: { gain: 0.52, dither: 1, cta: "This one", sub: null },
-  breathe:  { gain: 0.64, dither: 0, cta: "Done",     sub: "Follow the circle. It grows as you breathe in." },
-  hum:      { gain: 0.88, dither: 1, cta: "Ready",    sub: "Take a breath first." },
+  home:     { gain: 0.30, dither: 1, rim: 0, cta: "Begin",    sub: null },
+  exercise: { gain: 0.52, dither: 1, rim: 0, cta: "This one", sub: null },
+  breathe:  { gain: 0.64, dither: 1, rim: 1, cta: "Done",     sub: "Follow the circle. It grows as you breathe in." },
+  hum:      { gain: 0.88, dither: 1, rim: 0, cta: "Ready",    sub: "Take a breath first." },
 };
 
 const state = {
@@ -285,11 +284,12 @@ function dissolveText(el, next) {
 
 /* The field's current render mix. Snapped under the blur, never tweened in
    the open, so the two renders are never visible on top of each other. */
-const render = { dither: STEPS.home.dither };
+const render = { dither: STEPS.home.dither, rim: STEPS.home.rim };
 
 function dissolveField(next) {
   const el = phones[0].canvas;
-  if (render.dither === next) return;   // a brightness-only change needs no veil
+  // A brightness-only change needs no veil.
+  if (render.dither === next.dither && render.rim === next.rim) return;
   const out = DISSOLVE * 0.45, inn = DISSOLVE * 0.55;
 
   el.style.transition = `filter ${out}ms cubic-bezier(.4,0,1,1), opacity ${out}ms cubic-bezier(.4,0,1,1)`;
@@ -298,7 +298,8 @@ function dissolveField(next) {
 
   clearTimeout(el._dz);
   el._dz = setTimeout(() => {
-    render.dither = next;
+    render.dither = next.dither;
+    render.rim = next.rim;
     el.style.transition = "none";
     void el.offsetWidth;
     el.style.transition = `filter ${inn}ms cubic-bezier(0,0,.2,1), opacity ${inn}ms cubic-bezier(0,0,.2,1)`;
@@ -368,7 +369,7 @@ const BAYER = (() => {
 })();
 
 /** The same horizon, quantised to two tones through the Bayer matrix. */
-function drawDots(ctx, w, h, level, gain, warm, weight) {
+function drawDots(ctx, w, h, level, gain, warm, weight, rim) {
   const cell = Math.max(2, Math.round(w / 112));   // dot pitch
   const cols = Math.ceil(w / cell), rows = Math.ceil(h / cell);
   const c = palette(warm);
@@ -379,14 +380,20 @@ function drawDots(ctx, w, h, level, gain, warm, weight) {
 
   const { cx, cy, radius, intensity } = field(w, h, level, gain);
   const peak = 1.05 * intensity;
+  // The rim band, in units of the radius. Wide enough to hold two or three
+  // rows of dots, so the Bayer threshold has room to draw a ring and not a
+  // broken dashed line.
+  const band = (3 * cell) / radius;
+  const rimPeak = rim * (0.55 + 0.35 * level);
 
   for (let j = 0; j < rows; j++) {
     for (let i = 0; i < cols; i++) {
       const x = i * cell + cell / 2, y = j * cell + cell / 2;
       const d = Math.hypot(x - cx, y - cy) / radius;
-      if (d > 1) continue;
+      if (d > 1 + band) continue;
       // Same falloff as the smooth version, then thresholded.
-      const v = peak * Math.pow(1 - d, 2.1);
+      let v = d < 1 ? peak * Math.pow(1 - d, 2.1) : 0;
+      if (rimPeak > 0) v += rimPeak * Math.max(0, 1 - Math.abs(d - 1) / band);
       if (v > BAYER[j & 7][i & 7]) {
         // Dot size tracks intensity a little, which keeps the gradient readable
         // at this coarse a pitch without adding a second tone.
@@ -399,12 +406,12 @@ function drawDots(ctx, w, h, level, gain, warm, weight) {
 }
 
 /* One field, two renders. `dither` is a filter on the field, not a different
-   background: breathe turns it off, everything else leaves it on. The switch
-   itself happens under the blur dissolve, so the crossfade is never seen. */
-function drawField(ctx, w, h, level, gain, warm, dither) {
+   background. Every step leaves it on; the smooth render stays for comparison.
+   Any switch happens under the blur dissolve, so the crossfade is never seen. */
+function drawField(ctx, w, h, level, gain, warm, dither, rim) {
   ctx.clearRect(0, 0, w, h);
   if (dither < 1) drawSmooth(ctx, w, h, level, gain, warm, 1 - dither);
-  if (dither > 0) drawDots(ctx, w, h, level, gain, warm, dither);
+  if (dither > 0) drawDots(ctx, w, h, level, gain, warm, dither, rim);
 }
 
 /* ----------------------------------------------------------------------------
@@ -620,7 +627,7 @@ function frame(now) {
   const lvl = Math.max(0, Math.min(1, state.level + drift));
 
   for (const p of phones) {
-    drawField(p.ctx, p.w, p.h, lvl, gain, state.evening, render.dither);
+    drawField(p.ctx, p.w, p.h, lvl, gain, state.evening, render.dither, render.rim);
     if (state.step === "hum") {
       const pr = Math.min(1, ((now - state.stepAt) / 1000) / 10);
       p.toneFill.style.width = (pr * 100) + "%";
@@ -650,13 +657,13 @@ document.querySelectorAll("[data-step]").forEach(b => {
     b.classList.add("on");
     state.step = b.dataset.step;
     state.stepAt = performance.now();
-    dissolveField(STEPS[state.step].dither);
+    dissolveField(STEPS[state.step]);
     syncAll();
     hint({
       home: "Home is still by design. Nothing moves until you do.",
       exercise: "Picking an exercise dissolves the copy and shifts the field a little.",
-      breathe: "Dither off — the breath needs something continuous to follow.",
-      hum: "Dither back on. Turn on the mic or the fake voice; your voice is the only thing moving it.",
+      breathe: "Dithered, with a dotted rim so the circle has an edge to follow.",
+      hum: "Rim off. Turn on the mic or the fake voice; your voice is the only thing moving it.",
     }[state.step]);
   });
 });
