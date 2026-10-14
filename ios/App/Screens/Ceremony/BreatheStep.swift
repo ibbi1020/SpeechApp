@@ -4,11 +4,13 @@ import SwiftUI
 /// Paced breathing at six breaths a minute, four seconds in and six out, three times.
 ///
 /// The circle is the pacer: it grows for the whole inhale and shrinks for the whole
-/// exhale, so nobody has to read a number to know where they are. It holds still for
-/// a few seconds first, because arriving on a screen already mid-breath means missing
-/// the first one.
+/// exhale, so nobody has to read a number to know where they are. It stays off screen
+/// through "Get ready", then resolves in with the first inhale, because arriving on
+/// a ring already mid-breath means missing the first one.
 struct BreatheStep: View {
     @Binding var fill: CGFloat
+    /// Hidden through "Get ready". The ring resolves in with the first "Breathe in".
+    @Binding var showCircle: Bool
     var onDone: (Bool) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -59,6 +61,9 @@ struct BreatheStep: View {
     private func run() async {
         guard phase == .settling else { return }
         fill = 0
+        var hidden = Transaction()
+        hidden.disablesAnimations = true
+        withTransaction(hidden) { showCircle = false }
         try? await Task.sleep(for: .seconds(BreathPacing.settle))
         // Under Reduce Motion the circle holds at one steady size for the whole run.
         // Snapping it large and small every few seconds would be a slow oscillation,
@@ -75,6 +80,11 @@ struct BreatheStep: View {
 
     private func leg(_ next: Phase, to target: CGFloat, seconds: Double) async {
         phase = next
+        if showCircle == false {
+            withAnimation(SpeechBlur.motion(reduceMotion: reduceMotion)) {
+                showCircle = true
+            }
+        }
         if reduceMotion == false {
             withAnimation(.easeInOut(duration: seconds)) { fill = target }
         }
@@ -106,10 +116,11 @@ struct BreathCircle: View {
             // point thick at a full exhale, so each is divided out first and lands at
             // the same rendered size whatever the circle is doing.
             ZStack {
-                // Two passes: a close halo and the line itself. Enough to keep the
-                // edge from looking cut out of the black, not enough to glow.
-                ring(width: 2.5, white: 0.26, blur: 6, scale: scale)
-                ring(width: 1.4, white: 0.52, blur: 0, scale: scale)
+                // Two passes: a close halo and the line itself. Both are 150% thicker
+                // than the 2.5pt halo and 1.4pt line they replace. The blur stays at
+                // 6 so the ring reads heavier without turning into a glow.
+                ring(width: 6.25, white: 0.26, blur: 6, scale: scale)
+                ring(width: 3.5, white: 0.52, blur: 0, scale: scale)
             }
             .scaleEffect(scale)
             .frame(width: diameter, height: diameter)

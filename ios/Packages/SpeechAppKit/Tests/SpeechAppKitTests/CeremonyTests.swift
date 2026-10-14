@@ -66,6 +66,7 @@ struct CeremonyStepTests {
         #expect(CeremonyCopy.breatheLine.lowercased().contains("deep") == false)
         #expect(CeremonyCopy.breatheIn == "Breathe in")
         #expect(CeremonyCopy.breatheOut == "Breathe out")
+        #expect(CeremonyCopy.breatheRate == "Three breaths")
     }
 
     @Test("copy never tells the user to relax or calm down")

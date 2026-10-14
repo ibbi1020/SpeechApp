@@ -6,10 +6,11 @@ import SwiftUI
 struct VocalStep: View {
     var clip: VocalClip
     var phase: HumPhase
+    @Binding var progress: CGFloat
+    @Binding var voice: Double
     var onFinished: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var progress: CGFloat = 0
     @State private var tone = HumTone()
 
     private var secondsLeft: Int {
@@ -30,6 +31,13 @@ struct VocalStep: View {
         .task(id: phase) {
             guard phase == .playing else { return }
             await run()
+        }
+        .task {
+            tone.listen()
+            while Task.isCancelled == false {
+                voice = tone.voice
+                try? await Task.sleep(for: .milliseconds(32))
+            }
         }
         .onDisappear { tone.stop() }
     }

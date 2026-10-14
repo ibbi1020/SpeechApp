@@ -45,7 +45,9 @@ public enum CeremonyCopy {
     public static let breatheIn = "Breathe in"
     public static let breatheOut = "Breathe out"
     public static let breatheButton = "Done"
-    public static let breatheRate = "Six breaths a minute"
+    /// What they just did. The pace is still six a minute, four in and six out, but
+    /// that number here reads as if the exercise was six breaths. It is three.
+    public static let breatheRate = "Three breaths"
 
     public static let exerciseButton = "This one"
 

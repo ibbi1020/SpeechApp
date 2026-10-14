@@ -2,8 +2,8 @@ import AVFoundation
 import Foundation
 import SpeechAppKit
 
-/// A voice to copy, synthesised per exercise. No microphone and no pitch check.
-/// Nothing is recorded.
+/// A voice to copy, synthesised per exercise. The microphone is metered so the
+/// field can follow the user. Nothing is recorded, and pitch is not checked.
 ///
 /// The four exercises come from the two physiologically distinct families of
 /// semi-occluded vocal tract exercise. The steady pair holds one sound source; the
@@ -13,7 +13,12 @@ import SpeechAppKit
 final class HumTone {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
+    private let meter = VoiceMeter()
     private var isWired = false
+    private var isListening = false
+
+    /// Smoothed microphone level, 0...1. Silence stays near 0.
+    var voice: Double { meter.level }
 
     /// One octave, G3 to G4. High enough for a phone speaker to actually carry.
     static let lowHz: Double = 196
@@ -31,20 +36,51 @@ final class HumTone {
         return clip
     }
 
-    func play(_ clip: VocalClip) {
+    /// Opens the microphone. Safe to call more than once. The played note uses
+    /// the same engine, with voice processing so the speaker does not count as the user.
+    func listen() {
+        guard isListening == false else { return }
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default)
+        try? session.setCategory(
+            .playAndRecord,
+            mode: .voiceChat,
+            options: [.defaultToSpeaker, .allowBluetooth]
+        )
         try? session.setActive(true)
+
+        let sampleRate = 44_100.0
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else { return }
+        wire(format)
+
+        let input = engine.inputNode
+        try? input.setVoiceProcessingEnabled(true)
+        let inputFormat = input.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0 else { return }
+        input.removeTap(onBus: 0)
+        // The tap runs on the audio thread. A closure written here would be
+        // isolated to the main actor and trap the first time a buffer arrives.
+        Self.installMeterTap(on: input, format: inputFormat, meter: meter)
+
+        if engine.isRunning == false {
+            engine.prepare()
+            do {
+                try engine.start()
+            } catch {
+                input.removeTap(onBus: 0)
+                return
+            }
+        }
+        isListening = true
+    }
+
+    func play(_ clip: VocalClip) {
+        listen()
 
         let sampleRate = 44_100.0
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
               let buffer = Self.buffer(clip, format: format, sampleRate: sampleRate) else { return }
 
-        if isWired == false {
-            engine.attach(player)
-            engine.connect(player, to: engine.mainMixerNode, format: format)
-            isWired = true
-        }
+        wire(format)
         player.volume = 1
         if engine.isRunning == false {
             do {
@@ -61,9 +97,31 @@ final class HumTone {
 
     func stop() {
         player.stop()
+        if isListening {
+            engine.inputNode.removeTap(onBus: 0)
+            isListening = false
+        }
         if engine.isRunning {
             engine.stop()
         }
+        meter.reset()
+    }
+
+    private nonisolated static func installMeterTap(
+        on input: AVAudioInputNode,
+        format: AVAudioFormat,
+        meter: VoiceMeter
+    ) {
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            meter.observe(buffer)
+        }
+    }
+
+    private func wire(_ format: AVAudioFormat) {
+        guard isWired == false else { return }
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+        isWired = true
     }
 
     /// One up-and-down glide across the ten seconds. A second harmonic makes it read
@@ -135,5 +193,40 @@ final class HumTone {
             return lowHz + (highHz - lowHz) * eased
         }
         return highHz + (lowHz - highHz) * eased
+    }
+}
+
+/// Microphone loudness, smoothed off the audio thread. Nothing is kept.
+private final class VoiceMeter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var smoothed = 0.0
+
+    var level: Double {
+        lock.lock()
+        defer { lock.unlock() }
+        return smoothed
+    }
+
+    func observe(_ buffer: AVAudioPCMBuffer) {
+        guard let channel = buffer.floatChannelData?[0] else { return }
+        let count = Int(buffer.frameLength)
+        guard count > 0 else { return }
+        var sum = 0.0
+        for index in 0 ..< count {
+            let sample = Double(channel[index])
+            sum += sample * sample
+        }
+        let rms = (sum / Double(count)).squareRoot()
+        let raw = DitherHorizon.voiceLevel(rms: rms)
+        lock.lock()
+        let follow = raw > smoothed ? 0.55 : 0.16
+        smoothed += (raw - smoothed) * follow
+        lock.unlock()
+    }
+
+    func reset() {
+        lock.lock()
+        smoothed = 0
+        lock.unlock()
     }
 }

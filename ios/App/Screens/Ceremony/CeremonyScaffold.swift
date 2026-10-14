@@ -11,6 +11,9 @@ struct CeremonyScaffold: View {
     @State private var humPhase: HumPhase = .explain
     @State private var clip = HumTone.rotate()
     @State private var breathFill: CGFloat = 0
+    @State private var showCircle = false
+    @State private var humProgress: CGFloat = 0
+    @State private var humVoice: Double = 0
 
     private var chosen: PracticeFormat.Kind {
         model.chosenKind ?? .conversation
@@ -37,8 +40,14 @@ struct CeremonyScaffold: View {
             CeremonyPalette.background
                 .ignoresSafeArea()
 
-            if model.ceremonyStep == .breathe {
+            if model.ceremonyStep == .breathe, showCircle {
                 BreathCircle(fill: breathFill)
+                    .ignoresSafeArea()
+                    .transition(SpeechBlur.dissolve)
+            }
+
+            if model.ceremonyStep == .hum {
+                HumField(voice: humVoice)
                     .ignoresSafeArea()
                     .transition(SpeechBlur.dissolve)
             }
@@ -80,8 +89,13 @@ struct CeremonyScaffold: View {
             if step != .breathe {
                 breatheDone = false
                 breathFill = 0
+                showCircle = false
             }
-            if step != .hum { humPhase = .explain }
+            if step != .hum {
+                humPhase = .explain
+                humProgress = 0
+                humVoice = 0
+            }
         }
     }
 
@@ -89,13 +103,13 @@ struct CeremonyScaffold: View {
     private var step: some View {
         switch model.ceremonyStep {
         case .breathe:
-            BreatheStep(fill: $breathFill) { done in
+            BreatheStep(fill: $breathFill, showCircle: $showCircle) { done in
                 breatheDone = done
             }
         case .exercise:
             ExerciseStep()
         case .hum:
-            VocalStep(clip: clip, phase: humPhase) {
+            VocalStep(clip: clip, phase: humPhase, progress: $humProgress, voice: $humVoice) {
                 humPhase = .finished
             }
         case .note, .purpose, .speak:

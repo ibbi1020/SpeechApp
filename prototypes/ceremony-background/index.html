@@ -194,7 +194,7 @@
   <h3>The field, per step</h3>
   <ul>
     <li><b>Home, exercise, hum — dithered, no rim.</b> The horizon quantised through an ordered 8×8 Bayer
-      matrix at a <code>w/112</code> dot pitch. Revives the parked dot-dither identity without the
+      matrix at a <code>w/64</code> dot pitch. Revives the parked dot-dither identity without the
       orator figure that was the actual problem, and kills gradient banding on OLED black.</li>
     <li><b>Breathe — dithered, with a rim.</b> Same geometry, same driver, same dots, plus a band of
       dots at the edge of the field. Without it the dots read as a glow, not a circle.</li>
@@ -353,7 +353,8 @@ function drawSmooth(ctx, w, h, level, gain, warm, weight) {
   ctx.beginPath();
   ctx.arc(cx, cy, radius * 0.995, Math.PI, 2 * Math.PI);
   ctx.strokeStyle = `rgba(255,255,255,${(0.1 + 0.16 * level) * weight})`;
-  ctx.lineWidth = Math.max(1, w * 0.0026);
+  // 150% thicker than the w*0.0026 line: the arc is the thing the breath asks you to follow.
+  ctx.lineWidth = Math.max(1, w * 0.0065);
   ctx.stroke();
 }
 
@@ -370,7 +371,7 @@ const BAYER = (() => {
 
 /** The same horizon, quantised to two tones through the Bayer matrix. */
 function drawDots(ctx, w, h, level, gain, warm, weight, rim) {
-  const cell = Math.max(2, Math.round(w / 112));   // dot pitch
+  const cell = Math.max(2, Math.round(w / 64));   // dot pitch. Was w/112; fewer columns, larger dots.
   const cols = Math.ceil(w / cell), rows = Math.ceil(h / cell);
   const c = palette(warm);
 
@@ -390,15 +391,16 @@ function drawDots(ctx, w, h, level, gain, warm, weight, rim) {
     for (let i = 0; i < cols; i++) {
       const x = i * cell + cell / 2, y = j * cell + cell / 2;
       const d = Math.hypot(x - cx, y - cy) / radius;
-      if (d > 1 + band) continue;
-      // Same falloff as the smooth version, then thresholded.
-      let v = d < 1 ? peak * Math.pow(1 - d, 2.1) : 0;
+      if (d > 1.15 + band) continue;
+      // Inverse square from the centre, so the crown thins instead of holding a flat band.
+      let v = d < 1.15 ? peak / (1 + d * d * 7) : 0;
       if (rimPeak > 0) v += rimPeak * Math.max(0, 1 - Math.abs(d - 1) / band);
-      if (v > BAYER[j & 7][i & 7]) {
-        // Dot size tracks intensity a little, which keeps the gradient readable
-        // at this coarse a pitch without adding a second tone.
-        const s = cell * (0.45 + 0.5 * Math.min(1, v));
-        ctx.fillRect(x - s / 2, y - s / 2, s, s);
+      if (v > BAYER[j & 7][i & 7] * 0.85 + 0.07) {
+        // A little larger in the cell than before, so the gaps read as less scatter.
+        const s = cell * (0.62 + 0.38 * Math.min(1, v));
+        ctx.beginPath();
+        ctx.arc(x, y, s / 2, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   }
