@@ -33,7 +33,7 @@ struct VocalStep: View {
             await run()
         }
         .task {
-            tone.listen()
+            await tone.listen()
             while Task.isCancelled == false {
                 voice = tone.voice
                 try? await Task.sleep(for: .milliseconds(32))
@@ -78,7 +78,8 @@ struct VocalStep: View {
 
     private func run() async {
         progress = 0
-        tone.play(clip)
+        // play() waits until the tone finishes. The line has to move while that happens.
+        async let playback: Void = tone.play(clip)
         let clock = ContinuousClock()
         let start = clock.now
         let length = Duration.seconds(VocalClip.seconds)
@@ -88,10 +89,11 @@ struct VocalStep: View {
             if fraction >= 1 {
                 progress = 1
                 onFinished()
-                return
+                break
             }
             try? await Task.sleep(for: .milliseconds(16))
         }
+        await playback
     }
 }
 

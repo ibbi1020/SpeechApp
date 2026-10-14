@@ -64,6 +64,7 @@ struct SessionReportView: View {
             }
         }
         .speechPageTitle("Your reading")
+        .toolbar(.visible, for: .navigationBar)
         .speechBottomBlur()
     }
 

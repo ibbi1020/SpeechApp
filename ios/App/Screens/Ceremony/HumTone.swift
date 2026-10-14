@@ -16,6 +16,8 @@ final class HumTone {
     private let meter = VoiceMeter()
     private var isWired = false
     private var isListening = false
+    /// Shared so a second call waits for the first open instead of activating twice.
+    private var prepareTask: Task<Bool, Never>?
 
     /// Smoothed microphone level, 0...1. Silence stays near 0.
     var voice: Double { meter.level }
@@ -38,24 +40,40 @@ final class HumTone {
 
     /// Opens the microphone. Safe to call more than once. The played note uses
     /// the same engine, with voice processing so the speaker does not count as the user.
-    func listen() {
-        guard isListening == false else { return }
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(
-            .playAndRecord,
-            mode: .voiceChat,
-            options: [.defaultToSpeaker, .allowBluetooth]
-        )
-        try? session.setActive(true)
+    func listen() async {
+        _ = await prepare()
+    }
+
+    /// Turns the session on without blocking the main thread.
+    /// `setActive` from the main thread is the call the runtime warns about.
+    private func prepare() async -> Bool {
+        if isListening { return true }
+        if let prepareTask {
+            return await prepareTask.value
+        }
+        let task = Task { @MainActor () -> Bool in
+            await self.openMicrophone()
+        }
+        prepareTask = task
+        let ready = await task.value
+        if ready == false {
+            prepareTask = nil
+        }
+        return ready
+    }
+
+    private func openMicrophone() async -> Bool {
+        let sessionReady = await Self.activateSession()
+        guard sessionReady, Task.isCancelled == false else { return false }
 
         let sampleRate = 44_100.0
-        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else { return }
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else { return false }
         wire(format)
 
         let input = engine.inputNode
         try? input.setVoiceProcessingEnabled(true)
         let inputFormat = input.outputFormat(forBus: 0)
-        guard inputFormat.sampleRate > 0 else { return }
+        guard inputFormat.sampleRate > 0 else { return false }
         input.removeTap(onBus: 0)
         // The tap runs on the audio thread. A closure written here would be
         // isolated to the main actor and trap the first time a buffer arrives.
@@ -67,14 +85,46 @@ final class HumTone {
                 try engine.start()
             } catch {
                 input.removeTap(onBus: 0)
-                return
+                return false
             }
         }
         isListening = true
+        return true
     }
 
-    func play(_ clip: VocalClip) {
-        listen()
+    /// Category change and activation run off the main actor. On iOS 27 the
+    /// completion-based activate returns immediately. Earlier systems still use
+    /// `setActive`, but not on the main thread.
+    @concurrent
+    private static func activateSession() async -> Bool {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(
+                .playAndRecord,
+                mode: .voiceChat,
+                options: [.defaultToSpeaker, .allowBluetoothHFP]
+            )
+            if #available(iOS 27, *) {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    session.activate(options: []) { activated, error in
+                        if let error, activated == false {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume()
+                        }
+                    }
+                }
+            } else {
+                try session.setActive(true)
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func play(_ clip: VocalClip) async {
+        guard await prepare() else { return }
 
         let sampleRate = 44_100.0
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
@@ -91,11 +141,28 @@ final class HumTone {
         }
 
         player.stop()
-        player.scheduleBuffer(buffer, at: nil, options: .interrupts)
-        player.play()
+        // The async schedule queues the buffer, then waits until it has been
+        // played. Yield so the queue happens before play, without waiting here
+        // for the whole tone.
+        let playback = Task { @MainActor in
+            await self.player.scheduleBuffer(buffer, at: nil, options: .interrupts)
+        }
+        await Task.yield()
+        if #available(iOS 27, *) {
+            try? player.playAudio()
+        } else {
+            player.play()
+        }
+        await withTaskCancellationHandler {
+            await playback.value
+        } onCancel: {
+            playback.cancel()
+        }
     }
 
     func stop() {
+        prepareTask?.cancel()
+        prepareTask = nil
         player.stop()
         if isListening {
             engine.inputNode.removeTap(onBus: 0)

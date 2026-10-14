@@ -1,133 +1,107 @@
 import SwiftUI
-import UIKit
 import SpeechAppKit
 
+/// The passage list. Titles scroll under a soft blur at the top and the bottom,
+/// the same edge treatment the system uses when content meets a bar.
 struct PassageLibraryView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        List {
-            Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
                 Text("Passages")
                     .speechType(.h1)
                     .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    // Room above the large heading. A tight top inset clips it.
-                    .padding(.top, 12)
-                    .listRowInsets(EdgeInsets(
-                        top: 0,
-                        leading: 16,
-                        bottom: 4,
-                        trailing: 16
-                    ))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
                     .accessibilityAddTraits(.isHeader)
-            }
+                    .padding(.top, SpeechSpacing.related)
 
-            Section {
-                ForEach(model.catalog.pickerPassages) { passage in
-                    PassageLibraryRow(passage: passage) {
-                        select(passage)
+                Text("Pick one to read aloud.")
+                    .ceremonyType(.body)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, SpeechSpacing.related)
+
+                if model.catalog.pickerPassages.isEmpty {
+                    Text("Passages didn’t load. Go back and try again.")
+                        .ceremonyType(.body)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, SpeechSpacing.section)
+                } else {
+                    LazyVStack(spacing: 4) {
+                        ForEach(model.catalog.pickerPassages) { passage in
+                            PassageLibraryRow(title: passage.title) {
+                                model.selectPassage(passage)
+                            }
+                        }
                     }
+                    .padding(.top, SpeechSpacing.section)
                 }
             }
+            .padding(.horizontal, SpeechSpacing.page)
+            .padding(.bottom, SpeechSpacing.page)
         }
-        .listSectionSpacing(0)
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(SpeechScreenBackground())
-        .speechPageTitle("Passages")
-        .background(PassageBarTitleHidden())
-    }
-
-    private func select(_ passage: Passage) {
-        model.selectPassage(passage)
+        .scrollEdgeEffectStyle(.soft, for: .top)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .safeAreaBar(edge: .top, spacing: 0) {
+            GlassCircleButton(systemName: "chevron.left", label: "Back") {
+                dismiss()
+            }
+            .padding(.horizontal, SpeechSpacing.page)
+            .padding(.vertical, SpeechSpacing.cluster)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .safeAreaBar(edge: .bottom, spacing: 0) {
+            Color.clear
+                .frame(height: 28)
+                .accessibilityHidden(true)
+        }
+        .background {
+            CeremonyPalette.background
+                .ignoresSafeArea()
+        }
+        .navigationTitle("Passages")
+        .toolbar(.hidden, for: .navigationBar)
+        .background(SpeechEdgeSwipe())
     }
 }
 
+/// A passage title. Opacity tracks the scroll: the row is solid once about
+/// 70% of it is on screen, and it fades as it leaves either edge.
 private struct PassageLibraryRow: View {
-    let passage: Passage
+    let title: String
     let action: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 17pt was the body size. A main list row wants about 60% more presence.
+    @ScaledMetric(relativeTo: .title) private var titleSize: CGFloat = 27
+
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Text(passage.title)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text(passage.durationLabel)
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
-
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
-            }
-            .contentShape(Rectangle())
+        let row = Button(action: action) {
+            Text(title)
+                .font(.system(size: titleSize, weight: .semibold))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(passage.title), \(passage.durationLabel)")
+        .buttonStyle(PassageRowButtonStyle())
+        .accessibilityLabel(title)
+
+        if reduceMotion {
+            row
+        } else {
+            row.scrollTransition(.interactive.threshold(.visible(0.7)), axis: .vertical) { content, phase in
+                content.opacity(phase.isIdentity ? 1 : 0)
+            }
+        }
     }
 }
 
-/// Hides the inline bar title. The H1 in the list is the visible heading.
-/// The navigation title string stays so the next screen's back button can name this one.
-private struct PassageBarTitleHidden: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> Controller {
-        Controller()
-    }
-
-    func updateUIViewController(_ controller: Controller, context: Context) {
-        controller.apply()
-    }
-
-    final class Controller: UIViewController {
-        override func viewDidLoad() {
-            super.viewDidLoad()
-            view.isUserInteractionEnabled = false
-            view.backgroundColor = .clear
-        }
-
-        override func viewIsAppearing(_ animated: Bool) {
-            super.viewIsAppearing(animated)
-            apply()
-        }
-
-        func apply() {
-            guard let bar = navigationController?.navigationBar, let item = screenItem() else { return }
-            item.standardAppearance = hiddenTitle(bar.standardAppearance)
-            item.scrollEdgeAppearance = hiddenTitle(bar.scrollEdgeAppearance ?? bar.standardAppearance)
-            if let compact = bar.compactAppearance {
-                item.compactAppearance = hiddenTitle(compact)
-            }
-            if let compactEdge = bar.compactScrollEdgeAppearance {
-                item.compactScrollEdgeAppearance = hiddenTitle(compactEdge)
-            }
-        }
-
-        private func screenItem() -> UINavigationItem? {
-            var current: UIViewController? = self
-            while let controller = current {
-                if controller.parent is UINavigationController {
-                    return controller.navigationItem
-                }
-                current = controller.parent
-            }
-            return nil
-        }
-
-        private func hiddenTitle(_ appearance: UINavigationBarAppearance) -> UINavigationBarAppearance {
-            let copy = appearance.copy()
-            var title = copy.titleTextAttributes
-            title[.foregroundColor] = UIColor.clear
-            copy.titleTextAttributes = title
-            return copy
-        }
+private struct PassageRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.92 : 1)
+            .animation(SpeechMotion.press, value: configuration.isPressed)
     }
 }

@@ -8,13 +8,16 @@ Sizes below are what you see at the **Large** Dynamic Type setting. Larger and s
 
 ### Fonts
 
-Two jobs. Headings and chrome use SF Pro. Text someone reads — a passage, a prompt, a subtitle, a transcript — uses Instrument Serif, through `SpeechType.reading(_:relativeTo:)`.
+Two jobs. Headings and chrome use SF Pro. A prompt, a subtitle, or a transcript uses Instrument Serif, through `SpeechType.reading(_:relativeTo:)`.
+
+A passage is the exception. Its words use the system serif (New York) at 22pt, with 8pt between words and 14pt between lines. Instrument Serif was tried on passages and was harder to read aloud. Prompts, subtitles, and transcripts stay on Instrument Serif.
 
 | Face | Source | Weight | Roles |
 | --- | --- | --- | --- |
 | SF Pro | System | Semibold (600) | h1, h2, h3, h4, label |
 | SF Pro | System | Regular (400) | body, subtext |
-| Instrument Serif | `font/InstrumentSerif-Regular.ttf` | Regular (400) | reading text only |
+| New York | System serif | Regular (400) | passage words only |
+| Instrument Serif | `font/InstrumentSerif-Regular.ttf` | Regular (400) | prompts, subtitles, transcripts |
 
 Instrument Serif is the only file we ship.
 

@@ -81,6 +81,57 @@ extension View {
     }
 }
 
+/// Keeps the edge swipe after the navigation bar is hidden.
+///
+/// Hiding the bar also hides the system back button, and the navigation
+/// controller then refuses the swipe. Home and the ceremony use a glass
+/// back control instead, so the swipe has to be turned back on by hand.
+struct SpeechEdgeSwipe: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller {
+        Controller()
+    }
+
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        controller.claim()
+    }
+
+    final class Controller: UIViewController, UIGestureRecognizerDelegate {
+        private weak var claimed: UIGestureRecognizer?
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.isUserInteractionEnabled = false
+            view.backgroundColor = .clear
+        }
+
+        override func viewIsAppearing(_ animated: Bool) {
+            super.viewIsAppearing(animated)
+            claim()
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            guard isMovingFromParent || isBeingDismissed else { return }
+            claimed?.delegate = nil
+            claimed = nil
+        }
+
+        func claim() {
+            guard let gesture = navigationController?.interactivePopGestureRecognizer else { return }
+            let canPop = (navigationController?.viewControllers.count ?? 0) > 1
+            if claimed !== gesture {
+                gesture.delegate = self
+                claimed = gesture
+            }
+            gesture.isEnabled = canPop
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            (navigationController?.viewControllers.count ?? 0) > 1
+        }
+    }
+}
+
 /// White pill used to start an exercise. Measured from the reference:
 /// 61pt tall, capsule ends, black SF Pro at 17pt medium.
 enum SpeechStartMetrics {

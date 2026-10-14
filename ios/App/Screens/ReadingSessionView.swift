@@ -7,6 +7,7 @@ struct ReadingSessionView: View {
     private static let log = Logger(subsystem: "com.speechapp", category: "ReadingSessionView")
 
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let passage: Passage
@@ -60,19 +61,30 @@ struct ReadingSessionView: View {
 
     var body: some View {
         ZStack {
-            SpeechScreenBackground()
+            CeremonyPalette.background
+                .ignoresSafeArea()
 
-            passageScroll
-                .blur(radius: fogBlurRadius)
-                .overlay {
-                    Color.black.opacity(fogWashOpacity)
-                        .allowsHitTesting(false)
+            VStack(alignment: .leading, spacing: 0) {
+                GlassCircleButton(systemName: "chevron.left", label: "Back") {
+                    dismiss()
                 }
-                .safeAreaBar(edge: .bottom, spacing: 0) {
-                    bottomChrome
-                }
-                .accessibilityHidden(isFogged)
-                .allowsHitTesting(!isFogged)
+                .padding(.horizontal, SpeechSpacing.page)
+                .padding(.top, SpeechSpacing.related)
+
+                passageScroll
+                    .blur(radius: fogBlurRadius)
+                    .overlay {
+                        Color.black.opacity(fogWashOpacity)
+                            .allowsHitTesting(false)
+                    }
+                    .accessibilityHidden(isFogged)
+                    .allowsHitTesting(!isFogged)
+
+                bottomChrome
+                    .opacity(isFogged ? 0 : 1)
+                    .accessibilityHidden(isFogged)
+                    .allowsHitTesting(!isFogged)
+            }
 
             if isFogged {
                 ReadingCountdownOverlay(remaining: countdownRemaining)
@@ -80,8 +92,9 @@ struct ReadingSessionView: View {
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
         .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
-        .navigationBarTitleDisplayMode(.inline)
-        .speechBottomBlur(bar: false)
+        .navigationTitle(passage.title)
+        .toolbar(.hidden, for: .navigationBar)
+        .background(SpeechEdgeSwipe())
         .background {
             CaretClock(
                 wordCount: passage.words.count,
@@ -125,6 +138,7 @@ struct ReadingSessionView: View {
             ScrollView {
                 passageBody
             }
+            .speechBottomBlur(bar: false)
             .coordinateSpace(.named("reading-passage"))
             .onPreferenceChange(WordLineTops.self) { tops in
                 guard layoutReady, tops != wordTops else { return }
@@ -156,26 +170,28 @@ struct ReadingSessionView: View {
 
     private var passageBody: some View {
         VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(passage.title)
-                        .speechType(.h2)
-                        .foregroundStyle(isFogged ? .tertiary : .primary)
+            VStack(alignment: .leading, spacing: SpeechSpacing.cluster) {
+                Text(passage.title)
+                    .speechType(.h2)
+                    .foregroundStyle(isFogged ? .tertiary : .primary)
 
-                    Text(passage.durationLabel)
-                        .font(.footnote)
-                        .foregroundStyle(isFogged ? .tertiary : .secondary)
-                }
+                Text(passage.durationLabel)
+                    .ceremonyType(.body)
+                    .foregroundStyle(isFogged ? .tertiary : .secondary)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, SpeechSpacing.page)
 
-                ReadingFollowAlong(
-                    words: passage.words,
-                    currentWordID: displayWordID,
-                    dimmed: isFogged
-                )
-                .padding(.top, 28)
+            ReadingFollowAlong(
+                words: passage.words,
+                currentWordID: displayWordID,
+                dimmed: isFogged
+            )
+            .padding(.horizontal, SpeechSpacing.reading)
+            .padding(.top, SpeechSpacing.section)
         }
-        .padding(.horizontal, SpeechSpacing.reading)
-        .padding(.top, 20)
-        .padding(.bottom, 12)
+        .padding(.top, SpeechSpacing.section)
+        .padding(.bottom, SpeechSpacing.related)
     }
 
     private var bottomChrome: some View {
@@ -383,13 +399,17 @@ private struct ReadingFollowAlong: View {
     let currentWordID: String?
     let dimmed: Bool
 
+    /// 22pt at the Large text size. Same face and leading as before Instrument Serif.
+    @ScaledMetric(relativeTo: .title2) private var size: CGFloat = 22
+
     var body: some View {
-        // Was 14. About 20% less gap between lines. The 22pt face is unchanged.
-        WordWrapLayout(spacing: 8, lineSpacing: 11) {
+        // System serif. Instrument Serif, and the tighter 11pt line gap, were
+        // harder to read in a long passage. At Large: 8pt between words, 14pt between lines.
+        WordWrapLayout(spacing: size * 8 / 22, lineSpacing: size * 14 / 22) {
             ForEach(words) { word in
                 let isCurrent = word.id == currentWordID
                 Text(word.surface)
-                    .font(SpeechType.reading(22, relativeTo: .title2))
+                    .font(.system(size: size, weight: .regular, design: .serif))
                     .foregroundStyle(dimmed ? .tertiary : .primary)
                     .underline(isCurrent, color: dimmed ? Color.secondary : Color.primary)
                     .id(word.id)

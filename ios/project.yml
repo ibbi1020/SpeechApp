@@ -67,6 +67,14 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        "UISupportedInterfaceOrientations~ipad":
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         NSMicrophoneUsageDescription: Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Speech is sent to xAI for transcription and live conversation. Topic talks can be kept on this phone so you can listen back. You can delete them anytime.
         NSSpeechRecognitionUsageDescription: Orator uses on-device speech recognition to follow reading and to time topic talks. Recognition runs on your device.
 schemes:
