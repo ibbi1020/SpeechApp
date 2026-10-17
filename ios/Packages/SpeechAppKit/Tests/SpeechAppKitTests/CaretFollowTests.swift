@@ -19,6 +19,31 @@ struct CaretFollowTests {
         }
     }
 
+    @Test("a long burst is fully swept within the catch-up budget")
+    func longBurstCatchesUpFast() {
+        var follow = CaretFollow()
+        follow.noteAnchor(index: 0, speechEnd: 0, hostNow: 0)
+        follow.noteAnchor(index: 8, speechEnd: 2.4, hostNow: 1)
+        var now = 1.0
+        follow.tick(hostNow: now, speaking: false)
+        var reachedAt: Double?
+        for _ in 0..<60 {
+            now += 1.0 / 60
+            follow.tick(hostNow: now, speaking: false)
+            if follow.displayWordIndex == 8, reachedAt == nil { reachedAt = now - 1 }
+        }
+        #expect((reachedAt ?? 1) <= CaretFollow.maxCatchUp * 2)
+        #expect(follow.displayPosition <= 8)
+    }
+
+    @Test("live STT frames are 40 ms")
+    func liveFramesAreShort() {
+        var buffer = PCM16FrameBuffer(frameSeconds: GrokTranscriptionEngine.liveFrameSeconds)
+        let frames = buffer.append(samples: Array(repeating: 0, count: 1_600), sampleRate: 16_000)
+        #expect(frames.count == 2)
+        #expect(frames[0].count == 1_280)
+    }
+
     @Test("silence freezes the mark even if the last pace would keep going")
     func silenceFreezes() {
         var follow = CaretFollow()

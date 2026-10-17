@@ -100,9 +100,8 @@ struct ReadingSessionView: View {
                 wordCount: passage.words.count,
                 generation: caretGeneration,
                 isLive: isLive,
-                speaking: session?.isHearingSpeech == true,
+                session: session,
                 reduceMotion: reduceMotion,
-                anchor: session?.caretAnchor ?? CaretAnchor(index: 0, speechEnd: nil, hostTime: 0),
                 displayIndex: $displayIndex,
                 layoutReady: $layoutReady
             )
@@ -187,6 +186,7 @@ struct ReadingSessionView: View {
                 currentWordID: displayWordID,
                 dimmed: isFogged
             )
+            .equatable()
             .padding(.horizontal, SpeechSpacing.reading)
             .padding(.top, SpeechSpacing.section)
         }
@@ -394,13 +394,21 @@ struct ReadingSessionView: View {
 }
 
 /// Passage words with a single underline on the word being spoken.
-private struct ReadingFollowAlong: View {
+private struct ReadingFollowAlong: View, Equatable {
     let words: [ScriptWord]
     let currentWordID: String?
     let dimmed: Bool
 
     /// 22pt at the Large text size. Same face and leading as before Instrument Serif.
     @ScaledMetric(relativeTo: .title2) private var size: CGFloat = 22
+
+    /// Lets `.equatable()` skip re-diffing every word when only the mic level
+    /// or another piece of chrome changed.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.currentWordID == rhs.currentWordID
+            && lhs.dimmed == rhs.dimmed
+            && lhs.words.map(\.id) == rhs.words.map(\.id)
+    }
 
     var body: some View {
         // System serif. Instrument Serif, and the tighter 11pt line gap, were
@@ -447,9 +455,10 @@ private struct CaretClock: UIViewControllerRepresentable {
     var wordCount: Int
     var generation: Int
     var isLive: Bool
-    var speaking: Bool
+    /// Read on each display-link tick instead of through `body`, so speech and
+    /// anchor changes do not re-render the whole passage.
+    var session: ReadingSession?
     var reduceMotion: Bool
-    var anchor: CaretAnchor
     @Binding var displayIndex: Int
     @Binding var layoutReady: Bool
 
@@ -461,9 +470,8 @@ private struct CaretClock: UIViewControllerRepresentable {
         controller.wordCount = wordCount
         controller.generation = generation
         controller.isLive = isLive
-        controller.speaking = speaking
+        controller.session = session
         controller.reduceMotion = reduceMotion
-        controller.anchor = anchor
         controller.onIndex = { index in
             if displayIndex != index {
                 displayIndex = index
@@ -482,9 +490,8 @@ private struct CaretClock: UIViewControllerRepresentable {
         var wordCount = 0
         var generation = 0
         var isLive = false
-        var speaking = false
+        weak var session: ReadingSession?
         var reduceMotion = false
-        var anchor = CaretAnchor(index: 0, speechEnd: nil, hostTime: 0)
         var onIndex: (Int) -> Void = { _ in }
         var onReady: () -> Void = {}
         private var link: CADisplayLink?
@@ -514,7 +521,7 @@ private struct CaretClock: UIViewControllerRepresentable {
             if isLive {
                 if link == nil {
                     let link = CADisplayLink(target: self, selector: #selector(tick))
-                    link.preferredFrameRateRange = CAFrameRateRange(minimum: 20, maximum: 30, preferred: 30)
+                    link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
                     link.add(to: .main, forMode: .common)
                     self.link = link
                 }
@@ -526,6 +533,8 @@ private struct CaretClock: UIViewControllerRepresentable {
 
         @objc private func tick() {
             guard isLive else { return }
+            let anchor = session?.caretAnchor ?? CaretAnchor(index: 0, speechEnd: nil, hostTime: 0)
+            let speaking = session?.isHearingSpeech == true
             if anchor.hostTime > 0 {
                 follow.noteAnchor(
                     index: anchor.index,

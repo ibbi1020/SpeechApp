@@ -108,6 +108,8 @@ public final class MicAudioSource: AudioSource, @unchecked Sendable {
     public func start() async throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.record, mode: .measurement, options: [.duckOthers])
+        // Ask for ~20 ms hardware buffers so taps arrive often; the default can hold ~100 ms.
+        try? session.setPreferredIOBufferDuration(0.02)
         try session.setActive(true)
 
         let input = engine.inputNode
@@ -115,7 +117,7 @@ public final class MicAudioSource: AudioSource, @unchecked Sendable {
         startHost = ProcessInfo.processInfo.systemUptime
 
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [continuation, startHost] buffer, _ in
+        input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(max(256, (format.sampleRate * 0.02).rounded()))), format: format) { [continuation, startHost] buffer, _ in
             let samples = FileReplayAudioSource.floatSamples(from: buffer)
             let host = ProcessInfo.processInfo.systemUptime - startHost
             continuation.yield(

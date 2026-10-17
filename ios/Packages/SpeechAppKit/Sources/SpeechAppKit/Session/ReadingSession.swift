@@ -75,6 +75,8 @@ public final class ReadingSession {
     private var audioSource: (any AudioSource)?
     private var engine: (any TranscriptionEngine)?
     private var audioTask: Task<Void, Never>?
+    private var audioForwardTask: Task<Void, Never>?
+    private let sendGate = AudioSendGate()
     private var transcriptTask: Task<Void, Never>?
     private var runningAccumulated: TimeInterval = 0
     private var runningStartedAt: Date?
@@ -164,10 +166,28 @@ public final class ReadingSession {
         engineKind = engine.engineKind
 
         try await audioSource.start()
+        // Mic audio goes to Grok straight from the audio stream, off the main
+        // actor. It used to wait for a main-thread hop (and any SwiftUI work
+        // queued there) before every send, which delayed every interim.
+        let gate = sendGate
+        gate.set(open: true)
+        let (mainChunks, mainContinuation) = AsyncStream<AudioChunk>.makeStream(
+            bufferingPolicy: .bufferingNewest(64)
+        )
+        let forwardSource = audioSource
+        let forwardEngine = engine
+        audioForwardTask = Task.detached(priority: .userInitiated) {
+            for await chunk in forwardSource.chunks {
+                if gate.isOpen {
+                    forwardEngine.append(chunk)
+                }
+                mainContinuation.yield(chunk)
+            }
+            mainContinuation.finish()
+        }
         audioTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            for await chunk in audioSource.chunks {
-                self.handle(chunk: chunk)
+            for await chunk in mainChunks {
+                self?.handle(chunk: chunk)
             }
         }
     }
@@ -184,6 +204,7 @@ public final class ReadingSession {
         guard phase == .running || phase == .stalled else { return }
         accumulateRunningTime()
         phase = .paused
+        sendGate.set(open: false)
         isHearingSpeech = false
         speechEnergy = 0
         registrationHealth = .idle
@@ -195,6 +216,7 @@ public final class ReadingSession {
         guard phase == .paused else { return }
         runningStartedAt = Date()
         phase = .running
+        sendGate.set(open: true)
         stallDetector.dismiss()
     }
 
@@ -216,6 +238,7 @@ public final class ReadingSession {
             await Self.awaitTask(audioTask, timeoutMs: Self.audioDrainTimeoutMs)
         }
         audioTask = nil
+        audioForwardTask = nil
 
         // Engine drains late finals into transcriptTask before closing updates.
         // Apple final p50 on device is ~6s; a 2.5s cap cut the tail.
@@ -582,12 +605,15 @@ public final class ReadingSession {
         guard phase != .paused else { return }
         let handleStart = ProcessInfo.processInfo.systemUptime
         pcmStore.append(chunk)
-        engine?.append(chunk)
         onRecordedChunk?(chunk)
 
         let rms = StallDetector.rms(chunk.samples)
         let speaking = rms >= 0.01
-        isHearingSpeech = speaking
+        // Observation fires on every set; only publish real changes so the
+        // Reading screen is not re-rendered for each mic buffer.
+        if isHearingSpeech != speaking {
+            isHearingSpeech = speaking
+        }
         speechEnergy = ListenDrive.normalized(rms: rms)
         refreshRegistrationHealth(speaking: speaking)
 
@@ -670,5 +696,17 @@ public final class ReadingSession {
         addMatchedSyllables(from: produced)
         refreshCommittedMatches()
         stickyHear(committedMatchedIDs)
+    }
+}
+
+/// Lets the off-main audio forwarder honour Pause without touching main-actor state.
+final class AudioSendGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var open = true
+
+    var isOpen: Bool { lock.withLock { open } }
+
+    func set(open value: Bool) {
+        lock.withLock { open = value }
     }
 }
