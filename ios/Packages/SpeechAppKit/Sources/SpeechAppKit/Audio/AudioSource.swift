@@ -117,7 +117,8 @@ public final class MicAudioSource: AudioSource, @unchecked Sendable {
         startHost = ProcessInfo.processInfo.systemUptime
 
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(max(256, (format.sampleRate * 0.02).rounded()))), format: format) { [continuation, startHost] buffer, _ in
+        let tapFrames = AVAudioFrameCount(max(256, (format.sampleRate * 0.02).rounded()))
+        input.installTap(onBus: 0, bufferSize: tapFrames, format: format) { [continuation, startHost] buffer, _ in
             let samples = FileReplayAudioSource.floatSamples(from: buffer)
             let host = ProcessInfo.processInfo.systemUptime - startHost
             continuation.yield(
