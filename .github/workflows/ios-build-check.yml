@@ -23,8 +23,8 @@ jobs:
           set -o pipefail
           xcodebuild build -project SpeechApp.xcodeproj -scheme SpeechApp -configuration Release \
             -destination 'generic/platform=iOS' -derivedDataPath DD CODE_SIGNING_ALLOWED=NO \
-            | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
-          test -d DD/Build/Products/Release-iphoneos/*.app
+            > build.log 2>&1 || { grep -E "error:" build.log | head -50; exit 1; }
+          grep -E "BUILD SUCCEEDED" build.log
       - name: SpeechAppKit tests (simulator)
         working-directory: ios/Packages/SpeechAppKit
         run: |
