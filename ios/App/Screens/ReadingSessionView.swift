@@ -404,7 +404,7 @@ private struct ReadingFollowAlong: View, Equatable {
 
     /// Lets `.equatable()` skip re-diffing every word when only the mic level
     /// or another piece of chrome changed.
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.currentWordID == rhs.currentWordID
             && lhs.dimmed == rhs.dimmed
             && lhs.words.map(\.id) == rhs.words.map(\.id)
