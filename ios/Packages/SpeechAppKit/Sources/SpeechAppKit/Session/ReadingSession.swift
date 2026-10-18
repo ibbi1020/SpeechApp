@@ -171,23 +171,26 @@ public final class ReadingSession {
         // queued there) before every send, which delayed every interim.
         let gate = sendGate
         gate.set(open: true)
-        let (mainChunks, mainContinuation) = AsyncStream<AudioChunk>.makeStream(
+        let (mainChunks, mainContinuation) = AsyncStream<(chunk: AudioChunk, heard: Bool)>.makeStream(
             bufferingPolicy: .bufferingNewest(64)
         )
         let forwardSource = audioSource
         let forwardEngine = engine
         audioForwardTask = Task.detached(priority: .userInitiated) {
             for await chunk in forwardSource.chunks {
-                if gate.isOpen {
+                // Decide once per chunk, so the recording and Grok always agree
+                // on what was heard, however late the main actor runs.
+                let heard = gate.isOpen
+                if heard {
                     forwardEngine.append(chunk)
                 }
-                mainContinuation.yield(chunk)
+                mainContinuation.yield((chunk, heard))
             }
             mainContinuation.finish()
         }
         audioTask = Task { @MainActor [weak self] in
-            for await chunk in mainChunks {
-                self?.handle(chunk: chunk)
+            for await item in mainChunks {
+                self?.handle(chunk: item.chunk, heard: item.heard)
             }
         }
     }
@@ -601,8 +604,8 @@ public final class ReadingSession {
         )
     }
 
-    private func handle(chunk: AudioChunk) {
-        guard phase != .paused else { return }
+    private func handle(chunk: AudioChunk, heard: Bool) {
+        guard heard else { return }
         let handleStart = ProcessInfo.processInfo.systemUptime
         pcmStore.append(chunk)
         onRecordedChunk?(chunk)
