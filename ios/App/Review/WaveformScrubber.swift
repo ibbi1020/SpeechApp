@@ -25,15 +25,15 @@ struct WaveformScrubber: View {
             let width = geo.size.width
             ZStack(alignment: .leading) {
                 WaveformView(audioURL: audioURL) { shape in
-                    shape.fill(Color.secondary.opacity(0.35))
-                    shape.fill(Color.accentColor).mask(alignment: .leading) {
+                    shape.fill(Color.primary.opacity(0.22))
+                    shape.fill(Color.primary).mask(alignment: .leading) {
                         Rectangle().frame(width: width * progress)
                     }
                 }
 
                 Rectangle()
                     .fill(Color.primary)
-                    .frame(width: 2)
+                    .frame(width: 1.5)
                     .offset(x: width * progress)
 
                 ForEach(markers) { marker in

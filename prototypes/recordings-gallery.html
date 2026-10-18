@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<!--
+PROTOTYPE. Throwaway. Not the app.
+
+Question: can someone tell two recordings of the same passage apart,
+and does every recording open, play, and delete the same way?
+
+Screens, and the only moves between them:
+  library   tap a row     -> recording
+  recording Back          -> library
+  recording Delete        -> confirm
+  confirm   Cancel        -> recording (the same one)
+  confirm   Delete        -> library, that recording is gone
+Delete is not on the library. The newest recording is not a different screen.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gallery prototype</title>
+<style>
+  :root {
+    --ink: #f5f5f7;
+    --muted: rgba(245, 245, 247, 0.52);
+    --line: rgba(255, 255, 255, 0.08);
+    --card: #1c1c1e;
+    --phone-w: 390px;
+    --phone-h: 844px;
+    --peek: 88px;
+    --gutter: 24px;
+    --hit: 44px;
+    --symbol: 22px;
+    --button: 50px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #2a2a2c;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .stage {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 20px 16px 32px;
+  }
+  .phone {
+    width: var(--phone-w);
+    height: var(--phone-h);
+    flex: none;
+    background: #000;
+    border-radius: 48px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+  .home {
+    position: absolute;
+    inset: 0;
+    padding: 72px var(--gutter) calc(var(--peek) + 28px);
+    display: flex;
+    flex-direction: column;
+    transform-origin: center 30%;
+  }
+  h1 {
+    margin: 0;
+    font-size: 51px;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+  }
+  .home .grow { flex: 1; }
+  .begin, .play, .confirm-cancel {
+    border: 0;
+    cursor: pointer;
+    font: 600 17px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  .begin {
+    width: 100%;
+    height: var(--button);
+    border-radius: 999px;
+    background: #fff;
+    color: #000;
+  }
+  .begin:active, .play:active, .row:active { transform: scale(0.98); }
+  .sheet {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 0;
+    height: 100%;
+    background: var(--card);
+    border-radius: 32px 32px 40px 40px;
+    display: flex;
+    flex-direction: column;
+    touch-action: none;
+    will-change: transform;
+  }
+  .sheet header {
+    min-height: var(--peek);
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    cursor: grab;
+  }
+  .sheet header:active { cursor: grabbing; }
+  .titles { flex: 1; min-width: 0; }
+  .titles h2 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .titles h2[hidden] { display: none; }
+  .icon-btn {
+    width: var(--hit);
+    height: var(--hit);
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    cursor: pointer;
+    flex: none;
+  }
+  .icon-btn[hidden] { display: none; }
+  .icon-btn svg { width: var(--symbol); height: var(--symbol); display: block; }
+  .icon-btn.trash { color: #ff6961; }
+  .body {
+    flex: 1;
+    overflow: auto;
+    padding: 0 16px 40px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .body.dimmed { opacity: 0.35; pointer-events: none; }
+  .topic {
+    margin: 4px 0 6px;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+  .meta { margin: 0 0 18px; color: var(--muted); font-size: 15px; }
+  .playrow { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+  .play {
+    width: var(--hit);
+    height: var(--hit);
+    border-radius: 999px;
+    background: #fff;
+    color: #000;
+    display: grid;
+    place-items: center;
+    padding: 0;
+  }
+  .play svg { width: 18px; height: 18px; display: block; }
+  .play svg.nudge { margin-left: 2px; }
+  .time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 15px; }
+  .transcript { display: flex; flex-wrap: wrap; gap: 0 2px; }
+  .word {
+    border: 0;
+    background: transparent;
+    color: rgba(245, 245, 247, 0.38);
+    font-family: "Iowan Old Style", Palatino, Georgia, serif;
+    font-size: 17px;
+    line-height: 22px;
+    min-height: var(--hit);
+    padding: 11px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .word.past { color: #f5f5f7; }
+  .word.now { color: #111; background: #f5f5f7; }
+  .row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 16px 0;
+    cursor: pointer;
+    font: inherit;
+  }
+  .row-copy { flex: 1; min-width: 0; }
+  .row b {
+    display: block;
+    font-weight: 600;
+    font-size: 17px;
+    letter-spacing: -0.02em;
+  }
+  .row span.when {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 15px;
+  }
+  .row .chevron {
+    width: 13px;
+    height: 13px;
+    color: rgba(245, 245, 247, 0.35);
+    flex: none;
+  }
+  .row .chevron svg { width: 13px; height: 13px; display: block; }
+  .empty {
+    min-height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .confirm {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 16px;
+    padding: 18px;
+    border-radius: 18px;
+    background: #2c2c2e;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  }
+  .confirm .ask {
+    margin: 0 0 6px;
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .confirm .note {
+    margin: 0 0 16px;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.35;
+  }
+  .confirm-delete, .confirm-cancel {
+    width: 100%;
+    height: var(--button);
+    border-radius: 999px;
+    font: 600 17px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+    cursor: pointer;
+  }
+  .confirm-delete {
+    border: 0;
+    background: #3a1c1c;
+    color: #ffb4ab;
+    margin-bottom: 8px;
+  }
+  .confirm-cancel {
+    background: #3a3a3c;
+    color: #fff;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .begin:active, .play:active, .row:active { transform: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="phone" id="phone">
+      <div class="home" id="home">
+        <h1>Find your voice</h1>
+        <div class="grow"></div>
+        <button class="begin" id="begin" type="button">Begin</button>
+      </div>
+      <section class="sheet" id="sheet" aria-label="Gallery">
+        <header id="grab">
+          <button class="icon-btn" id="back" type="button" data-action="back" aria-label="Back" hidden></button>
+          <div class="titles">
+            <h2 id="sheet-title">Gallery</h2>
+          </div>
+          <button class="icon-btn trash" id="trash" type="button" data-action="ask-delete" aria-label="Delete recording" hidden></button>
+          <button class="icon-btn" id="close" type="button" aria-label="Close"></button>
+        </header>
+        <div class="body" id="body"></div>
+        <div class="confirm" id="confirm" hidden>
+          <p class="ask" id="confirm-ask">Delete this recording from this phone?</p>
+          <p class="note" id="confirm-note">The audio and the transcript are removed. You cannot get them back.</p>
+          <button class="confirm-delete" type="button" data-action="confirm-delete">Delete</button>
+          <button class="confirm-cancel" type="button" data-action="cancel-delete">Cancel</button>
+        </div>
+      </section>
+    </div>
+  </div>
+<script>
+const PASSAGE = "The window was open and the curtain moved once, then settled. She kept reading and did not look up until the page was done.";
+const STARTER = [
+  ["w2", "Reading", "The open window", "Today", "4:10 pm", 1, PASSAGE],
+  ["w1", "Reading", "The open window", "Today", "9:41 am", 2, PASSAGE],
+  ["t1", "Talk", "A time you changed your mind", "Today", "8:05 am", 3, "I was sure I wanted to stay. Then I heard myself say it out loud, and I knew I was wrong. So I changed my mind before the week was over."],
+  ["t0", "Talk", "A time you changed your mind", "Yesterday", "6:20 pm", 4, "I was sure I wanted to stay. Then I heard myself say it out loud, and I knew I was wrong. So I changed my mind before the week was over."],
+  ["c1", "Conversation", "A short exchange", "Yesterday", "1:15 pm", 5, "Could you say that once more, a little slower? I caught the first half and lost the rest when the train went by."],
+  ["t2", "Talk", "The street I grew up on", "Tuesday", "7:40 pm", 6, "Our street was narrow and loud in the evening. I can still name every shop between the corner and the school gate."]
+];
+
+function clock(seconds) {
+  const s = Math.max(0, Math.round(seconds));
+  return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+}
+
+function makeRecording(row) {
+  const words = row[6].split(" ");
+  const seconds = Math.round(words.length * 0.7);
+  return {
+    id: row[0],
+    format: row[1],
+    topic: row[2],
+    day: row[3],
+    time: row[4],
+    order: row[5],
+    words,
+    seconds,
+    duration: clock(seconds)
+  };
+}
+
+function freshModel() {
+  return {
+    screen: "library",
+    viewingId: null,
+    recordings: STARTER.map(makeRecording).sort((a, b) => a.order - b.order)
+  };
+}
+
+function recordingById(model, id) {
+  return model.recordings.find(item => item.id === id) || null;
+}
+
+function step(model, action) {
+  if (action.type === "open") {
+    if (model.screen !== "library") return model;
+    if (!recordingById(model, action.id)) return model;
+    return { ...model, screen: "recording", viewingId: action.id };
+  }
+  if (action.type === "back") {
+    if (model.screen === "library") return model;
+    return { ...model, screen: "library", viewingId: null };
+  }
+  if (action.type === "askDelete") {
+    if (model.screen !== "recording") return model;
+    if (action.id !== model.viewingId) return model;
+    return { ...model, screen: "confirm" };
+  }
+  if (action.type === "cancelDelete") {
+    if (model.screen !== "confirm") return model;
+    return { ...model, screen: "recording" };
+  }
+  if (action.type === "confirmDelete") {
+    if (model.screen !== "confirm" || !model.viewingId) return model;
+    const recordings = model.recordings.filter(item => item.id !== model.viewingId);
+    return { screen: "library", viewingId: null, recordings };
+  }
+  return model;
+}
+
+function icon(name) {
+  const common = 'fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"';
+  const paths = {
+    back: `<path d="M14.5 6 8.5 12l6 6" ${common}/>`,
+    forward: `<path d="M9.5 6l6 6-6 6" ${common}/>`,
+    close: `<path d="M8 8l8 8M16 8l-8 8" ${common}/>`,
+    play: '<path d="M9 7.2v9.6l8.2-4.8L9 7.2z" fill="currentColor"/>',
+    pause: '<path d="M8 7h2.4v10H8zm5.6 0H16v10h-2.4z" fill="currentColor"/>',
+    trash: `<path d="M5.5 7.5h13M9.5 7.5V6h5v1.5M8 7.5l.7 11h6.6l.7-11" ${common}/>`
+  };
+  const nudge = name === "play" ? " nudge" : "";
+  return `<svg class="${nudge.trim()}" viewBox="0 0 24 24" aria-hidden="true">${paths[name]}</svg>`;
+}
+
+const phone = document.getElementById("phone");
+const home = document.getElementById("home");
+const sheet = document.getElementById("sheet");
+const body = document.getElementById("body");
+const closeBtn = document.getElementById("close");
+const backBtn = document.getElementById("back");
+const trashBtn = document.getElementById("trash");
+const titleEl = document.getElementById("sheet-title");
+const confirmEl = document.getElementById("confirm");
+const confirmAsk = document.getElementById("confirm-ask");
+const confirmNote = document.getElementById("confirm-note");
+backBtn.innerHTML = icon("back");
+trashBtn.innerHTML = icon("trash");
+closeBtn.innerHTML = icon("close");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const params = new URLSearchParams(location.search);
+
+let model = freshModel();
+let playing = false;
+let playTime = 0;
+let timer = null;
+
+let offset = 0;
+let vel = 0;
+let dragging = false;
+let animating = false;
+let lastY = 0;
+let lastT = 0;
+let lastMoveT = 0;
+
+function phoneH() { return phone.clientHeight; }
+function closedOffset() { return phoneH() - 88; }
+function current() { return recordingById(model, model.viewingId); }
+function esc(value) {
+  return value.replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+}
+function stamp(rec) {
+  return rec.day + ", " + rec.time;
+}
+
+function stopPlay() {
+  playing = false;
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+}
+
+function wordIndex(rec) {
+  if (!rec || playTime <= 0) return -1;
+  if (playTime >= rec.seconds) return rec.words.length;
+  const slice = rec.seconds / rec.words.length;
+  return Math.min(rec.words.length - 1, Math.floor(playTime / slice));
+}
+
+function paintPlayhead() {
+  const rec = current();
+  const timeLabel = document.getElementById("time-label");
+  const playBtn = document.getElementById("play-btn");
+  if (timeLabel && rec) timeLabel.textContent = clock(playTime) + " / " + rec.duration;
+  if (playBtn) {
+    playBtn.innerHTML = icon(playing ? "pause" : "play");
+    playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
+  }
+  const index = wordIndex(rec);
+  document.querySelectorAll(".word").forEach((el, i) => {
+    el.classList.toggle("past", index >= 0 && i < index);
+    el.classList.toggle("now", i === index);
+  });
+}
+
+function startPlay() {
+  const rec = current();
+  if (!rec || model.screen !== "recording") return;
+  if (playing) {
+    stopPlay();
+    paintPlayhead();
+    paint();
+    return;
+  }
+  if (playTime >= rec.seconds) playTime = 0;
+  playing = true;
+  if (timer) clearInterval(timer);
+  const stepSize = reduce ? rec.seconds : 0.35;
+  const advance = () => {
+    const live = current();
+    if (!live || model.screen !== "recording") { stopPlay(); paintPlayhead(); paint(); return; }
+    playTime = Math.min(live.seconds, playTime + stepSize);
+    if (playTime >= live.seconds) stopPlay();
+    paintPlayhead();
+    paint();
+  };
+  if (reduce) advance();
+  else timer = setInterval(advance, 250);
+  paintPlayhead();
+  paint();
+}
+
+function leaveRecording() {
+  stopPlay();
+  playTime = 0;
+}
+
+function dispatch(action) {
+  const prev = model.screen;
+  model = step(model, action);
+  if (model.screen !== "recording" || prev !== "recording" && model.screen === "recording") {
+    if (model.screen !== "recording") leaveRecording();
+    else { stopPlay(); playTime = 0; }
+  }
+  if (action.type === "open" || action.type === "back" || action.type === "confirmDelete") {
+    body.scrollTop = 0;
+  }
+  render();
+}
+
+function emptyHTML() {
+  return `<div class="empty"><p>No recordings on this phone.</p></div>`;
+}
+
+function libraryHTML() {
+  if (!model.recordings.length) return emptyHTML();
+  return model.recordings.map(rec => `
+    <button class="row" type="button" data-action="open" data-id="${rec.id}">
+      <span class="row-copy">
+        <b>${esc(rec.topic)}</b>
+        <span class="when">${esc(stamp(rec))}, ${esc(rec.format)}</span>
+      </span>
+      <span class="chevron" aria-hidden="true">${icon("forward")}</span>
+    </button>`).join("");
+}
+
+function transcriptHTML(rec) {
+  return rec.words.map((word, i) =>
+    `<button class="word" type="button" data-action="seek" data-i="${i}">${esc(word)}</button>`
+  ).join("");
+}
+
+function recordingHTML(rec) {
+  return `
+    <h3 class="topic">${esc(rec.topic)}</h3>
+    <p class="meta">${esc(stamp(rec))}, ${esc(rec.format)}</p>
+    <div class="playrow">
+      <button class="play" id="play-btn" type="button" data-action="play" aria-label="Play">${icon("play")}</button>
+      <span class="time" id="time-label">0:00 / ${rec.duration}</span>
+    </div>
+    <div class="transcript">${transcriptHTML(rec)}</div>`;
+}
+
+function render() {
+  const rec = current();
+  const confirming = model.screen === "confirm";
+  const inLibrary = model.screen === "library" || !rec;
+  backBtn.hidden = inLibrary;
+  trashBtn.hidden = model.screen !== "recording";
+  titleEl.hidden = !inLibrary;
+  if (rec) trashBtn.dataset.id = rec.id;
+  body.classList.toggle("dimmed", confirming);
+  confirmEl.hidden = !confirming;
+  if (confirming && rec) {
+    confirmAsk.textContent = "Delete this recording from this phone?";
+    confirmNote.textContent = rec.topic + ", " + stamp(rec) + ". The audio and the transcript are removed. You cannot get them back.";
+  }
+  if (model.screen === "library" || !rec) {
+    if (!rec) model = { ...model, screen: "library", viewingId: null };
+    body.innerHTML = libraryHTML();
+  } else {
+    body.innerHTML = recordingHTML(rec);
+    paintPlayhead();
+  }
+  const closed = closedOffset();
+  const p = closed === 0 ? 1 : 1 - offset / closed;
+  paintSheet(p);
+}
+
+function paint() {
+  const closed = closedOffset();
+  const p = closed === 0 ? 1 : 1 - offset / closed;
+  paintSheet(p);
+}
+
+function paintSheet(p) {
+  const radius = 32 * (1 - Math.min(1, Math.max(0, (p - 0.82) / 0.18)));
+  sheet.style.transform = `translateY(${offset}px)`;
+  sheet.style.borderRadius = `${radius}px ${radius}px 40px 40px`;
+  sheet.style.left = `${10 * (1 - p)}px`;
+  sheet.style.right = `${10 * (1 - p)}px`;
+  document.getElementById("grab").style.minHeight = `${88 - 22 * p}px`;
+  if (model.screen !== "confirm") {
+    body.style.opacity = String(Math.min(1, Math.max(0, (p - 0.18) / 0.4)));
+  }
+  body.style.visibility = p < 0.12 ? "hidden" : "visible";
+  closeBtn.style.opacity = String(Math.min(1, Math.max(0, (p - 0.55) / 0.35)));
+  closeBtn.style.pointerEvents = p > 0.7 ? "auto" : "none";
+  backBtn.style.opacity = closeBtn.style.opacity;
+  trashBtn.style.opacity = closeBtn.style.opacity;
+  const headerHit = closeBtn.style.pointerEvents;
+  backBtn.style.pointerEvents = backBtn.hidden ? "none" : headerHit;
+  trashBtn.style.pointerEvents = trashBtn.hidden ? "none" : headerHit;
+  home.style.transform = `scale(${1 - p * 0.03})`;
+  home.style.opacity = String(1 - p * 0.25);
+}
+
+function snap(to) {
+  if (to === closedOffset()) {
+    stopPlay();
+    if (model.screen !== "library") {
+      model = step(model, { type: "back" });
+      render();
+    }
+  }
+  if (reduce) {
+    offset = to;
+    vel = 0;
+    animating = false;
+    paint();
+    return;
+  }
+  animating = true;
+  const target = to;
+  let prev = performance.now();
+  function frameStep(now) {
+    if (dragging) { animating = false; return; }
+    const dt = Math.min(0.032, (now - prev) / 1000);
+    prev = now;
+    const x = offset - target;
+    const omega = 16;
+    const a = -omega * omega * x - 2 * omega * vel;
+    vel += a * dt;
+    offset += vel * dt;
+    if (Math.abs(offset - target) < 0.5 && Math.abs(vel) < 12) {
+      offset = target;
+      vel = 0;
+      animating = false;
+      paint();
+      return;
+    }
+    paint();
+  }
+  requestAnimationFrame(function frame(now) { frameStep(now); if (animating) requestAnimationFrame(frame); });
+}
+
+function onClick(e) {
+  const button = e.target.closest("[data-action]");
+  if (!button) return;
+  const action = button.dataset.action;
+  if (action === "open") dispatch({ type: "open", id: button.dataset.id });
+  if (action === "back") dispatch({ type: "back" });
+  if (action === "play") startPlay();
+  if (action === "seek") {
+    const rec = current();
+    if (!rec || model.screen !== "recording") return;
+    const index = Number(button.dataset.i);
+    playTime = (rec.seconds / rec.words.length) * index;
+    if (!playing) startPlay();
+    else paintPlayhead();
+  }
+  if (action === "ask-delete") {
+    stopPlay();
+    dispatch({ type: "askDelete", id: button.dataset.id });
+  }
+  if (action === "cancel-delete") dispatch({ type: "cancelDelete" });
+  if (action === "confirm-delete") dispatch({ type: "confirmDelete" });
+}
+
+function onDown(e) {
+  if (e.target.closest("button")) return;
+  const open = offset < 8;
+  if (open && body.contains(e.target) && body.scrollTop > 0) return;
+  dragging = true;
+  animating = false;
+  lastY = e.clientY;
+  lastT = e.timeStamp;
+  vel = 0;
+  try { sheet.setPointerCapture(e.pointerId); } catch (_) {}
+}
+
+function onMove(e) {
+  if (!dragging) return;
+  const dy = e.clientY - lastY;
+  const dt = Math.max(1, e.timeStamp - lastT);
+  lastY = e.clientY;
+  lastT = e.timeStamp;
+  lastMoveT = e.timeStamp;
+  const closed = closedOffset();
+  const open = offset < 8;
+  if (open && body.contains(e.target) && dy < 0) {
+    dragging = false;
+    return;
+  }
+  let next = offset + dy;
+  if (next < 0) next *= 0.28;
+  if (next > closed) next = closed + (next - closed) * 0.28;
+  vel = (dy / dt) * 1000;
+  offset = next;
+  paint();
+}
+
+function onUp() {
+  if (!dragging) return;
+  dragging = false;
+  const closed = closedOffset();
+  const stale = performance.now() - lastMoveT > 80;
+  const v = stale ? 0 : vel;
+  const projected = offset + v * 0.18;
+  snap(v < -650 || projected < closed * 0.62 ? 0 : closed);
+}
+
+sheet.addEventListener("pointerdown", onDown);
+sheet.addEventListener("pointermove", onMove);
+sheet.addEventListener("pointerup", onUp);
+sheet.addEventListener("pointercancel", onUp);
+sheet.addEventListener("click", onClick);
+closeBtn.addEventListener("click", () => snap(closedOffset()));
+document.getElementById("begin").addEventListener("click", () => paint());
+addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && model.screen === "confirm") dispatch({ type: "cancelDelete" });
+});
+
+offset = closedOffset();
+render();
+if (params.get("open") === "1") {
+  offset = 0;
+  vel = 0;
+  animating = false;
+  paint();
+}
+addEventListener("resize", () => {
+  if (offset > phoneH() / 2) offset = closedOffset();
+  paint();
+});
+</script>
+</body>
+</html>

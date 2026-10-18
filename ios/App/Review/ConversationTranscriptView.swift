@@ -1,9 +1,8 @@
-import Flow
 import SwiftUI
 import SpeechAppKit
 
-/// Conversation transcript: each partner line, then the user's answer with the
-/// current word highlighted. Tapping a word jumps there.
+/// Conversation transcript: each partner line, then the user's answer.
+/// The spoken word matches passage reading. Tapping a word jumps there.
 struct ConversationTranscriptView: View {
     let words: [RecordedWord]
     let partnerTurns: [PartnerTurn]
@@ -36,53 +35,41 @@ struct ConversationTranscriptView: View {
         words.last { $0.start <= currentTime && currentTime <= $0.end + 0.15 }?.id
     }
 
+    @ScaledMetric(relativeTo: SpeechReading.textStyle) private var size = SpeechReading.size
+
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(blocks) { block in
-                        VStack(alignment: .leading, spacing: 6) {
-                            if let partner = block.partner, !partner.text.isEmpty {
-                                Text(partner.text)
-                                    .font(SpeechType.reading(15, relativeTo: .subheadline))
-                                    .foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            if !block.words.isEmpty {
-                                HFlow(itemSpacing: 6, rowSpacing: 6) {
-                                    ForEach(block.words) { word in
-                                        Button {
-                                            onWordTap(word)
-                                        } label: {
-                                            Text(word.surface)
-                                                .font(SpeechType.reading(17, relativeTo: .body))
-                                                .padding(.horizontal, 4)
-                                                .padding(.vertical, 2)
-                                                .background {
-                                                    if currentWordID == word.id {
-                                                        Capsule(style: .continuous)
-                                                            .fill(Color.accentColor.opacity(0.25))
-                                                    }
-                                                }
-                                                .foregroundStyle(word.isFiller ? Color.secondary : Color.primary)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .id(word.id)
-                                    }
+        VStack(alignment: .leading, spacing: SpeechSpacing.related) {
+            ForEach(blocks) { block in
+                VStack(alignment: .leading, spacing: SpeechSpacing.cluster) {
+                    if let partner = block.partner, !partner.text.isEmpty {
+                        Text(partner.text)
+                            .font(SpeechType.reading(15, relativeTo: .subheadline))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if !block.words.isEmpty {
+                        WordWrapLayout(
+                            spacing: SpeechReading.scaledGap(SpeechReading.wordGap, size: size),
+                            lineSpacing: SpeechReading.scaledGap(SpeechReading.lineGap, size: size)
+                        ) {
+                            ForEach(block.words) { word in
+                                Button {
+                                    onWordTap(word)
+                                } label: {
+                                    SpeechReadingWord(
+                                        text: word.surface,
+                                        isCurrent: currentWordID == word.id,
+                                        quiet: word.isFiller,
+                                        size: size
+                                    )
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .onChange(of: currentWordID) { _, newValue in
-                guard let newValue else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(newValue, anchor: .center)
-                }
             }
         }
-        .frame(minHeight: 120, maxHeight: 260)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

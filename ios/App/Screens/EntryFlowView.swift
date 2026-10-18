@@ -29,40 +29,51 @@ struct EntryFlowView: View {
     }
 
     private var home: some View {
-        ZStack {
-            CeremonyPalette.background
-                .ignoresSafeArea()
+        // Read the insets on a reader that still sits in the safe area.
+        // Ignoring safe area on the reader itself reports them as zero, and
+        // then the greeting and the gallery controls land in the status bar.
+        GeometryReader { geo in
+            let top = geo.safeAreaInsets.top
+            let bottom = geo.safeAreaInsets.bottom
+            ZStack(alignment: .top) {
+                CeremonyPalette.background
+                    .ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 0) {
-                homeHeader
-                Spacer(minLength: SpeechSpacing.section)
-                Button {
-                    model.beginCeremony()
-                } label: {
-                    Text("Begin")
+                // The sheet is taller than this column so it can cover the status bar
+                // when it opens. Pin the column to the reader, or the stack grows with
+                // the sheet and Begin slides down under the glass.
+                VStack(alignment: .leading, spacing: 0) {
+                    homeHeader
+                    Spacer(minLength: SpeechSpacing.section)
+                    Button {
+                        model.beginCeremony()
+                    } label: {
+                        Text("Begin")
+                    }
+                    .buttonStyle(SpeechStartButtonStyle())
                 }
-                .buttonStyle(SpeechStartButtonStyle())
+                .padding(.horizontal, SpeechSpacing.page)
+                .padding(.top, SpeechSpacing.related)
+                .padding(.bottom, GallerySheet.homeClearance(bottomInset: bottom))
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+
+                GallerySheet(
+                    topInset: top,
+                    bottomInset: bottom,
+                    containerHeight: geo.size.height + top + bottom
+                )
+                .frame(width: geo.size.width, height: geo.size.height + top + bottom)
+                .offset(y: -top)
             }
-            .padding(.horizontal, SpeechSpacing.page)
-            .padding(.top, SpeechSpacing.related)
-            .padding(.bottom, SpeechSpacing.page)
         }
     }
 
     private var homeHeader: some View {
-        HStack(alignment: .top) {
-            Text(EntryGreeting.line(hasBegunBefore: model.hasBegunBefore))
-                .speechType(.h1)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-                .accessibilityAddTraits(.isHeader)
-
-            Spacer(minLength: SpeechSpacing.related)
-
-            GlassCircleButton(systemName: "waveform", label: "Your recordings") {
-                model.openRecordings()
-            }
-        }
+        Text(EntryGreeting.line(hasBegunBefore: model.hasBegunBefore))
+            .speechType(.h1)
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .accessibilityAddTraits(.isHeader)
     }
 }

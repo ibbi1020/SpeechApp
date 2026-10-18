@@ -10,7 +10,6 @@ struct ConversationSessionView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @State private var session: ConversationSession?
     @State private var fakeMouth: FakeConversationMouth?
@@ -21,7 +20,6 @@ struct ConversationSessionView: View {
     @State private var didPostEnded = false
     @State private var errorMessage: String?
     @State private var canRetry = true
-    @State private var countdownRemaining: Int?
     @State private var showStopConfirm = false
     @State private var didRouteFinish = false
     @State private var eventPump: Task<Void, Never>?
@@ -42,10 +40,6 @@ struct ConversationSessionView: View {
 
     private var isPaused: Bool {
         phase == .paused
-    }
-
-    private var isFogged: Bool {
-        countdownRemaining != nil
     }
 
     private var showsFailure: Bool {
@@ -69,21 +63,10 @@ struct ConversationSessionView: View {
     private var orbPhase: VoiceOrb.Phase {
         .conversation(
             phase: phase,
-            isCountdown: isFogged,
+            isCountdown: false,
             floor: floor.owner,
             agentSpeaking: agentSpeaking
         )
-    }
-
-    private var fogBlurRadius: CGFloat {
-        isFogged && !reduceTransparency ? SpeechCountdown.fogBlurRadius : 0
-    }
-
-    private var fogWashOpacity: Double {
-        guard isFogged else { return 0 }
-        return reduceTransparency
-            ? SpeechCountdown.reducedTransparencyWash
-            : SpeechCountdown.fogWashOpacity
     }
 
     var body: some View {
@@ -94,26 +77,14 @@ struct ConversationSessionView: View {
                 failureView
             } else {
                 liveCanvas
-                    .blur(radius: fogBlurRadius)
-                    .overlay {
-                        Color.black.opacity(fogWashOpacity)
-                            .allowsHitTesting(false)
-                    }
                     .safeAreaBar(edge: .bottom, spacing: 0) {
                         bottomChrome
                     }
-                    .accessibilityHidden(isFogged || showStopConfirm)
-                    .allowsHitTesting(!isFogged && !showStopConfirm)
+                    .accessibilityHidden(showStopConfirm)
+                    .allowsHitTesting(!showStopConfirm)
                     // The stop card does not sit on a flat scrim: the conversation
                     // behind it blurs and dims as one layer.
                     .blurBackdrop(showStopConfirm)
-            }
-
-            if isFogged {
-                ReadingCountdownOverlay(
-                    remaining: countdownRemaining,
-                    instruction: "Take a deep breath. Talk when you're ready."
-                )
             }
 
             if showStopConfirm {
@@ -130,10 +101,8 @@ struct ConversationSessionView: View {
                 .transition(SpeechBlur.dissolve)
             }
         }
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: phase)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
-        .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .speechPageTitle("Conversation")
         .speechBottomBlur(bar: false)
         .navigationSubtitle("\(model.budget.label) used this month")
@@ -282,22 +251,12 @@ struct ConversationSessionView: View {
             startLevelPump()
             await startListenBack(session: built.session, mouth: built.mouth)
 
-            built.session.beginCountdown()
+            built.session.enterConnecting()
 
             let prepareTask = Task {
                 try await built.mouth.prepare()
             }
-
-            for n in [3, 2, 1] {
-                try Task.checkCancellation()
-                countdownRemaining = n
-                try await Task.sleep(for: .seconds(1))
-            }
             try Task.checkCancellation()
-            // Fog and chrome update together: lift overlay, then mount orb + controls.
-            countdownRemaining = nil
-            built.session.enterConnecting()
-
             try await prepareTask.value
 
             // Format 2: Bearer token from gitignored plist — no mint server.
@@ -322,11 +281,9 @@ struct ConversationSessionView: View {
                 throw ConversationSessionError.missingAPIKey
             }
         } catch is CancellationError {
-            countdownRemaining = nil
             await mouth?.close()
             await postEndedIfNeeded()
         } catch {
-            countdownRemaining = nil
             await mouth?.close()
             await postEndedIfNeeded()
             if let mintError = error as? MintError, mintError == .budget {
@@ -378,7 +335,6 @@ struct ConversationSessionView: View {
         mouth = nil
         fakeMouth = nil
         mint = nil
-        countdownRemaining = nil
     }
 
     /// Mouth owns the mic and partner audio; the orb reads both levels.
@@ -611,7 +567,6 @@ struct ConversationSessionView: View {
         debugLoop?.cancel()
         debugLoop = nil
         endConversationBackgroundTask()
-        countdownRemaining = nil
 
         switch model.route {
         case .conversationReport, .crisis:

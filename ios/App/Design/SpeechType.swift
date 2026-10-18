@@ -6,8 +6,7 @@ import UIKit
 /// Headings and chrome are SF Pro. Instrument Serif is for a prompt, a subtitle,
 /// or a transcript. Use `reading(_:relativeTo:)`.
 ///
-/// A passage does not use it. The words of a passage stay in the system serif,
-/// which is easier to read aloud. See `ReadingFollowAlong`.
+/// Words you read aloud, live or on listen-back, share `SpeechReading`.
 ///
 /// Headings use a perfect fourth (4/3): each step is one-third larger than the one below.
 /// Body stays at 16pt. Sizes are rounded to whole points.

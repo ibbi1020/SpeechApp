@@ -17,7 +17,6 @@ struct MonologueSessionView: View {
     @State private var listenError: String?
     @State private var showLeaveConfirm = false
     @State private var didRouteFinish = false
-    @State private var countdownRemaining: Int?
     @State private var isPreparing = false
     @State private var startTask: Task<Void, Never>?
 
@@ -48,9 +47,9 @@ struct MonologueSessionView: View {
     @State private var isFinalizingAudio = false
     @State private var saveErrorMessage: String?
 
-    /// Fog the notes page for the 3-2-1 after I’m ready. The take clock stays stopped until it ends.
+    /// Fog the notes page while the microphone starts. The take clock stays stopped until it ends.
     private var isFogged: Bool {
-        countdownRemaining != nil || isPreparing
+        isPreparing
     }
 
     private var fogBlurRadius: CGFloat {
@@ -77,7 +76,7 @@ struct MonologueSessionView: View {
             // at zero height stays blank for the rest of the take.
             ZStack {
                 if isFogged {
-                    ReadingCountdownOverlay(remaining: countdownRemaining, instruction: "")
+                    ReadingCountdownOverlay()
                 }
 
                 if showLeaveConfirm {
@@ -105,7 +104,6 @@ struct MonologueSessionView: View {
             .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showLeaveConfirm)
             .allowsHitTesting(isFogged || showLeaveConfirm)
         }
-        .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
         .navigationBarTitleDisplayMode(.inline)
         .speechBottomBlur(bar: false)
         .navigationBarBackButtonHidden(true)
@@ -221,9 +219,9 @@ struct MonologueSessionView: View {
 
     @ViewBuilder
     private func sessionChrome(_ session: MonologueSession, live: Bool) -> some View {
-        // Mount the orb only once the take is up. The 3-2-1 still shows the
+        // Mount the orb only once the take is up. Preparing still shows the
         // planning page; swapping that page out from under a live WebGL view
-        // is what blanks the orb. Format 2 inserts the orb once, after the countdown.
+        // is what blanks the orb. Format 2 inserts the orb once listening starts.
         if live {
             liveChrome(session, live: true)
         } else if session.phase == .planning || session.phase == .between {
@@ -528,7 +526,7 @@ struct MonologueSessionView: View {
 
     // MARK: - Live capture
 
-    /// A 3-2-1 plays after the Grok relay is ready, then `session.ready()` starts the take clock.
+    /// The microphone starts after the Grok relay is ready, then `session.ready()` starts the take clock.
     private func beginListen(_ session: MonologueSession) async {
         dismissKeyboardImmediately()
         guard !isStartingListen else { return }
@@ -556,12 +554,8 @@ struct MonologueSessionView: View {
         }
 
         isPreparing = true
-        countdownRemaining = 3
         VoiceOrbPreloader.warmup()
-        defer {
-            isPreparing = false
-            countdownRemaining = nil
-        }
+        defer { isPreparing = false }
 
         let engine = GrokTranscriptionEngine(
             relayBase: relay.base,
@@ -576,12 +570,7 @@ struct MonologueSessionView: View {
 
         var startedSource: MicAudioSource?
         do {
-            for n in [3, 2, 1] {
-                try Task.checkCancellation()
-                countdownRemaining = n
-                try await Task.sleep(for: .seconds(1))
-            }
-            countdownRemaining = nil
+            try Task.checkCancellation()
             try await prepareTask.value
             try Task.checkCancellation()
             try await engine.start(locale: Locale(identifier: "en-US"), preference: .autoPreferSpeechTranscriber)

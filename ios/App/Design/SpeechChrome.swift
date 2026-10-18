@@ -36,8 +36,6 @@ enum SpeechCountdown {
     static let fogWashOpacity: Double = 0.18
     /// Heavier wash when Reduce Transparency disables blur.
     static let reducedTransparencyWash: Double = 0.52
-    static let digitSize: CGFloat = 92
-    static let instruction = "Take a deep breath and read at your own pace"
 }
 
 struct SpeechScreenBackground: View {
@@ -221,62 +219,16 @@ extension View {
     }
 }
 
-/// Sharp 3-2-1 over a fogged passage. The number is the only in-focus object.
+/// Spinner while the microphone is starting. Not a count.
 struct ReadingCountdownOverlay: View {
-    let remaining: Int?
-    var instruction: String = SpeechCountdown.instruction
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var showsInstruction: Bool {
-        remaining != nil && !instruction.isEmpty
-    }
-
-    private var accessibilityText: String {
-        if let remaining {
-            showsInstruction ? "\(remaining). \(instruction)" : "\(remaining)"
-        } else {
-            "Preparing"
-        }
-    }
-
     var body: some View {
-        ZStack {
-            if let remaining {
-                Text("\(remaining)")
-                    .font(.system(size: SpeechCountdown.digitSize, weight: .semibold))
-                    .monospacedDigit()
-                    .contentTransition(reduceMotion ? .opacity : .numericText())
-                    .foregroundStyle(.primary)
-                    .animation(
-                        reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle,
-                        value: remaining
-                    )
-            } else {
-                ProgressView()
-                    .controlSize(.large)
-                    .tint(.primary)
-            }
-
-            if showsInstruction {
-                Text(instruction)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 260)
-                    .offset(y: SpeechCountdown.digitSize / 2 + 22)
-                    .transition(SpeechBlur.dissolve)
-            }
-        }
-        .animation(
-            reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle,
-            value: remaining == nil
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea()
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.updatesFrequently)
-        .accessibilityLabel(accessibilityText)
-        .allowsHitTesting(false)
+        ProgressView()
+            .controlSize(.large)
+            .tint(.primary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea()
+            .accessibilityLabel("Preparing")
+            .allowsHitTesting(false)
     }
 }
 
