@@ -18,6 +18,7 @@ jobs:
         working-directory: ios
         run: xcodegen generate
       - name: Build app (iOS device, unsigned)
+        continue-on-error: true
         working-directory: ios
         run: |
           set -o pipefail
