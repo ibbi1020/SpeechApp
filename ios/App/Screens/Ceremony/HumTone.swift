@@ -39,7 +39,8 @@ final class HumTone {
     }
 
     /// Opens the microphone. Safe to call more than once. The played note uses
-    /// the same engine, with voice processing so the speaker does not count as the user.
+    /// the same engine. Voice processing stays off: it learns a held hum and,
+    /// a few seconds in, takes the hum out of the meter with the speaker.
     func listen() async {
         _ = await prepare()
     }
@@ -71,7 +72,6 @@ final class HumTone {
         wire(format)
 
         let input = engine.inputNode
-        try? input.setVoiceProcessingEnabled(true)
         let inputFormat = input.outputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0 else { return false }
         input.removeTap(onBus: 0)
@@ -99,9 +99,12 @@ final class HumTone {
     private static func activateSession() async -> Bool {
         let session = AVAudioSession.sharedInstance()
         do {
+            // Voice processing takes the speaker out of the mic. A held hum matches
+            // that speaker, so once the canceller settles it takes the hum out too
+            // and the field sinks back to rest. Measurement mode skips that.
             try session.setCategory(
                 .playAndRecord,
-                mode: .voiceChat,
+                mode: .measurement,
                 options: [.defaultToSpeaker, .allowBluetoothHFP]
             )
             if #available(iOS 27, *) {
@@ -128,9 +131,11 @@ final class HumTone {
 
         let sampleRate = 44_100.0
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
-              let buffer = Self.buffer(clip, format: format, sampleRate: sampleRate) else { return }
+              let tone = Self.buffer(clip, format: format, sampleRate: sampleRate) else { return }
 
         wire(format)
+        meter.setPlaybackRMS(tone.rms)
+        defer { meter.setPlaybackRMS(0) }
         player.volume = 1
         if engine.isRunning == false {
             do {
@@ -145,7 +150,7 @@ final class HumTone {
         // played. Yield so the queue happens before play, without waiting here
         // for the whole tone.
         let playback = Task { @MainActor in
-            await self.player.scheduleBuffer(buffer, at: nil, options: .interrupts)
+            await self.player.scheduleBuffer(tone.buffer, at: nil, options: .interrupts)
         }
         await Task.yield()
         if #available(iOS 27, *) {
@@ -153,7 +158,10 @@ final class HumTone {
         } else {
             player.play()
         }
+        // The schedule call can return before the tone has finished playing.
+        // Hold the leak cut for the whole exercise either way.
         await withTaskCancellationHandler {
+            try? await Task.sleep(for: .seconds(VocalClip.seconds))
             await playback.value
         } onCancel: {
             playback.cancel()
@@ -194,11 +202,16 @@ final class HumTone {
     /// One up-and-down glide across the ten seconds. A second harmonic makes it read
     /// as a voice, not a beep. Peak is high on purpose: a quiet low sine disappears on
     /// a phone speaker.
+    private struct PlayableTone {
+        var buffer: AVAudioPCMBuffer
+        var rms: Double
+    }
+
     private static func buffer(
         _ clip: VocalClip,
         format: AVAudioFormat,
         sampleRate: Double
-    ) -> AVAudioPCMBuffer? {
+    ) -> PlayableTone? {
         let seconds = VocalClip.seconds
         let frameCount = AVAudioFrameCount(sampleRate * seconds)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
@@ -209,6 +222,7 @@ final class HumTone {
         let total = Int(frameCount)
         let harmonic = self.harmonic(clip)
         var phase = 0.0
+        var sum = 0.0
         for index in 0..<total {
             let time = Double(index) / sampleRate
             let hz = frequency(at: time, seconds: seconds)
@@ -223,8 +237,10 @@ final class HumTone {
                 sample *= Float(remaining) / Float(fade)
             }
             samples[index] = sample
+            sum += Double(sample) * Double(sample)
         }
-        return buffer
+        let rms = total > 0 ? (sum / Double(total)).squareRoot() : 0
+        return PlayableTone(buffer: buffer, rms: rms)
     }
 
     /// Nasal sounds damp the upper harmonic; trills keep more of it so the buzz is
@@ -266,12 +282,18 @@ final class HumTone {
 /// Microphone loudness, smoothed off the audio thread. Nothing is kept.
 private final class VoiceMeter: @unchecked Sendable {
     private let lock = NSLock()
-    private var smoothed = 0.0
+    private var state = HumLevel()
 
     var level: Double {
         lock.lock()
         defer { lock.unlock() }
-        return smoothed
+        return state.smoothed
+    }
+
+    func setPlaybackRMS(_ rms: Double) {
+        lock.lock()
+        state.playbackRMS = max(0, rms)
+        lock.unlock()
     }
 
     func observe(_ buffer: AVAudioPCMBuffer) {
@@ -284,16 +306,14 @@ private final class VoiceMeter: @unchecked Sendable {
             sum += sample * sample
         }
         let rms = (sum / Double(count)).squareRoot()
-        let raw = DitherHorizon.voiceLevel(rms: rms)
         lock.lock()
-        let follow = raw > smoothed ? 0.55 : 0.16
-        smoothed += (raw - smoothed) * follow
+        state.observe(micRMS: rms)
         lock.unlock()
     }
 
     func reset() {
         lock.lock()
-        smoothed = 0
+        state.reset()
         lock.unlock()
     }
 }
