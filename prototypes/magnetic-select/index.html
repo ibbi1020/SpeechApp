@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Magnetic select — prototype</title>
+<!--
+  Throwaway. One question: does a magnetic cluster of three read as the
+  exercise choice, on this screen, in this app?
+
+  The cluster is Bencho's magnetic select (MIT, https://bencho.dev/licence).
+  The pictures it shipped with are not included — they are not licensed to
+  travel, and this repo has none of its own. The ground under the cluster is
+  drawn here, from the ceremony's dither horizon, one plate per exercise.
+  Open this file. Nothing else to install.
+-->
+<style>
+  :root {
+    --paper: #e8e1d4;
+    --card: #f3eee6;
+    --ink: #1a1713;
+    --muted: #6a645c;
+    --line: rgba(26, 23, 19, 0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  header { max-width: 720px; margin: 0 auto; padding: 28px 24px 0; }
+  h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.03em; margin: 0 0 8px; }
+  .lede { margin: 0 0 8px; max-width: 68ch; color: var(--muted); font-size: 15px; line-height: 1.45; }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  .panel { max-width: 720px; margin: 16px auto 0; padding: 0 24px; }
+  .bar {
+    display: flex; flex-wrap: wrap; gap: 16px 22px; align-items: center;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 12px 16px;
+  }
+  .group { display: flex; gap: 8px; align-items: center; min-width: 180px; }
+  .group .glabel {
+    font-size: 11px; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--muted); width: 58px; flex: none;
+  }
+  .group input[type="range"] { flex: 1; accent-color: var(--ink); }
+  .group output {
+    width: 28px; text-align: right; font-variant-numeric: tabular-nums;
+    font-size: 13px; font-weight: 600;
+  }
+
+  .stage-wrap { max-width: 420px; margin: 22px auto 12px; padding: 0 24px; }
+  .phone {
+    width: 100%; max-width: 392px; aspect-ratio: 392 / 806; margin: 0 auto;
+    background: #0b0b0c; border-radius: 46px; padding: 11px;
+    box-shadow: 0 26px 60px rgba(26,23,19,.22), inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .screen {
+    position: relative; height: 100%; border-radius: 36px; overflow: hidden;
+    background: #000; color: #fff;
+  }
+  .field {
+    position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+    will-change: filter, opacity;
+  }
+  /* Holds the heading on black while the plate lives lower down. It does not
+     dissolve — the plate under it does. */
+  .scrim {
+    position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(0,0,0,.72) 0%, rgba(0,0,0,.15) 38%, rgba(0,0,0,0) 62%);
+  }
+  .statusbar {
+    position: absolute; top: 14px; left: 28px; right: 28px; z-index: 6;
+    display: flex; justify-content: space-between;
+    font-size: 12px; font-weight: 600; letter-spacing: -0.01em; opacity: .9;
+    pointer-events: none;
+  }
+  .chrome {
+    position: absolute; inset: 0; z-index: 5;
+    display: flex; flex-direction: column;
+    padding: 54px 24px 22px;
+  }
+  .back {
+    width: 42px; height: 42px; border-radius: 50%; border: 0; padding: 0;
+    color: #fff; background: rgba(255,255,255,.14);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.2);
+    display: grid; place-items: center;
+  }
+  .back svg { display: block; }
+  .copy { margin-top: 22px; }
+  .kicker {
+    margin: 0;
+    font-size: 13px; font-weight: 500; letter-spacing: 0.04em; line-height: 1.2;
+    color: rgba(255,255,255,.72);
+    will-change: filter, opacity;
+  }
+  .line {
+    margin: 10px 0 0; max-width: 16ch;
+    font-size: 36px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.05;
+    will-change: filter, opacity;
+  }
+  .grow { flex: 1; }
+  .cluster-slot {
+    display: flex; justify-content: center;
+    margin-bottom: 28px;
+  }
+  .go {
+    height: 56px; border: 0; border-radius: 999px; cursor: pointer;
+    font: 560 17px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    letter-spacing: -0.01em;
+    background: #fff; color: #000;
+  }
+  .go:active { transform: scale(.97); }
+
+  .readout {
+    max-width: 420px; margin: 0 auto 48px; padding: 0 24px;
+    color: var(--muted); font-size: 13px; line-height: 1.45;
+  }
+  .readout b { color: var(--ink); font-weight: 600; }
+
+  /* ══ Magnetic select ════════════════════════════════════════
+     A cluster of chips that get out of the selected one's way.
+
+     TWO ELEMENTS, TWO TRANSFORMS. The chip is placed by left/top
+     and moved by the spring's transform; the skin inside it carries
+     the CSS lean. They cannot share an element: CSS `scale` and
+     `translate` are applied BEFORE `transform` rather than
+     folded into it, so a rule here and a spring there do not
+     average out, they fight every frame. So nothing in this file
+     may set or transition a transform on .mag-chip, and the
+     transitions below name their properties one at a time —
+     a `transition: all` would sweep the transform up with the
+     colours.
+
+     Tokens, scoped here so they do not leak onto the page.
+     Bencho's names, this app's jobs:
+       --font-ui   SF Pro, the same stack as the ceremony chrome
+       --ink       white. The accent. The selected disc takes it,
+                   the way the rail's chosen card and "This one" do.
+       --card      black. CeremonyPalette.background. What the
+                   selected disc's ink would sit on.
+       --fill-slab the unselected disc. The rail's 7% wash
+                   disappears on pure black, so this is lifted
+                   just enough to read as an empty circle.
+       --fill-on   white, the tone a hovered disc moves toward
+       --pane-edge the rail's hairline, white at 22%
+     Nothing here ends in -rgb. The rules build no rgba() from
+     bare channels. */
+  .mag {
+    position: relative;
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    --ink: #ffffff;
+    --card: #000000;
+    --fill-slab: rgba(255, 255, 255, 0.18);
+    --fill-on: #ffffff;
+    --pane-edge: rgba(255, 255, 255, 0.28);
+    touch-action: none;
+  }
+
+  /* the chip is a POSITION and nothing else: no surface, no
+     corner, no colour. Everything you can see is the skin */
+  .mag-chip {
+    position: absolute;
+    padding: 0;
+    border: 0;
+    background: none;
+    appearance: none;
+    min-width: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    color: inherit;
+    font: inherit;
+  }
+  .mag-chip:focus { outline: none; }
+  .mag-chip:focus-visible .mag-skin {
+    box-shadow: inset 0 0 0 2px var(--ink);
+  }
+
+  .mag-skin {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* always round, and it is not a knob. A Corner control was
+       here and it earned its removal: at 0 the chips are squares
+       packed 4px apart on a hex lattice, which is a honeycomb
+       made of the one shape that does not tile it — every pair
+       that is not side by side meets corner to flat and the
+       even spacing stops looking even. The tilt gives it away
+       too: a rotated square sweeps a wider box than it occupies
+       and eats the clearance, where a rotated circle is a
+       circle and costs nothing. */
+    border-radius: 50%;
+    /* ── plain, until it is the one ─────────────────────────
+       An unchosen chip is a blank disc: the slab, which is white
+       on the light theme and the dark theme's own equivalent, so
+       it reads as an empty circle either way rather than as a
+       colour somebody chose. The picture belongs to the answer,
+       not to the options.
+
+       There is no picture in this build (see MARKS). The selected
+       disc takes the ink instead, which is the job the picture
+       was doing: one answer, and the rest blank. */
+    background: var(--fill-slab, var(--card));
+    /* Glass, the same seat the selection rail uses over the dither.
+       A flat 18% wash disappears into the dots; the blur gives the
+       empty disc an edge you can find. */
+    backdrop-filter: blur(12px) saturate(1.15);
+    -webkit-backdrop-filter: blur(12px) saturate(1.15);
+    /* the pictures fill the chip, so they are what the corner
+       cuts — the skin is the only thing that knows it is round */
+    overflow: hidden;
+    /* ── the lean, and nothing else ──────────────────────────
+       One transform, doing one thing. It carried a hover swell
+       as well until that was removed — see the note below.
+
+       The 220ms is what makes a value changing every frame read
+       as damping rather than as tracking. Same curve and same
+       duration as the search field, because it is the same
+       gesture. */
+    transform: translate(var(--lx, 0px), var(--ly, 0px));
+    transition:
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 220ms ease,
+      color 220ms ease;
+  }
+
+  /* ── NOTHING ANSWERS A CURSOR ON ITS OWN ──────────────────
+     There was a swell here: hover a chip and that chip grew
+     4.5%. It is the ordinary thing to do and it is wrong for
+     this component twice over.
+
+     It is the only per-item response left, and it was the one
+     you could see — a 4.5% swell on a 44px disc reads louder
+     than the whole group leaning two to seven pixels, so the
+     cluster looked like it was answering one chip at a time
+     when the lean had already been made the group's.
+
+     And it cannot be made group-wide, which is the deeper
+     reason. A lean is a translation: apply it to every chip and
+     the spacing is untouched. A swell is a scale, and scaling a
+     cluster about its centre moves every chip away from every
+     other — 4.5% across a 45px pitch is two pixels of gap
+     opening on a cluster packed one pixel off touching. The
+     gaps have to stay equal, so the only honest answer is that
+     the hover does not resize anything at all.
+
+     What the cursor still gets is the tone: the chip under it
+     comes up a little, which is a change of ink rather than of
+     geometry and costs the packing nothing.
+
+     12% of white, mixed with transparent, is invisible on this
+     black screen and darker than the slab it replaces. The mix
+     below is the same gesture — a step toward the ink — landed
+     on the slab that is actually there. */
+  .mag-chip:hover .mag-skin {
+    background: color-mix(in srgb, var(--fill-on, #fff) 34%, var(--fill-slab));
+  }
+
+  /* ── the chosen one is the only one with a PICTURE ─────────
+     The others were drained to almost no saturation, which is a
+     photograph you can still see and therefore still read as
+     content — seven pictures, one of them brighter. Off
+     entirely, the cluster is a set of blank discs and one
+     answer, which is what a chooser is.
+
+     240ms either way, so a selection crossing the cluster is one
+     picture arriving as another leaves rather than a cut. */
+  .mag-skin .mag-mark {
+    opacity: 0;
+    transition: opacity 220ms ease;
+  }
+  .mag-chip[data-on] .mag-skin .mag-mark { opacity: 1; }
+
+  .mag-chip[data-on] .mag-skin,
+  .mag-chip[data-on]:hover .mag-skin {
+    background: var(--ink);
+    color: var(--card);
+  }
+
+  [data-stroke="on"] .mag-skin {
+    box-shadow: inset 0 0 0 1px var(--pane-edge);
+  }
+  .mag-chip[data-on] .mag-skin,
+  .mag-chip:focus-visible .mag-skin {
+    box-shadow: none;
+  }
+
+  /* the picture IS the chip: it fills the skin and the skin's
+     own corner cuts it, so there is no second radius to keep in
+     agreement with the first */
+  .mag-mark {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mag-skin { transition-duration: 160ms; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Magnetic select</h1>
+  <p class="lede">The exercise step. Three discs, one choice. Press one and it takes the white, the other two are pushed off it, and the ground <b>dissolves through blur</b> into that exercise.</p>
+  <p class="lede">The cluster is <a href="https://bencho.dev/licence">Bencho’s magnetic select</a>. Its pictures are not here. This repo has no exercise photographs — the orator plates were dropped — so the ground is the ceremony’s dither horizon, redrawn once per exercise. The name sits in the type, because the disc does not carry a word.</p>
+</header>
+
+<div class="panel">
+  <div class="bar">
+    <label class="group"><span class="glabel">Pull</span><input id="pull" type="range" min="0" max="100" value="55" /><output id="pull-out">55</output></label>
+    <label class="group"><span class="glabel">Bounce</span><input id="bounce" type="range" min="0" max="100" value="55" /><output id="bounce-out">55</output></label>
+    <label class="group"><span class="glabel">Give</span><input id="give" type="range" min="0" max="100" value="50" /><output id="give-out">50</output></label>
+  </div>
+</div>
+
+<div class="stage-wrap">
+  <div class="phone">
+    <div class="screen" id="screen">
+      <canvas class="field" id="field"></canvas>
+      <div class="scrim"></div>
+      <div class="statusbar"><span>9:41</span><span>Prototype</span></div>
+      <div class="chrome">
+        <div class="back" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M11.2 3.6 6 9l5.2 5.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="copy">
+          <p class="kicker" id="kicker"></p>
+          <p class="line" id="line"></p>
+        </div>
+        <div class="grow"></div>
+        <div class="cluster-slot" id="slot"></div>
+        <button class="go" id="go" type="button">This one</button>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="readout" id="readout"></p>
+
+<script>
+"use strict";
+
+/* ── inlined from lab/spring ──────────────────────── */
+/* ── one spring, for everything that settles ───────────────
+   The maths was already on this bench twice, copied by hand:
+   Humidity's wheel and Brightness's column both accumulate
+   velocity toward a target, damp it, and snap when both the
+   delta and the velocity fall under 0.02. Two copies is a
+   coincidence; five would be a policy, so it comes out here
+   before the elastic blocks are written against it.
+
+   The two shipped copies are deliberately NOT refactored onto
+   this. They work, they are tuned, and rewriting the innards
+   of two live components to prove a point about duplication
+   is how a good afternoon becomes a bad one. This is the one
+   new code uses.
+
+   Frames, not milliseconds. `dt` is expressed in sixtieths of
+   a second and the damping is RAISED to it rather than
+   multiplied by it, so a dropped frame decays the same amount
+   of energy as the two frames it replaced. Multiplying is the
+   version that makes a spring behave differently on a busy
+   page, which is the hardest kind of bug to see.
+
+   The loop parks itself the moment the value has settled.
+   CLAUDE.md is not complimentary about the one permanent
+   requestAnimationFrame already on this bench and there is no
+   case for five more. */
+
+/* Read once, the way the wheel and the pill nav do. A
+   preference, not a live input. */
+const stillness = () =>
+  typeof window !== "undefined" &&
+  !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+/* MARKS was Bencho's own pictures, which is not licensed
+   to travel. Point this at yours.
+
+   Left empty on purpose. SpeechApp has no exercise photographs.
+   The orator plates in the home-dither draft were dropped, and
+   the ceremony ground is a dither drawn in code, not a file.
+   The three exercises are named in the type above the cluster.
+   The selected disc is white because there is no picture to be
+   the answer. */
+const MARKS = [];
+
+/* The three exercises, in the order PracticeFormat ships them.
+   Small is a triangle and index 0 is its first point — the top —
+   which is where the block opens. */
+const EXERCISES = [
+  {
+    name: "Reading",
+    line: "Read a passage aloud. Hear every sound.",
+    /* One wide horizon, cool. A page of light, low, so the type
+       above it stays on black. */
+    plate: {
+      /* Centred below the bottom edge, same as the ceremony horizon,
+         so the headline stays on empty black and the crown arrives
+         around the cluster. */
+      color: [236, 232, 224],
+      glows: [{ cx: 0.50, cy: 1.06, radius: 0.48, peak: 0.92 }],
+    },
+  },
+  {
+    name: "Monologue",
+    line: "One topic, three takes, less time each.",
+    /* One tighter source, warmer, set off centre. A single voice
+       should not look like the same horizon with the dots moved.
+       Still dies before the headline. */
+    plate: {
+      color: [255, 206, 150],
+      glows: [{ cx: 0.30, cy: 0.96, radius: 0.40, peak: 1.02 }],
+    },
+  },
+  {
+    name: "Conversation",
+    line: "Fifteen minutes with a partner. No script.",
+    /* One source, on the right, the way Monologue's is on the left.
+       Not the mirror of it. That one sits in from the edge and climbs.
+       This one is cropped by the right edge, sits lower, and spreads
+       wider, so the two fields are a pair of placements and not one
+       blob flipped. */
+    plate: {
+      color: [186, 208, 232],
+      glows: [{ cx: 0.86, cy: 1.08, radius: 0.52, peak: 0.94 }],
+    },
+  },
+];
+
+/* ══ Magnetic select ═══════════════════════════════════════
+   A cluster of options set close enough together to be in
+   each other's way, and a selection that behaves like a
+   magnet rather than a highlight: the one you press swells
+   and takes the ink, and the rest are shoved radially out of
+   its way — hardest next to it, barely at all at the edges.
+
+   THE POINT IS THE FIELD, NOT THE ITEM. A normal segmented
+   control moves an indicator and leaves the layout alone,
+   which is why selecting in one feels like bookkeeping. Here
+   the choice deforms its neighbourhood, so the answer to
+   "which one is selected" is legible from three feet away
+   with the shapes unreadable — it is the one everything else
+   is leaning away from.
+
+   ── AND IT IS A GROUP, NOT A ROW ─────────────────────────
+   It was a row first, and a row wastes the idea. In a line
+   there are two directions to be pushed and both of them are
+   the same direction, so the field can only ever read as
+   spacing; the falloff has to be inferred from how far along
+   the row you are. In a cluster the shove is a VECTOR — each
+   chip goes the way it actually lies from the magnet — and
+   the same arithmetic suddenly reads as a field, because you
+   can see it acting on every bearing at once.
+
+   Every number still falls out of ONE decision: how far the
+   selected chip grows. The room it needs is arithmetic from
+   that, the shove is that room plus an aura, the aura decays
+   with real distance, and the tilt is the aura's leftovers. */
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+/* Drawn at 1.5× the bench size, so the discs read on the phone.
+   The lattice, the pitch and the pad are scaled with them. The
+   gap between neighbours stays what it was. */
+const CHIP = 66;
+const H_PAD = 39;
+
+/* ── the packing ───────────────────────────────────────────
+   A hex lattice at a pitch of 48 against a 44 chip, so every
+   neighbour sits 4px off touching and the cluster is as tight
+   as it can be without the field having nowhere to push.
+
+   THE REGULARITY IS THE POINT, and it is a reversal. These
+   were hand-jittered before, on the reasoning that a lattice
+   reads as a grid — true when the arrangement is the thing you
+   are looking at, and wrong here, because the arrangement is
+   the thing being DEFORMED. A field distorting an irregular
+   scatter is hard to read as anything but a different
+   scatter; the same field opening a hole in a honeycomb is
+   unmistakable. You need the regular ground to see the
+   disturbance against.
+
+   ── AND THERE ARE TWO OF THEM, not a slider from four to
+   nine. Every count between them was a worse version of one of
+   these: five and six are a flower with a bite out of it,
+   eight and nine are a flower with something stuck to the
+   side. Three is a triangle and seven is the closed hexagon —
+   the only two arrangements at this pitch where every chip has
+   the same relationship to its neighbours, and the only two
+   worth offering. A slider across six stops invited a drag to
+   find the good one; there are two, so they are named.
+
+   Points are taken from the lattice in rings outward, so each
+   is the roundest blob available at that size, and the first
+   is the centre — pressing a chip with neighbours on
+   every side is the single best frame this component has, and
+   the one the card should be caught in. Six is the default
+   because it is a centre with a ring that is one short of
+   closing: the notch keeps it from reading as a logo.
+
+   This screen has three exercises, so it is the triangle.
+   Small is the only count that matches. */
+const CLUSTER = {
+  3: [[0, -39], [33.75, 19.5], [-33.75, 19.5]],
+  7: [[0, 0], [67.5, 0], [33.75, -58.5], [-33.75, -58.5], [-67.5, 0], [-33.75, 58.5], [33.75, 58.5]],
+};
+
+/* the spacing the falloff is measured in. Distances divided by
+   this — the lattice pitch, so a chip one step away sits at
+   far = 1 and
+   the exponent below is reading a neighbourhood rather than a
+   pixel count that would mean something different at every
+   count. */
+const PITCH = 67.5;
+
+/* ── how fast the aura falls off, in those steps ───────────
+   1.4 for as long as the chips were far enough apart not to
+   care, and the tight packing is what set the real number.
+
+   THE TIGHTEST PAIR IS NEVER BESIDE THE MAGNET. It is two
+   chips on the same ray out of it — the near one shoved
+   harder than the one behind it, so the pair closes by the
+   difference between their pushes, and with 4px of slack
+   there is nothing to absorb that. Measured at full Pull with
+   1.4: every other pair in the cluster sat above 11px and
+   that one was at 0.8, which is not overlapping and is well
+   inside the margin where rounding could make it so.
+
+   1.8 fixed it at a pitch of 48. At 46 — chips two pixels off
+   touching — the same pair came back to exactly zero, because
+   there is now almost no rest gap for the closing to eat.
+   2.8 with a deeper cower is the answer: the field reaches a
+   little further, which if anything reads as more of a field,
+   and the chip the magnet is nearest gives up more of its own
+   size. Both leave the PACKING alone, which is the point —
+   the tightness is the resting picture and the clearance has
+   to come from somewhere else. At a pitch of 45 the same pair
+   came to 0.57px; these two take it to about two. */
+const SPREAD = 2.8;
+
+/* how far past the cluster's own edge the lean survives */
+const FADE = 66;
+
+const still = stillness();
+const pts = CLUSTER[3];
+const n = pts.length;
+
+const xs = pts.map((q) => q[0]);
+const ys = pts.map((q) => q[1]);
+const minX = Math.min(...xs);
+const minY = Math.min(...ys);
+const W = Math.max(...xs) - minX + CHIP + H_PAD * 2;
+const H = Math.max(...ys) - minY + CHIP + H_PAD * 2;
+
+const knobs = { pull: 55, bounce: 55, give: 50 };
+
+/* ── it lands SELECTED, on the one in the middle ─────────
+   A magnetic select drawn with nothing chosen is a cluster
+   of chips: true of the component and a picture of the one
+   state where it has nothing to say. */
+/* ── IT OPENS ON THE MIDDLE ONE ─────────────────────────
+   Index 0 is the centre of the cluster by construction — the
+   lattice points are taken in rings outward, so the first is
+   always the hub. On Small there is no hub and it is simply
+   the first of the three.
+
+   The centre is also the only selection whose field is even:
+   every other chip is the same distance from it, so they all
+   move by the same amount and the spacing stays uniform all
+   round. That makes it the honest still image of what this
+   block does — and the one frame the card on the wall is
+   caught in.
+
+   null is still the type, because "nothing chosen" is a
+   state this can reach and an index that happens to be
+   invalid is not the same thing. */
+let sel = 0;
+let confirmed = false;
+
+const slot = document.getElementById("slot");
+const wrap = document.createElement("div");
+wrap.className = "mag";
+wrap.setAttribute("data-stroke", "on");
+wrap.setAttribute("role", "radiogroup");
+wrap.setAttribute("aria-label", "Exercise");
+wrap.style.width = W + "px";
+wrap.style.height = H + "px";
+wrap.tabIndex = 0;
+slot.appendChild(wrap);
+
+const chips = pts.map(([px, py], i) => {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "mag-chip";
+  btn.setAttribute("role", "radio");
+  btn.setAttribute("aria-label", EXERCISES[i].name);
+  btn.style.left = (px - minX + H_PAD) + "px";
+  btn.style.top = (py - minY + H_PAD) + "px";
+  btn.style.width = CHIP + "px";
+  btn.style.height = CHIP + "px";
+  const skin = document.createElement("span");
+  skin.className = "mag-skin";
+  /* MARKS is empty, so there is no <img>. The white disc is
+     the answer. If a picture is added later it fills the skin
+     and the skin's corner cuts it. */
+  if (MARKS[i]) {
+    const img = document.createElement("img");
+    img.className = "mag-mark";
+    img.src = MARKS[i];
+    img.alt = "";
+    img.draggable = false;
+    skin.appendChild(img);
+  }
+  btn.appendChild(skin);
+  btn.addEventListener("pointerdown", () => choose(i));
+  btn.addEventListener("click", () => choose(i));
+  wrap.appendChild(btn);
+  return { btn, skin };
+});
+
+function spring(value) {
+  return { x: value, v: 0, target: value, delay: 0, k: 300, mass: 1, damp: 30 };
+}
+const springs = pts.map(() => ({
+  x: spring(0), y: spring(0), sx: spring(1), sy: spring(1), rot: spring(0),
+}));
+
+/* the centre it leans about, and how far its edge is */
+const hub = { x: W / 2, y: H / 2, r: 1 };
+let lean = { x: 0, y: 0 };
+
+function metrics() {
+  const p = clamp(knobs.pull, 0, 100) / 100;
+  /* ── ONE decision, and the rest is arithmetic ────────────
+     GROW is the knob. ROOM is the space the swell physically
+     takes on every side — half the extra width, exactly — so
+     the neighbours are never merely *near* clear of it. AURA
+     is the part that is not arithmetic: the push beyond what
+     the geometry demands, which is the difference between a
+     cluster making room and a cluster being repelled. */
+  const grow = 1.16 + 0.22 * p;
+  const room = (CHIP * (grow - 1)) / 2;
+  const aura = 3 + 9 * p;
+  const tilt = 5 * p;
+  /* the neighbours give up a little size as well as ground —
+     the magnet takes the mass as well as the space, and the
+     size it gives up is also the clearance that keeps the
+     tightest pair from touching */
+  const cower = 0.04 + 0.09 * p;
+  /* ── the springs ─────────────────────────────────────────
+     Bounce is a DAMPING RATIO, not a damping value: tie it to
+     a raw number and the same setting is bouncy on one chip
+     and dead on another, because each chip here springs at a
+     different stiffness. As a ratio it means the same thing
+     everywhere — 0.9 arrives and stops, 0.42 arrives and
+     rings — and stiffness is then free to vary. */
+  const zeta = 0.9 - 0.48 * (clamp(knobs.bounce, 0, 100) / 100);
+  return { p, grow, room, aura, tilt, cower, zeta };
+}
+
+/* ── the field, worked out once ──────────────────────────
+   The chips need it to know where to go and the lean needs
+   it to know where they went. Computed here rather than
+   inside the map, because a copy of this arithmetic in two
+   places is two things to keep in agreement. */
+function computeField(at) {
+  const { room, aura } = metrics();
+  return pts.map(([px, py], i) => {
+    /* with no magnet there is no field: every chip sits on its
+       own lattice point and the pushes are all zero */
+    if (at === null) {
+      return {
+        far: 0, fall: 0, push: 0, ux: 0, uy: 0,
+        cx: px - minX + H_PAD + CHIP / 2,
+        cy: py - minY + H_PAD + CHIP / 2,
+      };
+    }
+    const [ax, ay] = pts[at];
+    const dx = px - ax;
+    const dy = py - ay;
+    const gap = Math.hypot(dx, dy);
+    const far = gap / PITCH;
+    /* the aura, spent. exp() rather than 1/d because an
+       inverse law is violent at the first neighbour and flat
+       everywhere after, so the cluster reads as one chip
+       barged aside and four standing still. */
+    const fall = i === at ? 0 : Math.exp(-(far - 1) / SPREAD);
+    /* ── THE PUSH DOES NOT DECAY, and that is the fix ──────
+       It was `room + aura * fall`, so a chip near the magnet
+       moved further than the one behind it — and two chips on
+       the same ray out of the magnet therefore CLOSED by the
+       difference, while every other pair opened. That was the
+       one pair in the cluster tighter than the rest, and it
+       was the only pair anywhere that got tighter at all.
+
+       Constant, it cannot happen: two chips on the same
+       bearing move by the same amount and their spacing is
+       exactly what it was. Nothing in the cluster ever
+       compresses now; gaps only open.
+
+       `fall` is still computed and still used — it drives the
+       stagger and the tilt below, which is where a sense of
+       the field reaching further at the front belongs. It was
+       doing two jobs and only one of them was safe. */
+    const push = i === at ? 0 : room + aura;
+    /* ── AND THE DIRECTION IS THE BEARING ──────────────────
+       Straight out along the line from the magnet, which is
+       the whole reason for abandoning the row: in a line this
+       reduces to a sign, and every chip is pushed along the
+       same axis whatever its actual relationship to the one
+       you pressed. */
+    const ux = gap ? dx / gap : 0;
+    const uy = gap ? dy / gap : 0;
+    return {
+      far, fall, push, ux, uy,
+      /* where the chip comes to rest, in the block's own px */
+      cx: px - minX + H_PAD + CHIP / 2 + ux * push,
+      cy: py - minY + H_PAD + CHIP / 2 + uy * push,
+    };
+  });
+}
+
+function placeHub(field) {
+  /* the cluster's middle, and the distance to the furthest
+     chip's outer edge — the radius the ramp is measured in */
+  hub.x = W / 2;
+  hub.y = H / 2;
+  hub.r = Math.max(1, ...field.map((f) =>
+    Math.hypot(f.cx - W / 2, f.cy - H / 2) + CHIP / 2));
+}
+
+function aim(s, target, k, mass, zeta, delay, snap) {
+  s.k = k;
+  s.mass = mass;
+  s.damp = 2 * Math.sqrt(k * mass) * zeta;
+  if (snap || still) {
+    s.x = target;
+    s.v = 0;
+    s.target = target;
+    s.delay = 0;
+    return;
+  }
+  if (s.target !== target) {
+    s.target = target;
+    s.delay = delay;
+  }
+}
+
+let raf = 0;
+let last = 0;
+
+function retarget(snap, stagger) {
+  const { grow, cower, tilt, zeta } = metrics();
+  const field = computeField(sel);
+  placeHub(field);
+  field.forEach((f, i) => {
+    const on = i === sel;
+    const k = 300 + 280 * (1 - Math.min(f.far, 3) / 4);
+    /* ── and the far ones are LATE ────────────────
+       22ms a step. Fire them together and the
+       cluster moves as a slab; stagger them and the
+       shove travels outward, which is the difference
+       between a layout change and a force.
+       Only a new choice staggers. Dragging Pull
+       retargets every tick, and resetting the delay
+       each time would hold the chips in place until
+       the drag stopped. */
+    const wait = stagger ? farDelay(f.far, snap) : 0;
+    const s = springs[i];
+    aim(s.x, f.ux * f.push, k, 0.9, zeta, wait, snap);
+    aim(s.y, f.uy * f.push, k, 0.9, zeta, wait, snap);
+    /* ── wide before it goes tall ────────────────
+       Two springs at different stiffnesses rather
+       than one scale, so the transient is
+       anisotropic and the rest state is not: X
+       leads, Y follows a beat behind, and the chip
+       flattens out and rounds up on its way to size.
+       This is the whole of the "jelly", and it is
+       four numbers rather than a keyframe track —
+       which matters, because a keyframed squash is
+       the same squash at every Bounce setting and
+       this one is not there at all when the spring
+       is critically damped. */
+    const scale = on ? grow : 1 - cower * f.fall;
+    aim(s.sx, scale, k * 1.24, 0.8, zeta, wait, snap);
+    aim(s.sy, scale, k * 0.86, 0.95, zeta, wait, snap);
+    /* shoved things tip, and only the sideways part
+       of the shove tips them — a chip driven straight
+       up has nothing to lean into. The shapes carry
+       it even when the chip is a circle and the
+       rotation is otherwise invisible. */
+    aim(s.rot, f.ux * tilt * f.fall, k * 0.8, 1, zeta, wait, snap);
+    chips[i].btn.setAttribute("aria-checked", on ? "true" : "false");
+    if (on) chips[i].btn.setAttribute("data-on", "");
+    else chips[i].btn.removeAttribute("data-on");
+  });
+  paintChips();
+  if (!snap && !still) wake();
+}
+
+function farDelay(far, snap) {
+  if (snap || still) return 0;
+  return far * 0.022;
+}
+
+function stepSpring(s, dt) {
+  if (s.delay > 0) {
+    s.delay = Math.max(0, s.delay - dt);
+    return true;
+  }
+  const delta = s.target - s.x;
+  if (Math.abs(delta) < 0.02 && Math.abs(s.v) < 0.02) {
+    s.x = s.target;
+    s.v = 0;
+    return false;
+  }
+  const a = (s.k * delta - s.damp * s.v) / s.mass;
+  s.v += a * dt;
+  s.x += s.v * dt;
+  return true;
+}
+
+function paintChips() {
+  springs.forEach((s, i) => {
+    chips[i].btn.style.transform =
+      "translate(" + s.x.x.toFixed(2) + "px, " + s.y.x.toFixed(2) + "px) " +
+      "scale(" + s.sx.x.toFixed(4) + ", " + s.sy.x.toFixed(4) + ") " +
+      "rotate(" + s.rot.x.toFixed(3) + "deg)";
+  });
+}
+
+function wake() {
+  if (raf) return;
+  last = performance.now();
+  raf = requestAnimationFrame(tick);
+}
+
+function tick(now) {
+  const dt = Math.min(0.032, (now - last) / 1000);
+  last = now;
+  let moving = false;
+  for (const s of springs) {
+    if (stepSpring(s.x, dt)) moving = true;
+    if (stepSpring(s.y, dt)) moving = true;
+    if (stepSpring(s.sx, dt)) moving = true;
+    if (stepSpring(s.sy, dt)) moving = true;
+    if (stepSpring(s.rot, dt)) moving = true;
+  }
+  paintChips();
+  raf = moving ? requestAnimationFrame(tick) : 0;
+}
+
+/* ── the lean, read off the pointer ─────────────────────
+   One listener for the whole cluster and one rect per move,
+   because the chips' positions come from the field rather than
+   from the DOM. Throttled to a frame: a pointermove can
+   arrive several times between paints and only the last one
+   is worth anything.
+
+   The block is drawn at a fraction on the wall and at a zoom
+   on the canvas, so client pixels are divided back into the
+   component's own before any distance is compared to REACH —
+   otherwise the reach is a different size in every place the
+   block appears. */
+let leanRaf = 0;
+let leanNext = { x: 0, y: 0 };
+function publishLean() {
+  leanRaf = 0;
+  lean = leanNext;
+  const lx = lean.x.toFixed(2) + "px";
+  const ly = lean.y.toFixed(2) + "px";
+  for (const c of chips) {
+    c.skin.style.setProperty("--lx", lx);
+    c.skin.style.setProperty("--ly", ly);
+  }
+}
+function readPointer(e) {
+  if (!knobs.give || still) {
+    leanNext = { x: 0, y: 0 };
+    if (!leanRaf) leanRaf = requestAnimationFrame(publishLean);
+    return;
+  }
+  const b = wrap.getBoundingClientRect();
+  const k = b.width / (wrap.offsetWidth || b.width) || 1;
+  const mx = (e.clientX - b.left) / k;
+  const my = (e.clientY - b.top) / k;
+  const dx = mx - hub.x;
+  const dy = my - hub.y;
+  const d = Math.hypot(dx, dy);
+  /* nothing at the centre, full at the edge, and gone by
+     FADE past it — see the note above */
+  const rise = Math.min(1, d / hub.r);
+  const away = d <= hub.r ? 1 : Math.max(0, 1 - (d - hub.r) / FADE);
+  /* the search field's ceiling, because it is the same
+     gesture even though the curve into it is not */
+  const drawn = rise * away * (2 + (clamp(knobs.give, 0, 100) / 100) * 5);
+  leanNext = drawn > 0
+    ? { x: (dx / (d || 1)) * drawn, y: (dy / (d || 1)) * drawn }
+    : { x: 0, y: 0 };
+  if (!leanRaf) leanRaf = requestAnimationFrame(publishLean);
+}
+function pointerGone() {
+  leanNext = { x: 0, y: 0 };
+  if (!leanRaf) leanRaf = requestAnimationFrame(publishLean);
+}
+if (!still) {
+  document.addEventListener("pointermove", readPointer, { passive: true });
+  document.addEventListener("pointerleave", pointerGone);
+}
+
+function choose(i) {
+  if (i === sel) return;
+  sel = i;
+  confirmed = false;
+  retarget(false, true);
+  showExercise(true);
+}
+
+wrap.addEventListener("keydown", (e) => {
+  const fwd = e.key === "ArrowRight" || e.key === "ArrowDown";
+  const back = e.key === "ArrowLeft" || e.key === "ArrowUp";
+  if (!fwd && !back) return;
+  e.preventDefault();
+  const next = (sel + (fwd ? 1 : -1) + n) % n;
+  choose(next);
+  chips[next].btn.focus();
+});
+
+/* ----------------------------------------------------------------------------
+   The ground. One plate per exercise, swapped under the shipped
+   blur dissolve: 20px, 280ms, out over the first 45%, in over
+   the rest. Reduce Motion drops the blur and fades in 200ms.
+   BlurMotion.dissolve / BlurMotion.reducedFade.
+---------------------------------------------------------------------------- */
+
+const DISSOLVE = 280;
+const DISSOLVE_RADIUS = 20;
+const REDUCED = 200;
+
+const BAYER = [
+  [0, 32, 8, 40, 2, 34, 10, 42], [48, 16, 56, 24, 50, 18, 58, 26],
+  [12, 44, 4, 36, 14, 46, 6, 38], [60, 28, 52, 20, 62, 30, 54, 22],
+  [3, 35, 11, 43, 1, 33, 9, 41], [51, 19, 59, 27, 49, 17, 57, 25],
+  [15, 47, 7, 39, 13, 45, 5, 37], [63, 31, 55, 23, 61, 29, 53, 21],
+].map((row) => row.map((v) => (v + 0.5) / 64));
+
+const canvas = document.getElementById("field");
+const ctx = canvas.getContext("2d");
+
+function paintPlate(index) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.max(2, Math.round(rect.width * dpr));
+  const h = Math.max(2, Math.round(rect.height * dpr));
+  if (rect.width < 2) return;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  const plate = EXERCISES[index].plate;
+  const [r, g, b] = plate.color;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, w, h);
+
+  for (const glow of plate.glows) {
+    const cx = glow.cx * w;
+    const cy = glow.cy * h;
+    const radius = glow.radius * h;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    const peak = 0.55 * glow.peak;
+    grad.addColorStop(0, "rgba(" + r + "," + g + "," + b + "," + peak + ")");
+    grad.addColorStop(0.45, "rgba(" + r + "," + g + "," + b + "," + (peak * 0.28) + ")");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  const cell = Math.max(2, Math.round(w / 64));
+  const cols = Math.ceil(w / cell);
+  const rows = Math.ceil(h / cell);
+  ctx.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      const x = i * cell + cell / 2;
+      const y = j * cell + cell / 2;
+      let v = 0;
+      for (const glow of plate.glows) {
+        const cx = glow.cx * w;
+        const cy = glow.cy * h;
+        const radius = glow.radius * h;
+        const d = Math.hypot(x - cx, y - cy) / radius;
+        if (d < 1.15) v += glow.peak / (1 + d * d * 7);
+      }
+      if (v > BAYER[j & 7][i & 7] * 0.85 + 0.07) {
+        const s = cell * (0.62 + 0.38 * Math.min(1, v));
+        ctx.beginPath();
+        ctx.arc(x, y, s / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  canvas.dataset.plate = String(index);
+}
+
+let plateToken = 0;
+function showPlate(index) {
+  const token = ++plateToken;
+  if (canvas.dataset.plate === String(index) && !canvas._busy) return;
+  if (still) {
+    paintPlate(index);
+    canvas.style.transition = "none";
+    canvas.style.filter = "none";
+    canvas.style.opacity = "";
+    return;
+  }
+  canvas._busy = true;
+  const out = DISSOLVE * 0.45;
+  const inn = DISSOLVE * 0.55;
+  canvas.style.transition =
+    "filter " + out + "ms cubic-bezier(.4,0,1,1), opacity " + out + "ms cubic-bezier(.4,0,1,1)";
+  canvas.style.filter = "blur(" + DISSOLVE_RADIUS + "px)";
+  canvas.style.opacity = "0";
+  setTimeout(() => {
+    if (token !== plateToken) return;
+    paintPlate(sel);
+    canvas.style.transition = "none";
+    void canvas.offsetWidth;
+    canvas.style.transition =
+      "filter " + inn + "ms cubic-bezier(0,0,.2,1), opacity " + inn + "ms cubic-bezier(0,0,.2,1)";
+    canvas.style.filter = "blur(0px)";
+    canvas.style.opacity = "";
+    setTimeout(() => { if (token === plateToken) canvas._busy = false; }, inn);
+  }, out);
+}
+
+/* Changing text in place. The old value blurs out, the swap
+   happens under the blur, and the new value resolves in.
+   Radius is 0.4 × the type size, 6px floor. BlurMotion.textRadius. */
+function dissolveText(el, next) {
+  if (el.dataset.shown === next && !el._busy) return;
+  el.dataset.shown = next;
+  if (still) {
+    el.textContent = next;
+    el.style.filter = "none";
+    el.style.opacity = "";
+    return;
+  }
+  const token = (el._token || 0) + 1;
+  el._token = token;
+  el._busy = true;
+  const size = parseFloat(getComputedStyle(el).fontSize) || 16;
+  const radius = Math.max(6, size * 0.4);
+  const out = DISSOLVE * 0.45;
+  const inn = DISSOLVE * 0.55;
+  el.style.transition =
+    "filter " + out + "ms cubic-bezier(.4,0,1,1), opacity " + out + "ms cubic-bezier(.4,0,1,1)";
+  el.style.filter = "blur(" + radius + "px)";
+  el.style.opacity = "0";
+  setTimeout(() => {
+    if (el._token !== token) return;
+    el.textContent = next;
+    el.style.transition = "none";
+    void el.offsetWidth;
+    el.style.transition =
+      "filter " + inn + "ms cubic-bezier(0,0,.2,1), opacity " + inn + "ms cubic-bezier(0,0,.2,1)";
+    el.style.filter = "blur(0px)";
+    el.style.opacity = "";
+    setTimeout(() => { if (el._token === token) el._busy = false; }, inn);
+  }, out);
+}
+
+const kicker = document.getElementById("kicker");
+const line = document.getElementById("line");
+const readout = document.getElementById("readout");
+
+function showExercise(animate) {
+  const ex = EXERCISES[sel];
+  if (!animate || still) {
+    kicker.textContent = ex.name;
+    line.textContent = ex.line;
+    kicker.dataset.shown = ex.name;
+    line.dataset.shown = ex.line;
+    paintPlate(sel);
+  } else {
+    dissolveText(kicker, ex.name);
+    dissolveText(line, ex.line);
+    showPlate(sel);
+  }
+  const where = confirmed
+    ? "<b>" + ex.name + "</b> confirmed. Next would be the breath."
+    : "<b>" + ex.name + "</b> is selected.";
+  readout.innerHTML =
+    where + " Pull " + knobs.pull + ", bounce " + knobs.bounce + ", give " + knobs.give + ".";
+}
+
+document.getElementById("go").addEventListener("click", () => {
+  confirmed = true;
+  showExercise(false);
+});
+
+function bindKnob(id, key) {
+  const input = document.getElementById(id);
+  const out = document.getElementById(id + "-out");
+  input.addEventListener("input", () => {
+    knobs[key] = Number(input.value);
+    out.textContent = input.value;
+    retarget(false, false);
+    showExercise(false);
+  });
+}
+bindKnob("pull", "pull");
+bindKnob("bounce", "bounce");
+bindKnob("give", "give");
+
+/* nothing animates on mount — the block is drawn
+   with a selection already made, and a field that
+   assembles itself on page load reads as a loading
+   state rather than as a choice */
+function boot() {
+  retarget(true);
+  showExercise(false);
+}
+if (canvas.getBoundingClientRect().width > 1) boot();
+else requestAnimationFrame(boot);
+window.addEventListener("resize", () => paintPlate(sel));
+</script>
+</body>
+</html>

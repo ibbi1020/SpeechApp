@@ -1,11 +1,11 @@
 import SpeechAppKit
 import SwiftUI
 
-/// Pick the exercise. What it is, stated once, over three names.
+/// Pick the exercise. The name and the line sit up top. Three discs sit above
+/// the button. The chosen disc is white, and the other two are pushed off it.
 ///
-/// Earlier versions stacked an icon, a name and a count inside each card while the
-/// heading repeated the same name above them. Three ways of saying "Reading" on one
-/// screen. The card carries the name and nothing else; the heading describes it.
+/// The discs do not carry words. The name is the kicker, because a blank disc
+/// cannot say "Reading" and the heading should not have to.
 struct ExerciseStep: View {
     @Environment(AppModel.self) private var model
 
@@ -23,15 +23,10 @@ struct ExerciseStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Spacer(minLength: SpeechSpacing.section)
             heading
-                .padding(.bottom, SpeechSpacing.section)
-            SelectionRail(ids: PracticeFormat.all.map(\.kind), selection: selection) { kind, _ in
-                Text(PracticeFormat.all.first { $0.kind == kind }?.title ?? "")
-                    .font(.system(size: 15, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
+            Spacer(minLength: 0)
+            MagneticSelect(selection: selection)
+                .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear { if model.chosenKind == nil { model.chosenKind = offer.proposed } }
@@ -43,16 +38,23 @@ struct ExerciseStep: View {
             for: selected, counts: counts, proposed: offer.proposed
         )
         let note = PracticeFormat.startControl(for: selected, budget: model.budget).note
-        // Picking a different exercise rewrites all three lines. They dissolve through
-        // blur rather than cross-fading, so the heading never reads as two overlaid
-        // sentences mid-swap. Each line blurs at its own type size.
+        // Picking a different exercise rewrites the name, the line, and whatever
+        // history is showing. They dissolve through blur rather than cross-fading,
+        // so the heading never reads as two overlaid sentences mid-swap. Each line
+        // blurs at its own type size.
         return VStack(alignment: .leading, spacing: SpeechSpacing.cluster) {
+            BlurDissolve(format?.title ?? "", size: CeremonyType.metrics(.label).size) { name in
+                Text(name)
+                    .ceremonyType(.label)
+                    .foregroundStyle(.white.opacity(0.72))
+            }
             BlurDissolve(format?.line ?? "", size: CeremonyType.metrics(.display).size) { line in
                 Text(line)
                     .ceremonyType(.display)
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(.top, 2)
             if let history {
                 BlurDissolve(history, size: CeremonyType.metrics(.body).size) { line in
                     Text(line)

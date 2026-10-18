@@ -21,6 +21,20 @@ public enum DitherHorizon {
         public var peak: Double
     }
 
+    /// One glow in a plate that can hold more than the hum's single horizon.
+    /// The exercise step places a different glow per exercise. Brightness adds.
+    public struct Source: Equatable, Sendable {
+        public var center: CGPoint
+        public var radius: CGFloat
+        public var peak: Double
+
+        public init(center: CGPoint, radius: CGFloat, peak: Double) {
+            self.center = center
+            self.radius = radius
+            self.peak = peak
+        }
+    }
+
     public static func cell(forWidth width: CGFloat) -> CGFloat {
         max(2, (width / columns).rounded())
     }
@@ -64,6 +78,18 @@ public enum DitherHorizon {
         return peak / (1 + d * d * 7)
     }
 
+    /// Brightness at a point, summed across every glow still inside its reach.
+    /// A glow past 1.15 radii contributes nothing, same as the single-field test.
+    public static func brightness(at point: CGPoint, sources: [Source]) -> Double {
+        var value = 0.0
+        for source in sources where source.radius > 0 {
+            let distance = hypot(point.x - source.center.x, point.y - source.center.y) / source.radius
+            guard distance < 1.15 else { continue }
+            value += brightness(distance: distance, peak: source.peak)
+        }
+        return value
+    }
+
     /// Side length of the dot whose cell is `column`, `row`, or 0 when that cell
     /// stays black. `cell` is the pitch from `cell(forWidth:)`.
     public static func dotSide(
@@ -78,11 +104,32 @@ public enum DitherHorizon {
         let distance = hypot(x - field.center.x, y - field.center.y) / field.radius
         guard distance < 1.15 else { return 0 }
         let value = brightness(distance: distance, peak: field.peak)
-        // A small lift on the threshold drops the faintest scattered dots. The
-        // core, where most cells clear it, stays dense.
-        let threshold = bayer(column: column, row: row) * 0.85 + 0.07
-        guard value > threshold else { return 0 }
+        guard clearsThreshold(value, column: column, row: row) else { return 0 }
         return cell * (0.62 + 0.38 * min(1, value))
+    }
+
+    /// Side length for a plate made of several glows. Same Bayer test as the
+    /// single horizon, so a quiet cell stays black on every exercise.
+    public static func dotSide(
+        column: Int,
+        row: Int,
+        cell: CGFloat,
+        sources: [Source]
+    ) -> CGFloat {
+        guard cell > 0, sources.isEmpty == false else { return 0 }
+        let point = CGPoint(
+            x: CGFloat(column) * cell + cell / 2,
+            y: CGFloat(row) * cell + cell / 2
+        )
+        let value = brightness(at: point, sources: sources)
+        guard value > 0, clearsThreshold(value, column: column, row: row) else { return 0 }
+        return cell * (0.62 + 0.38 * min(1, value))
+    }
+
+    /// A small lift on the threshold drops the faintest scattered dots. The
+    /// core, where most cells clear it, stays dense.
+    private static func clearsThreshold(_ value: Double, column: Int, row: Int) -> Bool {
+        value > bayer(column: column, row: row) * 0.85 + 0.07
     }
 
     /// Ordered 8×8 Bayer threshold, 0...1. Same matrix as the prototype.
