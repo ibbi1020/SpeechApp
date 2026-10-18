@@ -3,7 +3,7 @@ name: iOS build check
 on:
   workflow_dispatch:
   push:
-    branches: [ci/reading-build-check]
+    branches: [ci/reading-build-check, ci/reading-build-check-main]
 jobs:
   build:
     runs-on: macos-26
