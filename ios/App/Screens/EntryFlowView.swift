@@ -60,7 +60,8 @@ struct EntryFlowView: View {
                 GallerySheet(
                     topInset: top,
                     bottomInset: bottom,
-                    containerHeight: geo.size.height + top + bottom
+                    containerHeight: geo.size.height + top + bottom,
+                    startOpen: model.presentGallery
                 )
                 .frame(width: geo.size.width, height: geo.size.height + top + bottom)
                 .offset(y: -top)

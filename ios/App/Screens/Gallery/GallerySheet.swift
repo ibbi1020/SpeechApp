@@ -11,6 +11,8 @@ struct GallerySheet: View {
     /// Full screen height, including the areas outside the safe area.
     var containerHeight: CGFloat
 
+    @Environment(AppModel.self) private var model
+
     static let peek: CGFloat = 88
 
     /// How much of the home column the collapsed card covers, plus a gap so
@@ -67,6 +69,31 @@ struct GallerySheet: View {
             Button("Cancel", role: .cancel) {}
         }
         .task { reload() }
+        .onAppear(perform: consumeGalleryRequest)
+        .onChange(of: model.presentGallery) { _, open in
+            if open { consumeGalleryRequest() }
+        }
+    }
+
+    init(topInset: CGFloat, bottomInset: CGFloat, containerHeight: CGFloat, startOpen: Bool = false) {
+        self.topInset = topInset
+        self.bottomInset = bottomInset
+        self.containerHeight = containerHeight
+        if startOpen {
+            _progress = State(initialValue: 1)
+            _committedFullScreen = State(initialValue: true)
+        }
+    }
+
+    private func consumeGalleryRequest() {
+        guard model.presentGallery else { return }
+        model.presentGallery = false
+        page = .library
+        dragOrigin = nil
+        isDragging = false
+        committedFullScreen = true
+        progress = 1
+        reload()
     }
 
     private var deletePresented: Binding<Bool> {
@@ -114,12 +141,7 @@ struct GallerySheet: View {
                 symbolButton("chevron.left", label: "Back") { leaveRecording() }
             }
             if case .library = page {
-                Text("Gallery")
-                    .font(.system(size: committedFullScreen ? 28 : 22, weight: .semibold))
-                    .tracking(committedFullScreen ? -0.42 : -0.33)
-                    .foregroundStyle(.primary)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityAction(.default) { settle(open: !committedFullScreen) }
+                galleryTitle
             }
             Spacer(minLength: 0)
             if case .recording(let item) = page {
@@ -136,6 +158,27 @@ struct GallerySheet: View {
         .padding(.bottom, 8)
         .contentShape(Rectangle())
         .simultaneousGesture(drag(travel: travel))
+    }
+
+    /// Total saved feedbacks, sat on the same baseline as the title.
+    private var galleryTitle: some View {
+        let titleSize: CGFloat = committedFullScreen ? 28 : 22
+        let countSize: CGFloat = committedFullScreen ? 17 : 15
+        return HStack(alignment: .lastTextBaseline, spacing: 6) {
+            Text("Gallery")
+                .font(.system(size: titleSize, weight: .semibold))
+                .tracking(committedFullScreen ? -0.42 : -0.33)
+                .foregroundStyle(.primary)
+            Text(manifests.count, format: .number)
+                .font(.system(size: countSize, weight: .regular))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel("Gallery, \(manifests.count) recordings")
+        .accessibilityAction(.default) { settle(open: !committedFullScreen) }
     }
 
     private var showsBack: Bool {
@@ -288,7 +331,7 @@ struct GallerySheet: View {
     private func symbolButton(
         _ systemName: String,
         label: String,
-        tint: Color = .primary,
+        tint: Color = .white,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {

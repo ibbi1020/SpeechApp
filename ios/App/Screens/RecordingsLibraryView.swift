@@ -71,6 +71,7 @@ struct RecordingsLibraryView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") { model.goHome() }
+                    .foregroundStyle(Color.white)
             }
         }
         .task { reload() }

@@ -110,21 +110,15 @@ struct MonologueSessionView: View {
         .toolbar(showLeaveConfirm ? .hidden : .automatic, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                Button {
+                SpeechBarButton(systemName: "chevron.left", label: "Back") {
                     handleBack()
-                } label: {
-                    Image(systemName: "chevron.left")
                 }
-                .accessibilityLabel("Back")
             }
             if session?.phase == .planning || session?.phase == .between {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        model.openRecordings(filter: .monologue)
-                    } label: {
-                        Image(systemName: "waveform")
+                    SpeechBarButton(systemName: "waveform", label: "Gallery") {
+                        model.showGallery()
                     }
-                    .accessibilityLabel("Your talks")
                 }
             }
         }

@@ -219,6 +219,23 @@ extension View {
     }
 }
 
+/// A navigation-bar icon. White, so it does not pick up the blue accent tint.
+struct SpeechBarButton: View {
+    var systemName: String
+    var label: String
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Color.white)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
 /// Spinner while the microphone is starting. Not a count.
 struct ReadingCountdownOverlay: View {
     var body: some View {

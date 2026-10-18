@@ -155,11 +155,20 @@ private struct SpeechPageTitle: ViewModifier {
     var title: String
     var large: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.dismiss) private var dismiss
 
     func body(content: Content) -> some View {
         content
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(large ? .large : .inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    SpeechBarButton(systemName: "chevron.left", label: "Back") {
+                        dismiss()
+                    }
+                }
+            }
             .background {
                 SpeechBarFonts(dynamicTypeSize: dynamicTypeSize)
             }
@@ -192,6 +201,11 @@ private struct SpeechBarFonts: UIViewControllerRepresentable {
             apply()
         }
 
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            apply()
+        }
+
         func apply() {
             guard let bar = navigationController?.navigationBar else { return }
             SpeechBarFont.apply(to: bar)
@@ -202,6 +216,9 @@ private struct SpeechBarFonts: UIViewControllerRepresentable {
 @MainActor
 private enum SpeechBarFont {
     static func apply(to bar: UINavigationBar) {
+        if bar.tintColor != .white {
+            bar.tintColor = .white
+        }
         let traits = bar.traitCollection
         assign(bar.standardAppearance, traits: traits) { bar.standardAppearance = $0 }
         if let edge = bar.scrollEdgeAppearance {
@@ -234,13 +251,36 @@ private enum SpeechBarFont {
         let largeKern = large.pointSize * SpeechType.metrics(.h1).trackingEm
         let inlineKern = inline.pointSize * SpeechType.metrics(.h4).trackingEm
         if hasFont(appearance.largeTitleTextAttributes, large, largeKern),
-           hasFont(appearance.titleTextAttributes, inline, inlineKern) {
+           hasFont(appearance.titleTextAttributes, inline, inlineKern),
+           hasWhiteButtons(appearance) {
             return nil
         }
         let copy = appearance.copy()
         copy.largeTitleTextAttributes = merged(copy.largeTitleTextAttributes, font: large, kern: largeKern)
         copy.titleTextAttributes = merged(copy.titleTextAttributes, font: inline, kern: inlineKern)
+        paintButtons(copy)
         return copy
+    }
+
+    /// Back and bar-button titles stay white. The chevron is drawn white so the
+    /// accent tint cannot turn it blue.
+    private static func paintButtons(_ appearance: UINavigationBarAppearance) {
+        let white: [NSAttributedString.Key: Any] = [.foregroundColor: UIColor.white]
+        let button = UIBarButtonItemAppearance(style: .plain)
+        button.normal.titleTextAttributes = white
+        button.highlighted.titleTextAttributes = white
+        appearance.buttonAppearance = button
+        appearance.backButtonAppearance = button
+        let symbol = UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)
+        if let image = UIImage(systemName: "chevron.backward", withConfiguration: symbol)?
+            .withTintColor(.white, renderingMode: .alwaysOriginal) {
+            appearance.setBackIndicatorImage(image, transitionMaskImage: image)
+        }
+    }
+
+    private static func hasWhiteButtons(_ appearance: UINavigationBarAppearance) -> Bool {
+        let color = appearance.buttonAppearance.normal.titleTextAttributes[.foregroundColor] as? UIColor
+        return color == .white
     }
 
     private static func hasFont(
@@ -279,5 +319,20 @@ extension View {
     /// Large titles use h1. Inline titles use h4.
     func speechPageTitle(_ title: String, large: Bool = false) -> some View {
         modifier(SpeechPageTitle(title: title, large: large))
+    }
+
+    /// Keeps the system back chevron white on screens that have no page title.
+    func speechBarChrome() -> some View {
+        modifier(SpeechBarChrome())
+    }
+}
+
+private struct SpeechBarChrome: ViewModifier {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    func body(content: Content) -> some View {
+        content.background {
+            SpeechBarFonts(dynamicTypeSize: dynamicTypeSize)
+        }
     }
 }
