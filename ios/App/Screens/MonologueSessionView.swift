@@ -238,8 +238,7 @@ struct MonologueSessionView: View {
                     stageDuration(minutes)
 
                     Text(session.prompt)
-                        .font(SpeechType.reading(22, relativeTo: .title2))
-                        .lineSpacing(8)
+                        .speechReading()
                         .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
@@ -389,7 +388,7 @@ struct MonologueSessionView: View {
     private func liveCanvas(_ session: MonologueSession) -> some View {
         ZStack {
             Text(session.prompt)
-                .font(SpeechType.reading(15, relativeTo: .subheadline))
+                .speechReading()
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)

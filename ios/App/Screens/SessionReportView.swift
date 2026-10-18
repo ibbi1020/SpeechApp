@@ -226,7 +226,7 @@ struct SessionReportView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
                     Text(word.surface)
-                        .font(SpeechType.reading(17, relativeTo: .body))
+                        .speechReading()
                         .foregroundStyle(.primary)
                     Spacer(minLength: 12)
                     Text(occupancyTitle(word.occupancy))

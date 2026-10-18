@@ -43,7 +43,7 @@ struct ConversationTranscriptView: View {
                 VStack(alignment: .leading, spacing: SpeechSpacing.cluster) {
                     if let partner = block.partner, !partner.text.isEmpty {
                         Text(partner.text)
-                            .font(SpeechType.reading(15, relativeTo: .subheadline))
+                            .speechReading()
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }

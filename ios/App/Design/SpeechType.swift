@@ -3,8 +3,8 @@ import UIKit
 
 /// Text roles for the app.
 ///
-/// Headings and chrome are SF Pro. Instrument Serif is for a prompt, a subtitle,
-/// or a transcript. Use `reading(_:relativeTo:)`.
+/// Headings and chrome are SF Pro. A prompt, a subtitle, a passage, or a transcript
+/// uses New York through `SpeechReading`.
 ///
 /// Words you read aloud, live or on listen-back, share `SpeechReading`.
 ///
@@ -19,9 +19,6 @@ import UIKit
 /// Steps below body are not the same ratio. Another step down would be 12pt, which is
 /// already as small as a label should go, so subtext is 14 and labels are 12.
 enum SpeechType {
-    /// PostScript name of `font/InstrumentSerif-Regular.ttf` (weight 400).
-    static let instrumentSerif = "InstrumentSerif-Regular"
-
     static let bodySize: CGFloat = 16
     /// Perfect fourth. Used for the four heading steps above body.
     static let headingRatio: CGFloat = 4.0 / 3.0
@@ -67,19 +64,10 @@ enum SpeechType {
         }
     }
 
-    /// Instrument Serif at `size` when Dynamic Type is Large, scaling with `style`.
-    static func reading(_ size: CGFloat, relativeTo style: Font.TextStyle) -> Font {
-        .custom(instrumentSerif, size: size, relativeTo: style)
-    }
-
-    static func readingUIFont(size: CGFloat) -> UIFont {
-        UIFont(name: instrumentSerif, size: size) ?? .systemFont(ofSize: size)
-    }
-
     static func font(_ role: Role, size: CGFloat) -> Font {
         let metrics = metrics(role)
         if metrics.usesSerif {
-            return .custom(instrumentSerif, size: size)
+            return SpeechReading.font(size: size)
         }
         return .system(size: size, weight: metrics.systemWeight)
     }
@@ -98,8 +86,8 @@ enum SpeechType {
 
     private static func uiFont(_ role: Role, size: CGFloat) -> UIFont {
         let metrics = metrics(role)
-        if metrics.usesSerif, let font = UIFont(name: instrumentSerif, size: size) {
-            return font
+        if metrics.usesSerif {
+            return SpeechReading.uiFont(size: size)
         }
         return .systemFont(ofSize: size, weight: uiWeight(metrics.systemWeight))
     }

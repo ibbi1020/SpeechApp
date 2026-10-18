@@ -8,25 +8,17 @@ Sizes below are what you see at the **Large** Dynamic Type setting. Larger and s
 
 ### Fonts
 
-Two jobs. Headings and chrome use SF Pro. A prompt, a subtitle, or a transcript uses Instrument Serif, through `SpeechType.reading(_:relativeTo:)`.
+Two jobs. Headings and chrome use SF Pro. A prompt, a subtitle, a passage, or a transcript uses New York, through `SpeechReading`.
 
-A passage is the exception. Its words use the system serif (New York) at 22pt, with 8pt between words and 14pt between lines. Instrument Serif was tried on passages and was harder to read aloud. Prompts, subtitles, and transcripts stay on Instrument Serif.
+Reading text is 22pt at the Large text setting. Words sit 8pt apart. Lines sit 14pt apart. The spoken word is semibold and underlined. The size and the gaps scale with the Title 2 text style.
 
 | Face | Source | Weight | Roles |
 | --- | --- | --- | --- |
 | SF Pro | System | Semibold (600) | h1, h2, h3, h4, label |
 | SF Pro | System | Regular (400) | body, subtext |
-| New York | System serif | Regular (400) | passage words only |
-| Instrument Serif | `font/InstrumentSerif-Regular.ttf` | Regular (400) | prompts, subtitles, transcripts |
+| New York | System serif | Regular (400), Semibold on the spoken word | prompts, subtitles, passages, transcripts |
 
-Instrument Serif is the only file we ship.
-
-- Family name: Instrument Serif
-- PostScript name: `InstrumentSerif-Regular`
-- Registered in `UIAppFonts` (`ios/App/Info.plist` and `ios/project.yml`)
-- One cut only. Reading text does not switch to a bold serif.
-
-SF Pro is not bundled. SwiftUI’s system font draws it.
+SF Pro and New York are not bundled. SwiftUI’s system font draws them.
 
 ### Scale
 
@@ -79,6 +71,9 @@ The title string stays on the screen as its navigation title, so the back button
 ### How to apply it
 
 ```swift
+Text("Read this aloud")
+    .speechReading()
+
 Text("The passage")
     .speechType(.h2)
 

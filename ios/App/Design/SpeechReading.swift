@@ -1,9 +1,11 @@
 import SwiftUI
+import UIKit
 
 /// Shared settings for words you read or hear back.
 ///
-/// Passage reading and listen-back both use this, so Instrument Serif stays one size,
-/// one gap, and one way of marking the current word.
+/// A prompt, a subtitle, a passage, and a transcript all use this.
+/// New York, 22pt at the Large text setting, 8pt between words, 14pt between lines.
+/// The spoken word is semibold.
 enum SpeechReading {
     /// Point size at the Large text setting. Scales with `textStyle`.
     static let size: CGFloat = 22
@@ -12,20 +14,24 @@ enum SpeechReading {
     static let wordGap: CGFloat = 8
     /// Space between lines at `size`.
     static let lineGap: CGFloat = 14
-    /// Instrument Serif has no heavier cut. A second copy, shifted by this much,
-    /// is one step heavier on the word being spoken.
-    static let currentWordShift: CGFloat = 0.5
 
     static func scaledGap(_ gap: CGFloat, size: CGFloat) -> CGFloat {
         size * gap / Self.size
     }
 
-    static func font(size: CGFloat) -> Font {
-        .custom(SpeechType.instrumentSerif, size: size)
+    /// New York, the system serif, at `size`.
+    static func font(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .system(size: size, weight: weight, design: .serif)
+    }
+
+    static func uiFont(size: CGFloat, weight: UIFont.Weight = .regular) -> UIFont {
+        let system = UIFont.systemFont(ofSize: size, weight: weight)
+        guard let serif = system.fontDescriptor.withDesign(.serif) else { return system }
+        return UIFont(descriptor: serif, size: size)
     }
 }
 
-/// One word in Instrument Serif. The spoken word is underlined and drawn twice.
+/// One word in New York. The spoken word is semibold and underlined.
 struct SpeechReadingWord: View {
     var text: String
     var isCurrent: Bool
@@ -35,28 +41,35 @@ struct SpeechReadingWord: View {
     var size: CGFloat
 
     var body: some View {
-        styled(text)
-            .underline(isCurrent, color: dimmed ? Color.secondary : Color.primary)
-            .background(alignment: .leading) {
-                if isCurrent {
-                    styled(text)
-                        .offset(x: SpeechReading.currentWordShift)
-                        .accessibilityHidden(true)
-                }
-            }
-            .accessibilityAddTraits(isCurrent ? .isSelected : [])
-    }
-
-    private func styled(_ value: String) -> some View {
-        Text(value)
-            .font(SpeechReading.font(size: size))
+        Text(text)
+            .font(SpeechReading.font(size: size, weight: isCurrent ? .semibold : .regular))
             .foregroundStyle(ink)
+            .underline(isCurrent, color: dimmed ? Color.secondary : Color.primary)
+            .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 
     private var ink: AnyShapeStyle {
         if dimmed { return AnyShapeStyle(.tertiary) }
         if quiet { return AnyShapeStyle(.secondary) }
         return AnyShapeStyle(.primary)
+    }
+}
+
+/// New York at the reading size, with the reading line gap. Scales with the system text size.
+private struct SpeechReadingStyle: ViewModifier {
+    var weight: Font.Weight
+    @ScaledMetric(relativeTo: SpeechReading.textStyle) private var size = SpeechReading.size
+
+    func body(content: Content) -> some View {
+        content
+            .font(SpeechReading.font(size: size, weight: weight))
+            .lineSpacing(SpeechReading.scaledGap(SpeechReading.lineGap, size: size))
+    }
+}
+
+extension View {
+    func speechReading(weight: Font.Weight = .regular) -> some View {
+        modifier(SpeechReadingStyle(weight: weight))
     }
 }
 
