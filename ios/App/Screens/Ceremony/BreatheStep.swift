@@ -178,13 +178,15 @@ private struct BreathWake: View {
     private let steps = 8
 
     var body: some View {
-        let length = 12 + 16 * amount
+        // About 30% shorter and dimmer than the first phone pass. The smear
+        // read too heavy on a small screen at the prototype's full strength.
+        let length = 8.4 + 11.2 * amount
         ZStack {
             ForEach(1...steps, id: \.self) { step in
                 let t = CGFloat(step) / CGFloat(steps)
                 let fade = CGFloat(pow(Double(1 - t), 1.25))
                 let dy = sign * length * t
-                let alpha = 0.42 * fade * amount
+                let alpha = 0.294 * fade * amount
                 let blur = 1.1 + 5.5 * t
                 Circle()
                     .strokeBorder(Color.white.opacity(Double(alpha)), lineWidth: 3.4 / scale)
