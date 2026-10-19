@@ -28,6 +28,10 @@ targets:
     platform: iOS
     sources:
       - path: App
+        excludes:
+          - "Resources/Ambient/**"
+      - path: App/Resources/Ambient
+        buildPhase: resources
       - path: ../font/InstrumentSerif-Regular.ttf
         buildPhase: resources
     settings:

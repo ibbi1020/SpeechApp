@@ -34,6 +34,7 @@ struct ConversationSessionView: View {
     @State private var partnerEnergy: Float = 0
     @State private var levelTask: Task<Void, Never>?
     @State private var listenBack: ConversationListenBack?
+    @State private var ambientPlace = AmbientPreference().place
 
     private var phase: ConversationPhase {
         session?.phase ?? .idle
@@ -136,6 +137,7 @@ struct ConversationSessionView: View {
         }
         .onChange(of: phase) { _, _ in
             routeIfFinished()
+            syncAmbient()
         }
         .onDisappear {
             tearDownIfLeaving()
@@ -198,8 +200,49 @@ struct ConversationSessionView: View {
 
     private var liveControlRow: some View {
         VStack(spacing: 4) {
+            ambientMenu
             SpeechSubtitle(text: session?.subtitleLine ?? "")
             conversationOrbBar
+        }
+    }
+
+    private var ambientMenu: some View {
+        Menu {
+            ForEach(AmbientPlace.allCases, id: \.self) { place in
+                Button {
+                    selectAmbient(place)
+                } label: {
+                    if place == ambientPlace {
+                        Label(place.title, systemImage: "checkmark")
+                    } else {
+                        Text(place.title)
+                    }
+                }
+            }
+        } label: {
+            Text(ambientPlace.title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityLabel("Background")
+        .accessibilityValue(ambientPlace.title)
+    }
+
+    private func selectAmbient(_ place: AmbientPlace) {
+        ambientPlace = place
+        AmbientPreference().place = place
+        syncAmbient()
+    }
+
+    /// The bed follows the phase. Picking a place does not pause the clock.
+    private func syncAmbient() {
+        let command = AmbientBedPolicy.command(place: ambientPlace, phase: phase)
+        let mouth = mouth
+        switch command {
+        case .play(let place):
+            Task { await mouth?.setAmbient(place: place, playing: true) }
+        case .stop:
+            Task { await mouth?.setAmbient(place: ambientPlace, playing: false) }
         }
     }
 

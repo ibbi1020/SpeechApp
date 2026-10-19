@@ -57,7 +57,14 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
 
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
+    /// Room bed. Separate from `player` so a partner barge-in does not stop it.
+    private let bedPlayer = AVAudioPlayerNode()
     private var playbackFormat: AVAudioFormat?
+    private let bedLock = NSLock()
+    private var ambientPlace: AmbientPlace = .off
+    private var ambientPlaying = false
+    private var scheduledBed: AmbientPlace?
+    private var bedBuffers: [AmbientPlace: AVAudioPCMBuffer] = [:]
     private var inputLevel: Float = 0
     private var outputLevel: Float = 0
 
@@ -168,6 +175,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         if engine.isRunning { return }
         if player.engine == nil {
             engine.attach(player)
+            engine.attach(bedPlayer)
             let format = AVAudioFormat(
                 commonFormat: .pcmFormatFloat32,
                 sampleRate: Self.sampleRate,
@@ -177,6 +185,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             guard let format else { throw MouthError.connectFailed }
             playbackFormat = format
             engine.connect(player, to: engine.mainMixerNode, format: format)
+            engine.connect(bedPlayer, to: engine.mainMixerNode, format: format)
         }
 
         let input = engine.inputNode
@@ -196,6 +205,56 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             player.play()
         }
         setMicEnabled(false)
+        applyAmbientBed()
+    }
+
+    func setAmbient(place: AmbientPlace, playing: Bool) async {
+        lock.withLock {
+            ambientPlace = place
+            ambientPlaying = playing
+        }
+        applyAmbientBed()
+    }
+
+    /// Start or stop the bed node. Does not touch the mic tap or the partner player.
+    private func applyAmbientBed() {
+        bedLock.lock()
+        defer { bedLock.unlock() }
+        let (place, playing) = lock.withLock { (ambientPlace, ambientPlaying) }
+        guard engine.isRunning, bedPlayer.engine != nil else { return }
+        guard playing, place != .off, let buffer = bedBuffer(for: place) else {
+            bedPlayer.stop()
+            bedPlayer.volume = 0
+            lock.withLock { scheduledBed = nil }
+            return
+        }
+        let already = lock.withLock { scheduledBed }
+        if already == place, bedPlayer.isPlaying {
+            bedPlayer.volume = AmbientBedPolicy.gain(place: place)
+            return
+        }
+        bedPlayer.stop()
+        bedPlayer.scheduleBuffer(buffer, at: nil, options: .loops)
+        bedPlayer.volume = AmbientBedPolicy.gain(place: place)
+        if !bedPlayer.isPlaying {
+            bedPlayer.play()
+        }
+        lock.withLock { scheduledBed = place }
+    }
+
+    private func bedBuffer(for place: AmbientPlace) -> AVAudioPCMBuffer? {
+        if let cached = lock.withLock({ bedBuffers[place] }) { return cached }
+        guard let name = place.resourceName,
+              let url = Bundle.main.url(forResource: name, withExtension: "caf"),
+              let target = playbackFormat,
+              let buffer = AmbientFileBuffer.make(url: url, target: target),
+              AmbientLoopFormat.matches(buffer)
+        else {
+            Self.log.error("ambient bed missing or wrong format: \(place.rawValue, privacy: .public)")
+            return nil
+        }
+        lock.withLock { bedBuffers[place] = buffer }
+        return buffer
     }
 
     private func openSocket(token: String) async throws {
@@ -638,6 +697,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
                 revealedWords: snap.revealedWords
             )
         }
+        // Partner node only. The bed keeps looping through a barge-in.
         player.stop()
         if engine.isRunning { player.play() }
         clearCaptionSyncState()
@@ -877,6 +937,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         session?.invalidateAndCancel()
         engine.inputNode.removeTap(onBus: 0)
         player.stop()
+        bedPlayer.stop()
         engine.stop()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         continuation.yield(.disconnected)
