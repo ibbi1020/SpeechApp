@@ -105,11 +105,14 @@ struct ConversationSessionView: View {
                 .transition(SpeechBlur.dissolve)
             }
         }
-        .overlay(alignment: .topLeading) {
+        .overlay(alignment: .topTrailing) {
             if showsControls && !showStopConfirm {
-                ambientMenu
-                    .padding(.leading, 16)
-                    .padding(.top, 12)
+                VStack(spacing: 12) {
+                    ambientMenu
+                    voiceButton
+                }
+                .padding(.trailing, 16)
+                .padding(.top, 12)
             }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: phase)
@@ -159,30 +162,33 @@ struct ConversationSessionView: View {
     }
 
     private var liveCanvas: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack {
             if isPaused {
                 Text("Paused — still here.")
                     .font(.title3.weight(.medium))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-
-            if showsControls {
-                Button {
-                    showVoicePicker = true
-                } label: {
-                    Image(systemName: "music.note")
-                        .speechGlassCircle()
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Voice")
-                .accessibilityValue(PartnerVoice.named(voiceID)?.name ?? voiceID)
-                .padding(.top, 8)
+                    .frame(maxWidth: .infinity)
             }
         }
         .padding(.horizontal, SpeechSpacing.page)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var voiceButton: some View {
+        Button {
+            showVoicePicker = true
+        } label: {
+            Image(systemName: "music.note")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 48, height: 48)
+                .contentShape(Circle())
+                .glassEffect(.regular.interactive(), in: .circle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Voice")
+        .accessibilityValue(PartnerVoice.named(voiceID)?.name ?? voiceID)
     }
 
     private var failureView: some View {
@@ -232,7 +238,7 @@ struct ConversationSessionView: View {
         }
     }
 
-    /// Same slot as FocusFlight’s sound control: a glass circle on the leading edge.
+    /// Background bed. Sits with the voice button at the top trailing edge.
     private var ambientMenu: some View {
         Menu {
             ForEach(AmbientPlace.allCases, id: \.self) { place in

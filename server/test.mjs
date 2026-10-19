@@ -108,7 +108,37 @@ test("second mint while first session concurrent is 429", async () => {
   assert.equal(second.json.error, "concurrent");
 });
 
-test("failed openai mint does not stick concurrent", async () => {
+test("mint requests a Grok ephemeral secret, not a GPT realtime session", async () => {
+  const uuid = randomUUID();
+  const now = Date.parse("2026-09-21T12:00:00Z");
+  const previous = process.env.XAI_API_KEY;
+  process.env.XAI_API_KEY = "xai-test-key";
+  let called;
+  try {
+    const minted = await request(
+      { method: "POST", path: "/v1/conversation/mint", uuid },
+      {
+        now,
+        openaiFetch: async (url, init) => {
+          called = { url, init };
+          return { ok: true, json: async () => ({ value: "xai-realtime-client-secret-test" }) };
+        },
+      },
+    );
+    assert.equal(minted.status, 200);
+    assert.equal(minted.json.client_secret, "xai-realtime-client-secret-test");
+  } finally {
+    if (previous === undefined) delete process.env.XAI_API_KEY;
+    else process.env.XAI_API_KEY = previous;
+  }
+  assert.equal(called.url, "https://api.x.ai/v1/realtime/client_secrets");
+  assert.equal(called.init.headers.Authorization, "Bearer xai-test-key");
+  const body = JSON.parse(called.init.body);
+  assert.deepEqual(body, { expires_after: { seconds: 120 } });
+  assert.equal(body.session, undefined);
+});
+
+test("failed grok mint does not stick concurrent", async () => {
   const uuid = randomUUID();
   const now = Date.parse("2026-09-21T12:00:00Z");
   const failed = await request(
@@ -123,7 +153,7 @@ test("failed openai mint does not stick concurrent", async () => {
   assert.equal(retry.status, 200);
 });
 
-test("thrown openai mint fetch returns 502 and does not stick concurrent", async () => {
+test("thrown grok mint fetch returns 502 and does not stick concurrent", async () => {
   const uuid = randomUUID();
   const now = Date.parse("2026-09-21T12:00:00Z");
   const thrown = await request(
