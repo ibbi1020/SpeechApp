@@ -172,3 +172,66 @@ test("thrown grok mint fetch returns 502 and does not stick concurrent", async (
   );
   assert.equal(retry.status, 200);
 });
+
+test("budget GET reports the count and mint does not consume a start", async () => {
+  const uuid = randomUUID();
+  const now = Date.parse("2026-09-21T12:00:00Z");
+  const before = await request(
+    { method: "GET", path: "/v1/conversation/budget", uuid },
+    { now },
+  );
+  assert.equal(before.status, 200);
+  assert.equal(before.json.used, 0);
+  assert.equal(before.json.limit, 20);
+  assert.equal(before.json.starts_remaining, 20);
+  assert.equal(before.json.month, "2026-09");
+
+  const minted = await request(
+    { method: "POST", path: "/v1/conversation/mint", uuid },
+    { now, openaiFetch: okOpenAI() },
+  );
+  assert.equal(minted.status, 200);
+  const afterMint = await request(
+    { method: "GET", path: "/v1/conversation/budget", uuid },
+    { now },
+  );
+  assert.equal(afterMint.json.used, 0);
+
+  const started = await request(
+    {
+      method: "POST",
+      path: "/v1/conversation/started",
+      uuid,
+      body: { session_id: randomUUID() },
+    },
+    { now },
+  );
+  assert.equal(started.status, 200);
+  const after = await request(
+    { method: "GET", path: "/v1/conversation/budget", uuid },
+    { now },
+  );
+  assert.equal(after.json.used, 1);
+  assert.equal(after.json.starts_remaining, 19);
+});
+
+test("possible minor blocks the next mint and does not call xAI", async () => {
+  const uuid = randomUUID();
+  const now = Date.parse("2026-09-21T12:00:00Z");
+  const flagged = await request(
+    { method: "POST", path: "/v1/conversation/possible-minor", uuid },
+    { now },
+  );
+  assert.equal(flagged.status, 204);
+  const minted = await request(
+    { method: "POST", path: "/v1/conversation/mint", uuid },
+    {
+      now: now + 1000,
+      openaiFetch: async () => {
+        throw new Error("xAI should not be called");
+      },
+    },
+  );
+  assert.equal(minted.status, 403);
+  assert.equal(minted.json.error, "possible_minor");
+});

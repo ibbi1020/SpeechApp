@@ -358,10 +358,11 @@ struct ConversationSessionView: View {
             try Task.checkCancellation()
             try await prepareTask.value
 
-            // Format 2: Bearer token from gitignored plist — no mint server.
-            if let apiKey = built.directAPIKey {
+            if let client = built.mint {
+                let minted = try await client.mint()
+                didMint = true
                 do {
-                    try await built.session.countdownReachedZero(ephemeralKey: apiKey)
+                    try await built.session.countdownReachedZero(ephemeralKey: minted.clientSecret)
                 } catch {
                     await built.session.handle(.failed)
                     throw error
@@ -474,10 +475,10 @@ struct ConversationSessionView: View {
         var rng = SplitMix64(seed: UInt64.random(in: 1...UInt64.max))
         let stance = deck.sample(rng: &rng).views.joined(separator: "\n")
         let openQuestion = bank.prompts[Int(rng.next() % UInt64(bank.prompts.count))]
-        let apiKey = XAIDirectKey.load()
+        let client = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
         let mouth: any ConversationMouth
         let fake: FakeConversationMouth?
-        if apiKey != nil {
+        if client != nil {
             mouth = LiveConversationMouth(voiceID: voiceID)
             fake = nil
         } else {
@@ -500,8 +501,7 @@ struct ConversationSessionView: View {
             session: session,
             mouth: mouth,
             fake: fake,
-            mint: nil,
-            directAPIKey: apiKey
+            mint: client
         )
     }
 
@@ -694,7 +694,6 @@ private struct SessionStart {
     let mouth: any ConversationMouth
     let fake: FakeConversationMouth?
     let mint: MintClient?
-    let directAPIKey: String?
 }
 
 private enum ConversationSessionError: LocalizedError {

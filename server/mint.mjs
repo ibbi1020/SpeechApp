@@ -37,6 +37,17 @@ export async function handleRequest(req, res, now = Date.now(), openaiFetch = fe
   }
   const st = account(uuid);
   const month = monthKey(now);
+  if (url.pathname === "/v1/conversation/budget" && req.method === "GET") {
+    const count = st.month === month ? st.count : 0;
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      used: count,
+      limit: 20,
+      starts_remaining: 20 - count,
+      month,
+    }));
+    return;
+  }
   if (url.pathname === "/v1/conversation/possible-minor" && req.method === "POST") {
     st.possibleMinor = new Date(now).toISOString().slice(0, 10);
     res.writeHead(204);
@@ -68,6 +79,11 @@ export async function handleRequest(req, res, now = Date.now(), openaiFetch = fe
     return;
   }
   if (url.pathname === "/v1/conversation/mint" && req.method === "POST") {
+    if (st.possibleMinor) {
+      res.writeHead(403);
+      res.end(JSON.stringify({ error: "possible_minor" }));
+      return;
+    }
     if ((st.concurrent ?? 0) >= 1) {
       res.writeHead(429);
       res.end(JSON.stringify({ error: "concurrent" }));
