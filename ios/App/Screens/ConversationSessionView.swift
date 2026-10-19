@@ -35,6 +35,8 @@ struct ConversationSessionView: View {
     @State private var levelTask: Task<Void, Never>?
     @State private var listenBack: ConversationListenBack?
     @State private var ambientPlace = AmbientPreference().place
+    @State private var voiceID = VoicePreference().voiceID
+    @State private var showVoicePicker = false
 
     private var phase: ConversationPhase {
         session?.phase ?? .idle
@@ -103,6 +105,13 @@ struct ConversationSessionView: View {
                 .transition(SpeechBlur.dissolve)
             }
         }
+        .overlay(alignment: .topLeading) {
+            if showsControls && !showStopConfirm {
+                ambientMenu
+                    .padding(.leading, 16)
+                    .padding(.top, 12)
+            }
+        }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: phase)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .navigationTitle("")
@@ -139,19 +148,37 @@ struct ConversationSessionView: View {
             routeIfFinished()
             syncAmbient()
         }
+        .sheet(isPresented: $showVoicePicker) {
+            PartnerVoiceSheet(selection: voiceID) { id in
+                selectVoice(id)
+            }
+        }
         .onDisappear {
             tearDownIfLeaving()
         }
     }
 
     private var liveCanvas: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             if isPaused {
                 Text("Paused — still here.")
                     .font(.title3.weight(.medium))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            if showsControls {
+                Button {
+                    showVoicePicker = true
+                } label: {
+                    Image(systemName: "music.note")
+                        .speechGlassCircle()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Voice")
+                .accessibilityValue(PartnerVoice.named(voiceID)?.name ?? voiceID)
+                .padding(.top, 8)
             }
         }
         .padding(.horizontal, SpeechSpacing.page)
@@ -200,12 +227,12 @@ struct ConversationSessionView: View {
 
     private var liveControlRow: some View {
         VStack(spacing: 4) {
-            ambientMenu
             SpeechSubtitle(text: session?.subtitleLine ?? "")
             conversationOrbBar
         }
     }
 
+    /// Same slot as FocusFlight’s sound control: a glass circle on the leading edge.
     private var ambientMenu: some View {
         Menu {
             ForEach(AmbientPlace.allCases, id: \.self) { place in
@@ -220,10 +247,14 @@ struct ConversationSessionView: View {
                 }
             }
         } label: {
-            Text(ambientPlace.title)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
+            Image(systemName: ambientPlace == .off ? "speaker.slash" : "speaker.wave.2")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 48, height: 48)
+                .contentShape(Circle())
+                .glassEffect(.regular.interactive(), in: .circle)
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("Background")
         .accessibilityValue(ambientPlace.title)
     }
@@ -232,6 +263,14 @@ struct ConversationSessionView: View {
         ambientPlace = place
         AmbientPreference().place = place
         syncAmbient()
+    }
+
+    private func selectVoice(_ id: String) {
+        let resolved = PartnerVoice.canonical(id)
+        voiceID = resolved
+        VoicePreference().voiceID = resolved
+        let mouth = mouth
+        Task { await mouth?.updateVoice(resolved) }
     }
 
     /// The bed follows the phase. Picking a place does not pause the clock.
@@ -433,7 +472,7 @@ struct ConversationSessionView: View {
         let mouth: any ConversationMouth
         let fake: FakeConversationMouth?
         if apiKey != nil {
-            mouth = LiveConversationMouth()
+            mouth = LiveConversationMouth(voiceID: voiceID)
             fake = nil
         } else {
             let prototype = FakeConversationMouth()

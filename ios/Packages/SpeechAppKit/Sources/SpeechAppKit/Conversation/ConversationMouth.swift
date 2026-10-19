@@ -39,6 +39,8 @@ public protocol ConversationMouth: AnyObject, Sendable {
     func currentOutputLevel() async -> Float
     /// Loop a chosen room bed, or stop it. Playback only — never the mic path.
     func setAmbient(place: AmbientPlace, playing: Bool) async
+    /// Switch the partner voice. Applies on the next reply when the socket is up.
+    func updateVoice(_ id: String) async
 }
 
 extension ConversationMouth {
@@ -48,6 +50,7 @@ extension ConversationMouth {
     public func currentOutputLevel() async -> Float { 0 }
     public func cancelResponse() async throws {}
     public func setAmbient(place: AmbientPlace, playing: Bool) async {}
+    public func updateVoice(_ id: String) async {}
 }
 
 public enum MouthError: Error { case connectFailed }

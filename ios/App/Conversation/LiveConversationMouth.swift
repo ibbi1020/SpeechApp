@@ -5,7 +5,7 @@ import SpeechAppKit
 
 /// Grok speech-to-speech over WebSocket. Never starts Reading's `MicAudioSource`.
 final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Sendable {
-    static let pinnedModel = "grok-voice-think-fast-2.0"
+    static let pinnedModel = "grok-voice-3.0"
     private static let realtimeURL = URL(
         string: "wss://api.x.ai/v1/realtime?model=\(pinnedModel)"
     )!
@@ -67,12 +67,15 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     private var bedBuffers: [AmbientPlace: AVAudioPCMBuffer] = [:]
     private var inputLevel: Float = 0
     private var outputLevel: Float = 0
+    /// `session.update` voice. Sirius unless the phone has saved another id.
+    private var voiceID: String
 
     var captionSyncLogURL: URL? {
         captionSync?.logFileURL
     }
 
-    override init() {
+    init(voiceID: String = PartnerVoice.defaultID) {
+        self.voiceID = PartnerVoice.canonical(voiceID)
         let pair = AsyncStream<MouthEvent>.makeStream(bufferingPolicy: .unbounded)
         events = pair.stream
         continuation = pair.continuation
@@ -142,6 +145,16 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         try throwIfClosed()
         interruptPlaybackAndCaptions(reason: .cancel)
         try sendEvent(["type": "response.cancel"])
+    }
+
+    /// Stores the choice immediately. Sends it when the socket is up, for the next reply.
+    func updateVoice(_ id: String) async {
+        let resolved = PartnerVoice.canonical(id)
+        lock.withLock { voiceID = resolved }
+        try? sendEvent([
+            "type": "session.update",
+            "session": ["voice": resolved],
+        ])
     }
 
     func close() async {
@@ -462,7 +475,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         try? sendEvent([
             "type": "session.update",
             "session": [
-                "voice": "eve",
+                "voice": lock.withLock { voiceID },
                 "tools": [],
                 "reasoning": ["effort": "none"],
                 "turn_detection": turnDetection,
