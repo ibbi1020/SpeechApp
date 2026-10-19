@@ -104,7 +104,9 @@ struct MonologueSessionView: View {
             .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showLeaveConfirm)
             .allowsHitTesting(isFogged || showLeaveConfirm)
         }
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .speechBarChrome()
         .speechBottomBlur(bar: false)
         .navigationBarBackButtonHidden(true)
         .toolbar(showLeaveConfirm ? .hidden : .automatic, for: .navigationBar)
@@ -220,11 +222,9 @@ struct MonologueSessionView: View {
             liveChrome(session, live: true)
         } else if session.phase == .planning || session.phase == .between {
             planningChrome(session)
-                .blur(radius: fogBlurRadius)
-                .overlay {
-                    Color.black.opacity(fogWashOpacity)
-                        .allowsHitTesting(false)
-                }
+                .opacity(isFogged ? 0 : 1)
+                .accessibilityHidden(isFogged)
+                .allowsHitTesting(!isFogged)
         }
     }
 
@@ -263,7 +263,7 @@ struct MonologueSessionView: View {
                 }
             }
             .padding(.horizontal, SpeechSpacing.page)
-            .padding(.top, 28)
+            .padding(.top, SpeechSpacing.section)
             .padding(.bottom, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -390,11 +390,8 @@ struct MonologueSessionView: View {
             Text(session.prompt)
                 .speechReading()
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .padding(.top, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             VStack(spacing: 20) {
                 MonologueCountdown(
@@ -422,7 +419,7 @@ struct MonologueSessionView: View {
             orbBar(session: session, live: live)
         }
         .padding(.horizontal, SpeechSpacing.page)
-        .padding(.top, 8)
+        .padding(.top, 12)
         .padding(.bottom, 16)
     }
 

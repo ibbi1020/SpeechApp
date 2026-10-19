@@ -79,6 +79,34 @@ public enum BreathPacing {
     public static var rate: Double { 60 / cycle }
 }
 
+/// The timed breath sequence. Done is allowed only when this returns true.
+///
+/// SwiftUI often starts this task, cancels it, and starts it again as the step
+/// appears. `Task.sleep` throws as soon as the task is cancelled. Treating that
+/// as a finished wait would skip the three breaths and turn Done on.
+public enum BreathRun {
+    /// Waits for one part of the breath.
+    /// False when the wait is cut short, so a cancelled run is not finished.
+    public static func wait(_ seconds: Double) async -> Bool {
+        do {
+            try await Task.sleep(for: .seconds(seconds))
+        } catch {
+            return false
+        }
+        return Task.isCancelled == false
+    }
+
+    /// Settle, then every inhale and exhale. True means all three breaths finished.
+    public static func finished() async -> Bool {
+        guard await wait(BreathPacing.settle) else { return false }
+        for _ in 0 ..< BreathPacing.cycles {
+            guard await wait(BreathPacing.inhale) else { return false }
+            guard await wait(BreathPacing.exhale) else { return false }
+        }
+        return Task.isCancelled == false
+    }
+}
+
 /// Semi-occluded vocal tract exercises that need no straw and no water.
 ///
 /// Two from each of the two physiologically distinct families found by

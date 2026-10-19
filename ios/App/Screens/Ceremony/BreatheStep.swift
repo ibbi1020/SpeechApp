@@ -64,21 +64,23 @@ struct BreatheStep: View {
         var hidden = Transaction()
         hidden.disablesAnimations = true
         withTransaction(hidden) { showCircle = false }
-        try? await Task.sleep(for: .seconds(BreathPacing.settle))
+        // A cancelled run stops here. It must not report the breaths as finished.
+        guard await BreathRun.wait(BreathPacing.settle) else { return }
         // Under Reduce Motion the circle holds at one steady size for the whole run.
         // Snapping it large and small every few seconds would be a slow oscillation,
         // which is the thing the setting exists to avoid. The instruction and the
         // haptic carry the pacing instead.
         if reduceMotion { fill = 0.5 }
         for _ in 0 ..< BreathPacing.cycles {
-            await leg(.inhale, to: 1, seconds: BreathPacing.inhale)
-            await leg(.exhale, to: 0, seconds: BreathPacing.exhale)
+            guard await leg(.inhale, to: 1, seconds: BreathPacing.inhale) else { return }
+            guard await leg(.exhale, to: 0, seconds: BreathPacing.exhale) else { return }
         }
+        guard Task.isCancelled == false else { return }
         phase = .finished
         onDone(true)
     }
 
-    private func leg(_ next: Phase, to target: CGFloat, seconds: Double) async {
+    private func leg(_ next: Phase, to target: CGFloat, seconds: Double) async -> Bool {
         phase = next
         if showCircle == false {
             withAnimation(SpeechBlur.motion(reduceMotion: reduceMotion)) {
@@ -88,7 +90,7 @@ struct BreatheStep: View {
         if reduceMotion == false {
             withAnimation(.easeInOut(duration: seconds)) { fill = target }
         }
-        try? await Task.sleep(for: .seconds(seconds))
+        return await BreathRun.wait(seconds)
     }
 }
 
@@ -133,7 +135,7 @@ struct BreathCircle: View {
                     // The even halo is weight, not a trail. The line is solid white.
                     ring(width: 6.25, color: .white.opacity(0.26), blur: 6, scale: scale)
                     BreathWake(amount: sample.amount, sign: wakeSign, scale: scale)
-                    ring(width: 3.5, color: .white, blur: 0, scale: scale)
+                    ring(width: 3.5 * 1.25, color: .white, blur: 0, scale: scale)
                 }
                 .scaleEffect(scale)
                 .transaction { $0.disablesAnimations = true }
@@ -189,7 +191,7 @@ private struct BreathWake: View {
                 let alpha = 0.294 * fade * amount
                 let blur = 1.1 + 5.5 * t
                 Circle()
-                    .strokeBorder(Color.white.opacity(Double(alpha)), lineWidth: 3.4 / scale)
+                    .strokeBorder(Color.white.opacity(Double(alpha)), lineWidth: 3.4 * 1.25 / scale)
                     .blur(radius: blur / scale)
                     .offset(y: dy / scale)
             }

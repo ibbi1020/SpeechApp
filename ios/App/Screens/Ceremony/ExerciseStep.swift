@@ -2,7 +2,9 @@ import SpeechAppKit
 import SwiftUI
 
 /// Pick the exercise. The name and the line sit up top. Three discs sit above
-/// the button. The chosen disc is white, and the other two are pushed off it.
+/// the button. Each one is swirling gas in that exercise's colour, so it reads
+/// as a control. The chosen gas churns. The other two slow down, fade to gray,
+/// and are pushed off it.
 ///
 /// The discs do not carry words. The name is the kicker, because a blank disc
 /// cannot say "Reading" and the heading should not have to.
@@ -46,30 +48,29 @@ struct ExerciseStep: View {
             BlurDissolve(format?.title ?? "", size: CeremonyType.metrics(.label).size) { name in
                 Text(name)
                     .ceremonyType(.label)
-                    .foregroundStyle(.white.opacity(0.72))
+                    .foregroundStyle(.secondary)
             }
-            BlurDissolve(format?.line ?? "", size: CeremonyType.metrics(.display).size) { line in
-                Text(line)
-                    .ceremonyType(.display)
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.top, 2)
-            if let history {
-                BlurDissolve(history, size: CeremonyType.metrics(.body).size) { line in
+            VStack(alignment: .leading, spacing: SpeechSpacing.related) {
+                BlurDissolve(format?.line ?? "", size: CeremonyType.metrics(.display).size) { line in
                     Text(line)
-                        .ceremonyType(.body)
-                        .foregroundStyle(.secondary)
+                        .ceremonyType(.display)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.top, SpeechSpacing.cluster)
-            }
-            if let note {
-                BlurDissolve(note, size: CeremonyType.metrics(.body).size) { line in
-                    Text(line)
-                        .ceremonyType(.body)
-                        .foregroundStyle(.tertiary)
+                if let history {
+                    BlurDissolve(history, size: CeremonyType.metrics(.body).size) { line in
+                        Text(line)
+                            .ceremonyType(.body)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .padding(.top, SpeechSpacing.cluster)
+                if let note {
+                    BlurDissolve(note, size: CeremonyType.metrics(.body).size) { line in
+                        Text(line)
+                            .ceremonyType(.body)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
         }
         .animation(SpeechMotion.swap, value: selected)

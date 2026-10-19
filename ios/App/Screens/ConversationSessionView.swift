@@ -8,6 +8,7 @@ struct ConversationSessionView: View {
     private static let log = Logger(subsystem: "com.speechapp", category: "ConversationSessionView")
 
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -103,9 +104,19 @@ struct ConversationSessionView: View {
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: phase)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
-        .speechPageTitle("Conversation")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .speechBarChrome()
         .speechBottomBlur(bar: false)
         .navigationSubtitle("\(model.budget.label) used this month")
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                SpeechBarButton(systemName: "chevron.left", label: "Back") {
+                    dismiss()
+                }
+            }
+        }
         .toolbar(showStopConfirm || showsFailure ? .hidden : .automatic, for: .navigationBar)
         .background {
             NavigationPopLock(isLocked: showStopConfirm)

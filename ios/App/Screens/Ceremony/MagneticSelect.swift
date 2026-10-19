@@ -1,19 +1,22 @@
 import SpeechAppKit
 import SwiftUI
 
-/// Three discs. The one you press turns white and the other two are pushed
-/// off it. Names live in the type above, because a disc does not carry a word.
+/// Three discs of swirling gas. The one you press churns in full colour, and
+/// the other two are pushed off it, slower and gray. Names live in the type
+/// above, because a disc does not carry a word.
 struct MagneticSelect: View {
     @Binding var selection: PracticeFormat.Kind
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @State private var motion: MagneticMotion
     @State private var poses: [MagneticCluster.Pose]
     @State private var moving = false
     @State private var lean: CGSize = .zero
     @State private var hovered: PracticeFormat.Kind?
+    @State private var gasClocks: [ExerciseGasClock] = (0 ..< MagneticCluster.count).map { _ in
+        ExerciseGasClock()
+    }
 
     init(selection: Binding<PracticeFormat.Kind>) {
         _selection = selection
@@ -82,19 +85,24 @@ struct MagneticSelect: View {
         let chosen = format.kind == selection
         let pose = poses.indices.contains(index) ? poses[index] : .rest
         let center = MagneticCluster.restCenter(at: index)
+        let field = ExerciseOrbField(
+            kind: format.kind,
+            chosen: chosen,
+            hovered: hovered == format.kind
+        )
         return Button {
             selection = format.kind
         } label: {
-            Circle()
-                .fill(fill(chosen: chosen, hovered: hovered == format.kind))
+            ExerciseGasDisc(
+                field: field,
+                clock: gasClocks[index],
+                reduceMotion: reduceMotion
+            )
+                .frame(width: MagneticCluster.chip, height: MagneticCluster.chip)
+                .clipShape(Circle())
                 .overlay {
                     if chosen == false {
                         Circle().strokeBorder(Color.white.opacity(0.28), lineWidth: 1)
-                    }
-                }
-                .background {
-                    if chosen == false, reduceTransparency == false {
-                        Circle().fill(.ultraThinMaterial)
                     }
                 }
         }
@@ -115,15 +123,6 @@ struct MagneticSelect: View {
                 hovered = nil
             }
         }
-    }
-
-    /// Unchosen is a frosted disc. Hover steps it toward white without
-    /// changing its size. The chosen disc is white, because there is no picture.
-    private func fill(chosen: Bool, hovered: Bool) -> Color {
-        if chosen { return .white }
-        if reduceTransparency { return .white.opacity(hovered ? 0.55 : 0.28) }
-        // 34% white mixed into the 18% slab. A flat 12% of white disappears on black.
-        return .white.opacity(hovered ? 0.4588 : 0.18)
     }
 
     /// Same curve as the prototype's skin. A group translation, so the gaps stay.

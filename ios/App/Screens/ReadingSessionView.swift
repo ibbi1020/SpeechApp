@@ -60,38 +60,40 @@ struct ReadingSessionView: View {
 
     var body: some View {
         ZStack {
-            CeremonyPalette.background
-                .ignoresSafeArea()
+            SpeechScreenBackground()
 
-            VStack(alignment: .leading, spacing: 0) {
-                GlassCircleButton(systemName: "chevron.left", label: "Back") {
-                    dismiss()
+            passageScroll
+                .blur(radius: fogBlurRadius)
+                .overlay {
+                    Color.black.opacity(fogWashOpacity)
+                        .allowsHitTesting(false)
                 }
-                .padding(.horizontal, SpeechSpacing.page)
-                .padding(.top, SpeechSpacing.related)
-
-                passageScroll
-                    .blur(radius: fogBlurRadius)
-                    .overlay {
-                        Color.black.opacity(fogWashOpacity)
-                            .allowsHitTesting(false)
-                    }
-                    .accessibilityHidden(isFogged)
-                    .allowsHitTesting(!isFogged)
-
-                bottomChrome
-                    .opacity(isFogged ? 0 : 1)
-                    .accessibilityHidden(isFogged)
-                    .allowsHitTesting(!isFogged)
-            }
+                .safeAreaBar(edge: .bottom, spacing: 0) {
+                    bottomChrome
+                        .opacity(isFogged ? 0 : 1)
+                        .accessibilityHidden(isFogged)
+                        .allowsHitTesting(!isFogged)
+                }
+                .accessibilityHidden(isFogged)
+                .allowsHitTesting(!isFogged)
 
             if isFogged {
                 ReadingCountdownOverlay()
             }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
-        .navigationTitle(passage.title)
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .speechBarChrome()
+        .speechBottomBlur(bar: false)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                SpeechBarButton(systemName: "chevron.left", label: "Back") {
+                    dismiss()
+                }
+            }
+        }
         .background(SpeechEdgeSwipe())
         .background {
             CaretClock(
@@ -135,7 +137,6 @@ struct ReadingSessionView: View {
             ScrollView {
                 passageBody
             }
-            .speechBottomBlur(bar: false)
             .coordinateSpace(.named("reading-passage"))
             .onPreferenceChange(WordLineTops.self) { tops in
                 guard layoutReady, tops != wordTops else { return }
@@ -166,27 +167,12 @@ struct ReadingSessionView: View {
     }
 
     private var passageBody: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: SpeechSpacing.cluster) {
-                Text(passage.title)
-                    .speechType(.h2)
-                    .foregroundStyle(isFogged ? .tertiary : .primary)
-
-                Text(passage.durationLabel)
-                    .ceremonyType(.body)
-                    .foregroundStyle(isFogged ? .tertiary : .secondary)
-                    .monospacedDigit()
-            }
-            .padding(.horizontal, SpeechSpacing.page)
-
-            ReadingFollowAlong(
-                words: passage.words,
-                currentWordID: displayWordID,
-                dimmed: isFogged
-            )
-            .padding(.horizontal, SpeechSpacing.reading)
-            .padding(.top, SpeechSpacing.section)
-        }
+        ReadingFollowAlong(
+            words: passage.words,
+            currentWordID: displayWordID,
+            dimmed: isFogged
+        )
+        .padding(.horizontal, SpeechSpacing.reading)
         .padding(.top, SpeechSpacing.section)
         .padding(.bottom, SpeechSpacing.related)
     }
