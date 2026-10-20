@@ -19,8 +19,12 @@ public struct CaretAnchor: Equatable, Sendable {
 /// so a burst of words sweeps through instead of teleporting, and the mark can
 /// ease one word ahead while the mic is still hot.
 public struct CaretFollow: Equatable, Sendable {
-    /// How long the underline takes to travel one word during a catch-up sweep.
-    public static let secondsPerWord: TimeInterval = 0.1
+    /// Slowest the underline travels one word during a catch-up sweep.
+    /// Was 0.1 s, which turned a 4-word interim into 400 ms of visible lag.
+    public static let secondsPerWord: TimeInterval = 0.04
+    /// Any backlog, however long, is swept within about this long so a burst
+    /// still reads left to right but never trails the voice.
+    public static let maxCatchUp: TimeInterval = 0.12
     /// Spoken lead past the last confirmed word. Grok interims arrive about every 500 ms.
     public static let maxLead: Double = 1
 
@@ -102,7 +106,8 @@ public struct CaretFollow: Equatable, Sendable {
         self.lastTickHost = hostNow
         // Ahead of the confirmed word during a pause: hold. Do not rewind.
         guard displayPosition < target else { return displayPosition }
-        let step = dt / Self.secondsPerWord
+        let gap = target - displayPosition
+        let step = max(dt / Self.secondsPerWord, gap * dt / Self.maxCatchUp)
         displayPosition = min(target, displayPosition + step)
         return displayPosition
     }

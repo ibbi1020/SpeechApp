@@ -22,7 +22,9 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
     private var socket: URLSessionWebSocketTask?
     private var session: URLSession?
     private var stitcher = GrokTranscriptStitcher()
-    private var frames = PCM16FrameBuffer()
+    /// 40 ms frames: a 100 ms frame held each word back up to 100 ms before it was sent.
+    public static let liveFrameSeconds: Double = 0.04
+    private var frames = PCM16FrameBuffer(frameSeconds: GrokTranscriptionEngine.liveFrameSeconds)
     private var queuedFrames: [Data] = []
     private var ready = false
     private var connectStarted = false
