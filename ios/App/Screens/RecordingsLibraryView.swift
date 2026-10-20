@@ -23,9 +23,11 @@ struct RecordingsLibraryView: View {
                         .onChange(of: keepEnabled) { _, value in
                             RecordingsService.keepRecordings = value
                         }
-                    Text("When on, topic talks stay on this phone so you can listen back. Turning off stops new ones; existing ones stay until you delete them.")
+                    Text(RecordingsService.keepExplanation)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
 
                 Section {

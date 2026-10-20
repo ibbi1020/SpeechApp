@@ -34,6 +34,7 @@ struct GallerySheet: View {
     @State private var manifests: [RecordingManifest] = []
     @State private var formatFilter: RecordingManifest.Format?
     @State private var errorMessage: String?
+    @State private var keepEnabled = RecordingsService.keepRecordings
 
     private enum Page: Equatable {
         case library
@@ -69,7 +70,10 @@ struct GallerySheet: View {
             Button("Cancel", role: .cancel) {}
         }
         .task { reload() }
-        .onAppear(perform: consumeGalleryRequest)
+        .onAppear {
+            keepEnabled = RecordingsService.keepRecordings
+            consumeGalleryRequest()
+        }
         .onChange(of: model.presentGallery) { _, open in
             if open { consumeGalleryRequest() }
         }
@@ -160,17 +164,43 @@ struct GallerySheet: View {
         .simultaneousGesture(drag(travel: travel))
     }
 
+    /// Full-screen library only. The peek stays title and count.
+    private var showsKeepToggle: Bool {
+        committedFullScreen && page == .library
+    }
+
+    /// Sits with the recordings it governs, under the title, not in the chrome.
+    private var keepRecordingsRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(isOn: $keepEnabled) {
+                Text("Keep recordings")
+                    .font(.body.weight(.semibold))
+            }
+            .onChange(of: keepEnabled) { _, value in
+                RecordingsService.keepRecordings = value
+            }
+            .accessibilityHint(RecordingsService.keepExplanation)
+            Text(RecordingsService.keepExplanation)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, 4)
+    }
+
     /// Total saved feedbacks, sat on the same baseline as the title.
     private var galleryTitle: some View {
-        let titleSize: CGFloat = committedFullScreen ? 28 : 22
-        let countSize: CGFloat = committedFullScreen ? 17 : 15
+        let titleSize: CGFloat = committedFullScreen ? 36 : 24
+        let countSize: CGFloat = committedFullScreen ? 16 : 14
         return HStack(alignment: .lastTextBaseline, spacing: 6) {
             Text("Gallery")
                 .font(.system(size: titleSize, weight: .semibold))
                 .tracking(committedFullScreen ? -0.42 : -0.33)
                 .foregroundStyle(.primary)
             Text(manifests.count, format: .number)
-                .font(.system(size: countSize, weight: .regular))
+                .font(.system(size: countSize, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
@@ -202,39 +232,43 @@ struct GallerySheet: View {
 
     private var libraryList: some View {
         ScrollView {
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.subheadline)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-            } else if manifests.isEmpty {
-                Text("No recordings on this phone.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 240)
-            } else {
-                LazyVStack(alignment: .leading, spacing: SpeechSpacing.section) {
-                    if committedFullScreen, !filters.isEmpty {
-                        filterRow
-                    }
-                    ForEach(dayGroups) { group in
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(group.title)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(.bottom, SpeechSpacing.cluster)
-                                .accessibilityAddTraits(.isHeader)
-                            ForEach(group.items) { item in
-                                recordingRow(item)
+            VStack(alignment: .leading, spacing: SpeechSpacing.section) {
+                if showsKeepToggle {
+                    keepRecordingsRow
+                }
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.subheadline)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else if manifests.isEmpty {
+                    Text("No recordings on this phone.")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 240)
+                } else {
+                    LazyVStack(alignment: .leading, spacing: SpeechSpacing.section) {
+                        if committedFullScreen, !filters.isEmpty {
+                            filterRow
+                        }
+                        ForEach(dayGroups) { group in
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(group.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.bottom, SpeechSpacing.cluster)
+                                    .accessibilityAddTraits(.isHeader)
+                                ForEach(group.items) { item in
+                                    recordingRow(item)
+                                }
                             }
                         }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, SpeechSpacing.cluster)
-                .padding(.bottom, bottomInset)
             }
+            .padding(.horizontal, 16)
+            .padding(.top, SpeechSpacing.cluster)
+            .padding(.bottom, bottomInset)
         }
     }
 
@@ -245,30 +279,14 @@ struct GallerySheet: View {
             manifests.contains { $0.format == format }
         }
         guard present.count > 1 else { return [] }
-        return [GalleryFilter(title: "All", format: nil)] + present.map {
-            GalleryFilter(title: formatName($0), format: $0)
+        return [GalleryFilter(title: "All", format: nil, symbol: "tray.full")] + present.map {
+            GalleryFilter(title: formatName($0), format: $0, symbol: formatSymbol($0))
         }
     }
 
     private var filterRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: SpeechSpacing.related) {
-                ForEach(filters) { filter in
-                    let selected = formatFilter == filter.format
-                    Button {
-                        formatFilter = filter.format
-                    } label: {
-                        Text(filter.title)
-                            .font(.subheadline.weight(selected ? .semibold : .regular))
-                            .foregroundStyle(selected ? Color.primary : Color.secondary)
-                            .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selected ? .isSelected : [])
-                }
-            }
-        }
-        .frame(height: 44)
+        GalleryCategoryTabs(filters: filters, selection: $formatFilter)
+            .padding(.horizontal, -16)
     }
 
     private var dayGroups: [GalleryDay] {
@@ -426,6 +444,14 @@ struct GallerySheet: View {
         }
     }
 
+    private func formatSymbol(_ format: RecordingManifest.Format) -> String {
+        switch format {
+        case .reading: "text.book.closed"
+        case .monologue: "waveform"
+        case .conversation: "bubble.left.and.bubble.right"
+        }
+    }
+
     private func rubber(_ value: CGFloat) -> CGFloat {
         if value < 0 { return value * 0.28 }
         if value > 1 { return 1 + (value - 1) * 0.28 }
@@ -442,10 +468,11 @@ private struct GalleryDay: Identifiable {
 }
 
 /// A way to narrow the gallery. `format == nil` means every recording.
-private struct GalleryFilter: Identifiable {
+struct GalleryFilter: Identifiable {
     static let order: [RecordingManifest.Format] = [.reading, .monologue, .conversation]
 
     var title: String
     var format: RecordingManifest.Format?
+    var symbol: String
     var id: String { title }
 }

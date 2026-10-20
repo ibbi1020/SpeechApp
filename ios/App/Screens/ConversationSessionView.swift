@@ -107,9 +107,10 @@ struct ConversationSessionView: View {
         }
         .overlay(alignment: .topTrailing) {
             if showsControls && !showStopConfirm {
-                VStack(spacing: 12) {
+                VStack(alignment: .trailing, spacing: 12) {
                     ambientMenu
                     voiceButton
+                    AIPartnerBadge()
                 }
                 .padding(.trailing, 16)
                 .padding(.top, 12)
