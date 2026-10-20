@@ -39,7 +39,8 @@ public protocol ConversationMouth: AnyObject, Sendable {
     func currentOutputLevel() async -> Float
     /// Loop a chosen room bed, or stop it. Playback only — never the mic path.
     func setAmbient(place: AmbientPlace, playing: Bool) async
-    /// Switch the partner voice. Applies on the next reply when the socket is up.
+    /// Switch the partner voice. A sentence already speaking keeps its voice.
+    /// The pick is sent once that reply has finished playing.
     func updateVoice(_ id: String) async
 }
 
