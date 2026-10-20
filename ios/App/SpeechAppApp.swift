@@ -14,7 +14,10 @@ struct SpeechAppApp: App {
         WindowGroup {
             RootView()
                 .environment(appModel)
-                .onAppear { VoiceOrbPreloader.warmup() }
+                .onAppear {
+                    VoiceOrbPreloader.warmup()
+                    Task { await appModel.refreshBudget() }
+                }
         }
     }
 }

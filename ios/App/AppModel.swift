@@ -127,6 +127,14 @@ final class AppModel {
         weeklyCounts = weeklyPracticeCounts()
         entry = .ceremony
         route = .home
+        Task { await refreshBudget() }
+    }
+
+    /// Asks the mint server how many conversations are left. A down server leaves the last snapshot.
+    func refreshBudget() async {
+        guard let client = MintClient.makeIfConfigured(uuid: account.accountUUID) else { return }
+        guard let snapshot = try? await client.budget() else { return }
+        budget = snapshot
     }
 
     func advanceCeremony() {
