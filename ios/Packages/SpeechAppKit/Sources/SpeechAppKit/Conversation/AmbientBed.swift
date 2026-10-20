@@ -74,6 +74,58 @@ public enum AmbientBedPolicy {
     }
 }
 
+/// Collapses a burst of background picks into one player change.
+/// Older requests must not stop or reschedule the bed.
+public struct AmbientBedCoalescer: Equatable, Sendable {
+    public private(set) var generation = 0
+    public private(set) var place: AmbientPlace = .off
+    public private(set) var playing = false
+    public private(set) var scheduled: AmbientPlace?
+    public private(set) var audible = false
+
+    public init() {}
+
+    /// Records the latest pick. Returns the generation that may touch the player.
+    public mutating func request(place: AmbientPlace, playing: Bool) -> Int {
+        generation += 1
+        self.place = place
+        self.playing = playing
+        return generation
+    }
+
+    public func shouldApply(_ requested: Int) -> Bool {
+        requested == generation
+    }
+
+    public enum Step: Equatable, Sendable {
+        /// A newer pick already replaced this one. Do not touch the player.
+        case skip
+        case stop
+        /// This place is already looping. Leave the node alone.
+        case leave(AmbientPlace)
+        case restart(AmbientPlace)
+    }
+
+    public func step(for requested: Int) -> Step {
+        guard requested == generation else { return .skip }
+        guard playing, place != .off else { return .stop }
+        if audible, scheduled == place { return .leave(place) }
+        return .restart(place)
+    }
+
+    public mutating func didStop() {
+        audible = false
+        scheduled = nil
+    }
+
+    /// Marks `place` looping only when `requested` is still the latest pick.
+    public mutating func didStart(_ place: AmbientPlace, generation requested: Int) {
+        guard requested == generation else { return }
+        audible = true
+        scheduled = place
+    }
+}
+
 /// The place chosen on this phone. Missing or unknown values read as off.
 public final class AmbientPreference: @unchecked Sendable {
     public static let storageKey = "conversation.ambientPlace"

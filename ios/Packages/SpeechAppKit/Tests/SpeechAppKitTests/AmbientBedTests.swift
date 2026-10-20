@@ -68,4 +68,35 @@ struct AmbientBedTests {
         bed.frameLength = 8
         #expect(AmbientLoopFormat.matches(bed) == true)
     }
+
+    @Test("a burst of picks touches the player once, on the last place")
+    func rapidPicksCollapse() {
+        var bed = AmbientBedCoalescer()
+        let first = bed.request(place: .beach, playing: true)
+        let second = bed.request(place: .rain, playing: true)
+        let third = bed.request(place: .airport, playing: true)
+        #expect(bed.step(for: first) == .skip)
+        #expect(bed.step(for: second) == .skip)
+        #expect(bed.step(for: third) == .restart(.airport))
+        bed.didStart(.beach, generation: first)
+        #expect(bed.scheduled == nil)
+        bed.didStart(.airport, generation: third)
+        #expect(bed.audible)
+        #expect(bed.scheduled == .airport)
+        let again = bed.request(place: .airport, playing: true)
+        #expect(bed.step(for: again) == .leave(.airport))
+    }
+
+    @Test("turning the bed off stops it, and a stale stop does not")
+    func offStopsOnlyWhenLatest() {
+        var bed = AmbientBedCoalescer()
+        let beach = bed.request(place: .beach, playing: true)
+        bed.didStart(.beach, generation: beach)
+        let off = bed.request(place: .off, playing: false)
+        let rain = bed.request(place: .rain, playing: true)
+        #expect(bed.step(for: off) == .skip)
+        #expect(bed.step(for: rain) == .restart(.rain))
+        bed.didStop()
+        #expect(bed.audible == false)
+    }
 }

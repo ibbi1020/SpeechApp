@@ -46,7 +46,7 @@ struct PartnerVoiceSheet: View {
             }
             .navigationTitle("Voice")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationSubtitle("Next reply uses this voice")
+            .navigationSubtitle("Starts after this reply")
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)

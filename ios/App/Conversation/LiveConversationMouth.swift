@@ -60,22 +60,25 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     /// Room bed. Separate from `player` so a partner barge-in does not stop it.
     private let bedPlayer = AVAudioPlayerNode()
     private var playbackFormat: AVAudioFormat?
-    private let bedLock = NSLock()
-    private var ambientPlace: AmbientPlace = .off
-    private var ambientPlaying = false
-    private var scheduledBed: AmbientPlace?
+    /// Bed changes run here, off the main actor, and only the latest pick touches the node.
+    private let bedQueue = DispatchQueue(label: "speechapp.ambient-bed")
+    private var bedCoalescer = AmbientBedCoalescer()
     private var bedBuffers: [AmbientPlace: AVAudioPCMBuffer] = [:]
     private var inputLevel: Float = 0
     private var outputLevel: Float = 0
     /// `session.update` voice. Sirius unless the phone has saved another id.
     private var voiceID: String
+    /// Holds a mid-sentence pick until this reply has finished playing.
+    private var voiceSwitch: VoiceSwitch
 
     var captionSyncLogURL: URL? {
         captionSync?.logFileURL
     }
 
     init(voiceID: String = PartnerVoice.defaultID) {
-        self.voiceID = PartnerVoice.canonical(voiceID)
+        let canonical = PartnerVoice.canonical(voiceID)
+        self.voiceID = canonical
+        self.voiceSwitch = VoiceSwitch(applied: canonical)
         let pair = AsyncStream<MouthEvent>.makeStream(bufferingPolicy: .unbounded)
         events = pair.stream
         continuation = pair.continuation
@@ -147,14 +150,16 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         try sendEvent(["type": "response.cancel"])
     }
 
-    /// Stores the choice immediately. Sends it when the socket is up, for the next reply.
+    /// Stores the choice immediately. The server hears it only between replies,
+    /// so the sentence already coming out of the speaker stays on the old voice.
     func updateVoice(_ id: String) async {
-        let resolved = PartnerVoice.canonical(id)
-        lock.withLock { voiceID = resolved }
-        try? sendEvent([
-            "type": "session.update",
-            "session": ["voice": resolved],
-        ])
+        let immediate = lock.withLock { () -> String? in
+            voiceID = PartnerVoice.canonical(id)
+            return voiceSwitch.select(voiceID)
+        }
+        if let immediate {
+            sendVoiceUpdate(immediate)
+        }
     }
 
     func close() async {
@@ -218,41 +223,57 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             player.play()
         }
         setMicEnabled(false)
-        applyAmbientBed()
+        let generation = lock.withLock { bedCoalescer.generation }
+        bedQueue.async { [weak self] in
+            self?.preloadBeds()
+            self?.applyLatestBed(expectedGeneration: generation)
+        }
     }
 
     func setAmbient(place: AmbientPlace, playing: Bool) async {
-        lock.withLock {
-            ambientPlace = place
-            ambientPlaying = playing
+        let generation = lock.withLock {
+            bedCoalescer.request(place: place, playing: playing)
         }
-        applyAmbientBed()
+        bedQueue.async { [weak self] in
+            self?.applyLatestBed(expectedGeneration: generation)
+        }
     }
 
     /// Start or stop the bed node. Does not touch the mic tap or the partner player.
-    private func applyAmbientBed() {
-        bedLock.lock()
-        defer { bedLock.unlock() }
-        let (place, playing) = lock.withLock { (ambientPlace, ambientPlaying) }
+    /// Runs on `bedQueue`. A superseded pick returns without calling stop.
+    private func applyLatestBed(expectedGeneration: Int) {
         guard engine.isRunning, bedPlayer.engine != nil else { return }
-        guard playing, place != .off, let buffer = bedBuffer(for: place) else {
+        let step = lock.withLock { bedCoalescer.step(for: expectedGeneration) }
+        switch step {
+        case .skip:
+            return
+        case .leave(let place) where bedPlayer.isPlaying:
+            bedPlayer.volume = AmbientBedPolicy.gain(place: place)
+        case .leave(let place), .restart(let place):
+            guard let buffer = bedBuffer(for: place) else {
+                bedPlayer.stop()
+                bedPlayer.volume = 0
+                lock.withLock { bedCoalescer.didStop() }
+                return
+            }
+            guard lock.withLock({ bedCoalescer.shouldApply(expectedGeneration) }) else { return }
+            bedPlayer.stop()
+            guard lock.withLock({ bedCoalescer.shouldApply(expectedGeneration) }) else { return }
+            bedPlayer.scheduleBuffer(buffer, at: nil, options: .loops)
+            bedPlayer.volume = AmbientBedPolicy.gain(place: place)
+            bedPlayer.play()
+            lock.withLock { bedCoalescer.didStart(place, generation: expectedGeneration) }
+        case .stop:
             bedPlayer.stop()
             bedPlayer.volume = 0
-            lock.withLock { scheduledBed = nil }
-            return
+            lock.withLock { bedCoalescer.didStop() }
         }
-        let already = lock.withLock { scheduledBed }
-        if already == place, bedPlayer.isPlaying {
-            bedPlayer.volume = AmbientBedPolicy.gain(place: place)
-            return
+    }
+
+    private func preloadBeds() {
+        for place in AmbientPlace.allCases where place != .off {
+            _ = bedBuffer(for: place)
         }
-        bedPlayer.stop()
-        bedPlayer.scheduleBuffer(buffer, at: nil, options: .loops)
-        bedPlayer.volume = AmbientBedPolicy.gain(place: place)
-        if !bedPlayer.isPlaying {
-            bedPlayer.play()
-        }
-        lock.withLock { scheduledBed = place }
     }
 
     private func bedBuffer(for place: AmbientPlace) -> AVAudioPCMBuffer? {
@@ -585,27 +606,33 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
 
     private func beginPartnerResponse() {
         clearCaptionSyncState()
+        lock.withLock { voiceSwitch.noteResponseStarted() }
         captionSync?.noteResponseCreated()
     }
 
     private func finishPartnerResponseAudio(seedTranscript: String) {
         responseTranscript = ""
-        let idle: Bool = lock.withLock {
+        let playedOut: Bool = lock.withLock {
             outputLevel = 0
             captionLedger.seedTranscriptIfEmpty(seedTranscript)
             drainingAfterDone = true
-            return captionLedger.queuedFrames == 0
+            let queued = captionLedger.queuedFrames
+            // Nothing was queued, or every queued buffer already finished
+            // before this event. Either way the speaker is done with this reply.
+            return queued == 0 || captionLedger.completedFrames >= queued
         }
-        logResponseDone(draining: !idle)
+        logResponseDone(draining: !playedOut)
+        lock.withLock { voiceSwitch.noteResponseFinished() }
         // Remaining buffers keep advancing the caption as they finish.
-        // If nothing is queued, show the seeded line once.
-        if idle {
+        // If the speaker is already done, show the seeded line once.
+        if playedOut {
             publishCaptionFromLedger(forceFull: true)
             clearCaptionSyncState()
             notePartnerPlaybackFinished()
         } else {
             publishCaptionFromLedger(forceFull: false)
         }
+        releaseVoiceIfQuiet()
     }
 
     private func clearCaptionSyncState() {
@@ -714,7 +741,10 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         player.stop()
         if engine.isRunning { player.play() }
         clearCaptionSyncState()
-        lock.withLock { outputLevel = 0 }
+        lock.withLock {
+            outputLevel = 0
+            voiceSwitch.noteInterrupted()
+        }
         notePartnerPlaybackFinished()
     }
 
@@ -722,11 +752,28 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         let transcript: String? = lock.withLock {
             guard partnerPlaying else { return nil }
             partnerPlaying = false
+            voiceSwitch.notePlaybackFinished()
             return lastResponseTranscript
         }
         if let transcript {
             playbackContinuation.yield(.finished(transcript: transcript))
         }
+        releaseVoiceIfQuiet()
+    }
+
+    /// Sends a held voice pick once this reply is neither generating nor playing.
+    private func releaseVoiceIfQuiet() {
+        let voice = lock.withLock { voiceSwitch.flushIfIdle() }
+        if let voice {
+            sendVoiceUpdate(voice)
+        }
+    }
+
+    private func sendVoiceUpdate(_ id: String) {
+        try? sendEvent([
+            "type": "session.update",
+            "session": ["voice": id],
+        ])
     }
 
     private func startCaptionSyncLog() {
@@ -812,6 +859,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             return true
         }
         if firstForTurn {
+            lock.withLock { voiceSwitch.notePlaybackStarted() }
             playbackContinuation.yield(.started)
         }
         guard !emittedPlaybackStart else { return }
