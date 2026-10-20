@@ -34,8 +34,10 @@ struct ConversationCueTests {
     func continueAsideFloorHand() {
         let aside = ConversationCueAssembler.continueAside
         #expect(aside.contains("at most three sentences"))
+        #expect(aside.localizedCaseInsensitiveContains("when it sounds natural"))
         #expect(aside.localizedCaseInsensitiveContains("one forward move"))
         #expect(aside.localizedCaseInsensitiveContains("one hook"))
+        #expect(aside.localizedCaseInsensitiveContains("short hook"))
         #expect(aside.localizedCaseInsensitiveContains("one-word"))
         #expect(aside.localizedCaseInsensitiveContains("never a second question"))
         #expect(!aside.localizedCaseInsensitiveContains("likes or wants"))
@@ -87,6 +89,8 @@ struct ConversationCueTests {
         #expect(prefix.localizedCaseInsensitiveContains("likes, wants"))
         #expect(prefix.localizedCaseInsensitiveContains("do not claim to be human"))
         #expect(prefix.localizedCaseInsensitiveContains("one sentence"))
+        #expect(prefix.localizedCaseInsensitiveContains("only if they brought it up"))
+        #expect(prefix.localizedCaseInsensitiveContains("background sound"))
         #expect(!prefix.localizedCaseInsensitiveContains("end with a question"))
         #expect(!prefix.localizedCaseInsensitiveContains("always ask"))
         #expect(!prefix.localizedCaseInsensitiveContains("always end"))
