@@ -6,6 +6,9 @@ import SpeechAppKit
 enum RecordingsService {
     private static let keepKey = "recordings.keepEnabled"
 
+    /// The label already says what the switch does. This only covers the part it does not: off does not delete.
+    static let keepExplanation = "Off stops new saves. Existing ones stay."
+
     static var keepRecordings: Bool {
         get {
             if UserDefaults.standard.object(forKey: keepKey) == nil { return true }

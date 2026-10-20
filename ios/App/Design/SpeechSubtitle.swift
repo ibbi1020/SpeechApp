@@ -7,7 +7,7 @@ struct SpeechSubtitle: View {
     let text: String
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .callout) private var fontSize: CGFloat = 16
+    @ScaledMetric(relativeTo: SpeechReading.textStyle) private var fontSize: CGFloat = SpeechReading.size
 
     @State private var tokens: [Token] = []
     @State private var availableWidth: CGFloat = 0
@@ -16,18 +16,22 @@ struct SpeechSubtitle: View {
     @State private var pageStart = 0
     @State private var isPaging = false
 
-    private static let wordGap: CGFloat = 5
+    private var wordGap: CGFloat {
+        SpeechReading.scaledGap(SpeechReading.wordGap, size: fontSize)
+    }
+    /// The line uses this share of the width the section offers. 0.85 is 15% narrower.
+    private static let widthFraction: CGFloat = 0.85
     private static let inkOpacity = 0.62
     private static let enterBlur: CGFloat = 14
     private static let enterDuration = 0.45
     private static let fadeDuration = 0.2
 
     private var subtitleFont: Font {
-        .custom(SpeechType.instrumentSerif, size: fontSize)
+        SpeechReading.font(size: fontSize)
     }
 
     private var lineHeight: CGFloat {
-        fontSize * 1.25
+        SpeechReading.uiFont(size: fontSize).lineHeight
     }
 
     private var spokenLine: String {
@@ -35,7 +39,13 @@ struct SpeechSubtitle: View {
     }
 
     var body: some View {
-        HStack(spacing: Self.wordGap) {
+        SubtitleColumn(fraction: Self.widthFraction) {
+            line
+        }
+    }
+
+    private var line: some View {
+        HStack(spacing: wordGap) {
             ForEach(tokens) { token in
                 Text(token.surface)
                     .font(subtitleFont)
@@ -161,7 +171,7 @@ struct SpeechSubtitle: View {
         var page: [String] = []
         var used: CGFloat = 0
         for word in sourceWords.dropFirst(pageStart) {
-            let extra = page.isEmpty ? measure(word) : measure(word) + Self.wordGap
+            let extra = page.isEmpty ? measure(word) : measure(word) + wordGap
             if !page.isEmpty, used + extra > availableWidth {
                 break
             }
@@ -368,12 +378,12 @@ struct SpeechSubtitle: View {
     private func width(of surfaces: [String], leadingGap: Bool) -> CGFloat {
         guard !surfaces.isEmpty else { return 0 }
         let words = surfaces.reduce(CGFloat.zero) { $0 + measure($1) }
-        let gaps = Self.wordGap * CGFloat(surfaces.count - (leadingGap ? 0 : 1))
+        let gaps = wordGap * CGFloat(surfaces.count - (leadingGap ? 0 : 1))
         return words + max(0, gaps)
     }
 
     private func measure(_ string: String) -> CGFloat {
-        let font = SpeechType.readingUIFont(size: fontSize)
+        let font = SpeechReading.uiFont(size: fontSize)
         return (string as NSString).size(withAttributes: [.font: font]).width
     }
 
@@ -386,6 +396,29 @@ struct SpeechSubtitle: View {
             .filter { !$0.isEmpty }
     }
 
+}
+
+/// Centers the subtitle in the width it is offered, and gives the line a fraction of that width.
+private struct SubtitleColumn: Layout {
+    var fraction: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = columnWidth(proposal.width)
+        let child = subviews[0].sizeThatFits(ProposedViewSize(width: width, height: proposal.height))
+        return CGSize(width: width ?? child.width, height: child.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews[0].place(
+            at: CGPoint(x: bounds.minX, y: bounds.minY),
+            proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
+        )
+    }
+
+    private func columnWidth(_ offered: CGFloat?) -> CGFloat? {
+        guard let offered else { return nil }
+        return offered * fraction
+    }
 }
 
 private struct Token: Identifiable, Equatable {

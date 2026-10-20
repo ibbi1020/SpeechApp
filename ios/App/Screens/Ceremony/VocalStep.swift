@@ -58,7 +58,7 @@ struct VocalStep: View {
     }
 
     private var playing: some View {
-        VStack(alignment: .leading, spacing: SpeechSpacing.section) {
+        VStack(alignment: .leading, spacing: SpeechSpacing.related) {
             Text(clip.line)
                 .ceremonyType(.display)
                 .foregroundStyle(.primary)

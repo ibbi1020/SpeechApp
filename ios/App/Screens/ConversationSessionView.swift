@@ -8,9 +8,9 @@ struct ConversationSessionView: View {
     private static let log = Logger(subsystem: "com.speechapp", category: "ConversationSessionView")
 
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @State private var session: ConversationSession?
     @State private var fakeMouth: FakeConversationMouth?
@@ -21,7 +21,6 @@ struct ConversationSessionView: View {
     @State private var didPostEnded = false
     @State private var errorMessage: String?
     @State private var canRetry = true
-    @State private var countdownRemaining: Int?
     @State private var showStopConfirm = false
     @State private var didRouteFinish = false
     @State private var eventPump: Task<Void, Never>?
@@ -35,6 +34,9 @@ struct ConversationSessionView: View {
     @State private var partnerEnergy: Float = 0
     @State private var levelTask: Task<Void, Never>?
     @State private var listenBack: ConversationListenBack?
+    @State private var ambientPlace = AmbientPreference().place
+    @State private var voiceID = VoicePreference().voiceID
+    @State private var showVoicePicker = false
 
     private var phase: ConversationPhase {
         session?.phase ?? .idle
@@ -42,10 +44,6 @@ struct ConversationSessionView: View {
 
     private var isPaused: Bool {
         phase == .paused
-    }
-
-    private var isFogged: Bool {
-        countdownRemaining != nil
     }
 
     private var showsFailure: Bool {
@@ -69,21 +67,10 @@ struct ConversationSessionView: View {
     private var orbPhase: VoiceOrb.Phase {
         .conversation(
             phase: phase,
-            isCountdown: isFogged,
+            isCountdown: false,
             floor: floor.owner,
             agentSpeaking: agentSpeaking
         )
-    }
-
-    private var fogBlurRadius: CGFloat {
-        isFogged && !reduceTransparency ? SpeechCountdown.fogBlurRadius : 0
-    }
-
-    private var fogWashOpacity: Double {
-        guard isFogged else { return 0 }
-        return reduceTransparency
-            ? SpeechCountdown.reducedTransparencyWash
-            : SpeechCountdown.fogWashOpacity
     }
 
     var body: some View {
@@ -94,26 +81,14 @@ struct ConversationSessionView: View {
                 failureView
             } else {
                 liveCanvas
-                    .blur(radius: fogBlurRadius)
-                    .overlay {
-                        Color.black.opacity(fogWashOpacity)
-                            .allowsHitTesting(false)
-                    }
                     .safeAreaBar(edge: .bottom, spacing: 0) {
                         bottomChrome
                     }
-                    .accessibilityHidden(isFogged || showStopConfirm)
-                    .allowsHitTesting(!isFogged && !showStopConfirm)
+                    .accessibilityHidden(showStopConfirm)
+                    .allowsHitTesting(!showStopConfirm)
                     // The stop card does not sit on a flat scrim: the conversation
                     // behind it blurs and dims as one layer.
                     .blurBackdrop(showStopConfirm)
-            }
-
-            if isFogged {
-                ReadingCountdownOverlay(
-                    remaining: countdownRemaining,
-                    instruction: "Take a deep breath. Talk when you're ready."
-                )
             }
 
             if showStopConfirm {
@@ -130,13 +105,32 @@ struct ConversationSessionView: View {
                 .transition(SpeechBlur.dissolve)
             }
         }
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
+        .overlay(alignment: .topTrailing) {
+            if showsControls && !showStopConfirm {
+                VStack(alignment: .trailing, spacing: 12) {
+                    ambientMenu
+                    voiceButton
+                    AIPartnerBadge()
+                }
+                .padding(.trailing, 16)
+                .padding(.top, 12)
+            }
+        }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: phase)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
-        .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
-        .speechPageTitle("Conversation")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .speechBarChrome()
         .speechBottomBlur(bar: false)
         .navigationSubtitle("\(model.budget.label) used this month")
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                SpeechBarButton(systemName: "chevron.left", label: "Back") {
+                    dismiss()
+                }
+            }
+        }
         .toolbar(showStopConfirm || showsFailure ? .hidden : .automatic, for: .navigationBar)
         .background {
             NavigationPopLock(isLocked: showStopConfirm)
@@ -156,6 +150,12 @@ struct ConversationSessionView: View {
         }
         .onChange(of: phase) { _, _ in
             routeIfFinished()
+            syncAmbient()
+        }
+        .sheet(isPresented: $showVoicePicker) {
+            PartnerVoiceSheet(selection: voiceID) { id in
+                selectVoice(id)
+            }
         }
         .onDisappear {
             tearDownIfLeaving()
@@ -174,6 +174,22 @@ struct ConversationSessionView: View {
         }
         .padding(.horizontal, SpeechSpacing.page)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var voiceButton: some View {
+        Button {
+            showVoicePicker = true
+        } label: {
+            Image(systemName: "music.note")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 48, height: 48)
+                .contentShape(Circle())
+                .glassEffect(.regular.interactive(), in: .circle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Voice")
+        .accessibilityValue(PartnerVoice.named(voiceID)?.name ?? voiceID)
     }
 
     private var failureView: some View {
@@ -220,6 +236,59 @@ struct ConversationSessionView: View {
         VStack(spacing: 4) {
             SpeechSubtitle(text: session?.subtitleLine ?? "")
             conversationOrbBar
+        }
+    }
+
+    /// Background bed. Sits with the voice button at the top trailing edge.
+    private var ambientMenu: some View {
+        Menu {
+            ForEach(AmbientPlace.allCases, id: \.self) { place in
+                Button {
+                    selectAmbient(place)
+                } label: {
+                    if place == ambientPlace {
+                        Label(place.title, systemImage: "checkmark")
+                    } else {
+                        Text(place.title)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: ambientPlace == .off ? "speaker.slash" : "speaker.wave.2")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 48, height: 48)
+                .contentShape(Circle())
+                .glassEffect(.regular.interactive(), in: .circle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Background")
+        .accessibilityValue(ambientPlace.title)
+    }
+
+    private func selectAmbient(_ place: AmbientPlace) {
+        ambientPlace = place
+        AmbientPreference().place = place
+        syncAmbient()
+    }
+
+    private func selectVoice(_ id: String) {
+        let resolved = PartnerVoice.canonical(id)
+        voiceID = resolved
+        VoicePreference().voiceID = resolved
+        let mouth = mouth
+        Task { await mouth?.updateVoice(resolved) }
+    }
+
+    /// The bed follows the phase. Picking a place does not pause the clock.
+    private func syncAmbient() {
+        let command = AmbientBedPolicy.command(place: ambientPlace, phase: phase)
+        let mouth = mouth
+        switch command {
+        case .play(let place):
+            Task { await mouth?.setAmbient(place: place, playing: true) }
+        case .stop:
+            Task { await mouth?.setAmbient(place: ambientPlace, playing: false) }
         }
     }
 
@@ -282,28 +351,19 @@ struct ConversationSessionView: View {
             startLevelPump()
             await startListenBack(session: built.session, mouth: built.mouth)
 
-            built.session.beginCountdown()
+            built.session.enterConnecting()
 
             let prepareTask = Task {
                 try await built.mouth.prepare()
             }
-
-            for n in [3, 2, 1] {
-                try Task.checkCancellation()
-                countdownRemaining = n
-                try await Task.sleep(for: .seconds(1))
-            }
             try Task.checkCancellation()
-            // Fog and chrome update together: lift overlay, then mount orb + controls.
-            countdownRemaining = nil
-            built.session.enterConnecting()
-
             try await prepareTask.value
 
-            // Format 2: Bearer token from gitignored plist — no mint server.
-            if let apiKey = built.directAPIKey {
+            if let client = built.mint {
+                let minted = try await client.mint()
+                didMint = true
                 do {
-                    try await built.session.countdownReachedZero(ephemeralKey: apiKey)
+                    try await built.session.countdownReachedZero(ephemeralKey: minted.clientSecret)
                 } catch {
                     await built.session.handle(.failed)
                     throw error
@@ -322,11 +382,9 @@ struct ConversationSessionView: View {
                 throw ConversationSessionError.missingAPIKey
             }
         } catch is CancellationError {
-            countdownRemaining = nil
             await mouth?.close()
             await postEndedIfNeeded()
         } catch {
-            countdownRemaining = nil
             await mouth?.close()
             await postEndedIfNeeded()
             if let mintError = error as? MintError, mintError == .budget {
@@ -378,7 +436,6 @@ struct ConversationSessionView: View {
         mouth = nil
         fakeMouth = nil
         mint = nil
-        countdownRemaining = nil
     }
 
     /// Mouth owns the mic and partner audio; the orb reads both levels.
@@ -419,11 +476,11 @@ struct ConversationSessionView: View {
         var rng = SplitMix64(seed: UInt64.random(in: 1...UInt64.max))
         let stance = deck.sample(rng: &rng).views.joined(separator: "\n")
         let openQuestion = bank.prompts[Int(rng.next() % UInt64(bank.prompts.count))]
-        let apiKey = XAIDirectKey.load()
+        let client = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
         let mouth: any ConversationMouth
         let fake: FakeConversationMouth?
-        if apiKey != nil {
-            mouth = LiveConversationMouth()
+        if client != nil {
+            mouth = LiveConversationMouth(voiceID: voiceID)
             fake = nil
         } else {
             let prototype = FakeConversationMouth()
@@ -445,8 +502,7 @@ struct ConversationSessionView: View {
             session: session,
             mouth: mouth,
             fake: fake,
-            mint: nil,
-            directAPIKey: apiKey
+            mint: client
         )
     }
 
@@ -611,7 +667,6 @@ struct ConversationSessionView: View {
         debugLoop?.cancel()
         debugLoop = nil
         endConversationBackgroundTask()
-        countdownRemaining = nil
 
         switch model.route {
         case .conversationReport, .crisis:
@@ -640,7 +695,6 @@ private struct SessionStart {
     let mouth: any ConversationMouth
     let fake: FakeConversationMouth?
     let mint: MintClient?
-    let directAPIKey: String?
 }
 
 private enum ConversationSessionError: LocalizedError {

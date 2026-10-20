@@ -1,9 +1,8 @@
-import Flow
 import SwiftUI
 import SpeechAppKit
 
-/// Conversation transcript: each partner line, then the user's answer with the
-/// current word highlighted. Tapping a word jumps there.
+/// Conversation transcript: each partner line, then the user's answer.
+/// The spoken word matches passage reading. Tapping a word jumps there.
 struct ConversationTranscriptView: View {
     let words: [RecordedWord]
     let partnerTurns: [PartnerTurn]
@@ -33,56 +32,71 @@ struct ConversationTranscriptView: View {
     }
 
     private var currentWordID: UUID? {
-        words.last { $0.start <= currentTime && currentTime <= $0.end + 0.15 }?.id
+        let partnerWords = partnerTurns.flatMap { $0.words ?? [] }
+        return (words + partnerWords)
+            .sorted { $0.start < $1.start }
+            .last { $0.start <= currentTime && currentTime <= $0.end + 0.15 }?.id
     }
 
+    /// Smaller than a passage. Same size for both speakers.
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 17
+    private let turnGap: CGFloat = 28
+
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(blocks) { block in
-                        VStack(alignment: .leading, spacing: 6) {
-                            if let partner = block.partner, !partner.text.isEmpty {
-                                Text(partner.text)
-                                    .font(SpeechType.reading(15, relativeTo: .subheadline))
-                                    .foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            if !block.words.isEmpty {
-                                HFlow(itemSpacing: 6, rowSpacing: 6) {
-                                    ForEach(block.words) { word in
-                                        Button {
-                                            onWordTap(word)
-                                        } label: {
-                                            Text(word.surface)
-                                                .font(SpeechType.reading(17, relativeTo: .body))
-                                                .padding(.horizontal, 4)
-                                                .padding(.vertical, 2)
-                                                .background {
-                                                    if currentWordID == word.id {
-                                                        Capsule(style: .continuous)
-                                                            .fill(Color.accentColor.opacity(0.25))
-                                                    }
-                                                }
-                                                .foregroundStyle(word.isFiller ? Color.secondary : Color.primary)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .id(word.id)
-                                    }
-                                }
-                            }
-                        }
+        VStack(alignment: .leading, spacing: turnGap) {
+            ForEach(blocks) { block in
+                VStack(alignment: .leading, spacing: turnGap) {
+                    if let partner = block.partner {
+                        partnerLine(partner)
                     }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .onChange(of: currentWordID) { _, newValue in
-                guard let newValue else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(newValue, anchor: .center)
+                    if !block.words.isEmpty {
+                        words(block.words, face: .instrumentSerif, tint: nil)
+                    }
                 }
             }
         }
-        .frame(minHeight: 120, maxHeight: 260)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func partnerLine(_ partner: PartnerTurn) -> some View {
+        if let timed = partner.words, !timed.isEmpty {
+            words(timed, face: .system, tint: Color.secondary, accessibilityPrefix: "Partner, ")
+        } else if !partner.text.isEmpty {
+            Text(partner.text)
+                .font(.system(size: size))
+                .foregroundStyle(Color.secondary)
+                .lineSpacing(SpeechReading.scaledGap(SpeechReading.lineGap, size: size))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func words(
+        _ words: [RecordedWord],
+        face: SpeechReadingWord.Face,
+        tint: Color?,
+        accessibilityPrefix: String = ""
+    ) -> some View {
+        WordWrapLayout(
+            spacing: SpeechReading.scaledGap(SpeechReading.wordGap, size: size),
+            lineSpacing: SpeechReading.scaledGap(SpeechReading.lineGap, size: size)
+        ) {
+            ForEach(words) { word in
+                Button {
+                    onWordTap(word)
+                } label: {
+                    SpeechReadingWord(
+                        text: word.surface,
+                        isCurrent: currentWordID == word.id,
+                        quiet: face == .instrumentSerif && word.isFiller,
+                        tint: tint,
+                        face: face,
+                        size: size
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(accessibilityPrefix + word.surface)
+            }
+        }
     }
 }

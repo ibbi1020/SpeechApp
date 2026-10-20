@@ -108,7 +108,37 @@ test("second mint while first session concurrent is 429", async () => {
   assert.equal(second.json.error, "concurrent");
 });
 
-test("failed openai mint does not stick concurrent", async () => {
+test("mint requests a Grok ephemeral secret, not a GPT realtime session", async () => {
+  const uuid = randomUUID();
+  const now = Date.parse("2026-09-21T12:00:00Z");
+  const previous = process.env.XAI_API_KEY;
+  process.env.XAI_API_KEY = "xai-test-key";
+  let called;
+  try {
+    const minted = await request(
+      { method: "POST", path: "/v1/conversation/mint", uuid },
+      {
+        now,
+        openaiFetch: async (url, init) => {
+          called = { url, init };
+          return { ok: true, json: async () => ({ value: "xai-realtime-client-secret-test" }) };
+        },
+      },
+    );
+    assert.equal(minted.status, 200);
+    assert.equal(minted.json.client_secret, "xai-realtime-client-secret-test");
+  } finally {
+    if (previous === undefined) delete process.env.XAI_API_KEY;
+    else process.env.XAI_API_KEY = previous;
+  }
+  assert.equal(called.url, "https://api.x.ai/v1/realtime/client_secrets");
+  assert.equal(called.init.headers.Authorization, "Bearer xai-test-key");
+  const body = JSON.parse(called.init.body);
+  assert.deepEqual(body, { expires_after: { seconds: 120 } });
+  assert.equal(body.session, undefined);
+});
+
+test("failed grok mint does not stick concurrent", async () => {
   const uuid = randomUUID();
   const now = Date.parse("2026-09-21T12:00:00Z");
   const failed = await request(
@@ -123,7 +153,7 @@ test("failed openai mint does not stick concurrent", async () => {
   assert.equal(retry.status, 200);
 });
 
-test("thrown openai mint fetch returns 502 and does not stick concurrent", async () => {
+test("thrown grok mint fetch returns 502 and does not stick concurrent", async () => {
   const uuid = randomUUID();
   const now = Date.parse("2026-09-21T12:00:00Z");
   const thrown = await request(
@@ -141,4 +171,67 @@ test("thrown openai mint fetch returns 502 and does not stick concurrent", async
     { now: now + 1000, openaiFetch: okOpenAI() },
   );
   assert.equal(retry.status, 200);
+});
+
+test("budget GET reports the count and mint does not consume a start", async () => {
+  const uuid = randomUUID();
+  const now = Date.parse("2026-09-21T12:00:00Z");
+  const before = await request(
+    { method: "GET", path: "/v1/conversation/budget", uuid },
+    { now },
+  );
+  assert.equal(before.status, 200);
+  assert.equal(before.json.used, 0);
+  assert.equal(before.json.limit, 20);
+  assert.equal(before.json.starts_remaining, 20);
+  assert.equal(before.json.month, "2026-09");
+
+  const minted = await request(
+    { method: "POST", path: "/v1/conversation/mint", uuid },
+    { now, openaiFetch: okOpenAI() },
+  );
+  assert.equal(minted.status, 200);
+  const afterMint = await request(
+    { method: "GET", path: "/v1/conversation/budget", uuid },
+    { now },
+  );
+  assert.equal(afterMint.json.used, 0);
+
+  const started = await request(
+    {
+      method: "POST",
+      path: "/v1/conversation/started",
+      uuid,
+      body: { session_id: randomUUID() },
+    },
+    { now },
+  );
+  assert.equal(started.status, 200);
+  const after = await request(
+    { method: "GET", path: "/v1/conversation/budget", uuid },
+    { now },
+  );
+  assert.equal(after.json.used, 1);
+  assert.equal(after.json.starts_remaining, 19);
+});
+
+test("possible minor blocks the next mint and does not call xAI", async () => {
+  const uuid = randomUUID();
+  const now = Date.parse("2026-09-21T12:00:00Z");
+  const flagged = await request(
+    { method: "POST", path: "/v1/conversation/possible-minor", uuid },
+    { now },
+  );
+  assert.equal(flagged.status, 204);
+  const minted = await request(
+    { method: "POST", path: "/v1/conversation/mint", uuid },
+    {
+      now: now + 1000,
+      openaiFetch: async () => {
+        throw new Error("xAI should not be called");
+      },
+    },
+  );
+  assert.equal(minted.status, 403);
+  assert.equal(minted.json.error, "possible_minor");
 });

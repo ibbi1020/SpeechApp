@@ -104,7 +104,7 @@ struct ConversationReportView: View {
                     .foregroundStyle(.primary)
             }
             .tint(.secondary)
-            .padding(20)
+            .padding(24)
             .background(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(Color(.secondarySystemBackground))

@@ -6,6 +6,7 @@ public final class FakeConversationMouth: ConversationMouth, @unchecked Sendable
     public private(set) var responseCreates: [String] = []
     public private(set) var responseCancels = 0
     public private(set) var didClose = false
+    public private(set) var voiceUpdates: [String] = []
     public private(set) var turnDetectionNulled = false
     public var connectShouldFail = false
 
@@ -30,6 +31,10 @@ public final class FakeConversationMouth: ConversationMouth, @unchecked Sendable
 
     public func cancelResponse() async throws {
         responseCancels += 1
+    }
+
+    public func updateVoice(_ id: String) async {
+        voiceUpdates.append(id)
     }
 
     public func close() async {

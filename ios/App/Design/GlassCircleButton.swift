@@ -12,7 +12,7 @@ struct GlassCircleButton: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(Color.white)
                 .frame(width: 48, height: 48)
                 .background {
                     if reduceTransparency {

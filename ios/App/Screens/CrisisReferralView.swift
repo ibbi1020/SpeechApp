@@ -39,7 +39,16 @@ struct CrisisReferralView: View {
             .padding(.horizontal, SpeechSpacing.page)
         }
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                SpeechBarButton(systemName: "chevron.left", label: "Back") {
+                    goHome()
+                }
+            }
+        }
         .speechBottomBlur()
+        .speechBarChrome()
         .onAppear(perform: pingCrisisIfConfigured)
     }
 

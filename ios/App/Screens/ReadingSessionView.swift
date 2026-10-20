@@ -14,7 +14,6 @@ struct ReadingSessionView: View {
 
     @State private var session: ReadingSession?
     @State private var errorMessage: String?
-    @State private var countdownRemaining: Int?
     @State private var isPreparing = false
     @State private var startTask: Task<Void, Never>?
     @State private var startPulse = false
@@ -38,9 +37,9 @@ struct ReadingSessionView: View {
         session?.phase == .finishing
     }
 
-    /// Fog until listening starts (countdown or engine prep).
+    /// Fog until the microphone is listening. No count.
     private var isFogged: Bool {
-        countdownRemaining != nil || isPreparing
+        isPreparing
     }
 
     private var fogBlurRadius: CGFloat {
@@ -61,39 +60,40 @@ struct ReadingSessionView: View {
 
     var body: some View {
         ZStack {
-            CeremonyPalette.background
-                .ignoresSafeArea()
+            SpeechScreenBackground()
 
-            VStack(alignment: .leading, spacing: 0) {
-                GlassCircleButton(systemName: "chevron.left", label: "Back") {
-                    dismiss()
+            passageScroll
+                .blur(radius: fogBlurRadius)
+                .overlay {
+                    Color.black.opacity(fogWashOpacity)
+                        .allowsHitTesting(false)
                 }
-                .padding(.horizontal, SpeechSpacing.page)
-                .padding(.top, SpeechSpacing.related)
-
-                passageScroll
-                    .blur(radius: fogBlurRadius)
-                    .overlay {
-                        Color.black.opacity(fogWashOpacity)
-                            .allowsHitTesting(false)
-                    }
-                    .accessibilityHidden(isFogged)
-                    .allowsHitTesting(!isFogged)
-
-                bottomChrome
-                    .opacity(isFogged ? 0 : 1)
-                    .accessibilityHidden(isFogged)
-                    .allowsHitTesting(!isFogged)
-            }
+                .safeAreaBar(edge: .bottom, spacing: 0) {
+                    bottomChrome
+                        .opacity(isFogged ? 0 : 1)
+                        .accessibilityHidden(isFogged)
+                        .allowsHitTesting(!isFogged)
+                }
+                .accessibilityHidden(isFogged)
+                .allowsHitTesting(!isFogged)
 
             if isFogged {
-                ReadingCountdownOverlay(remaining: countdownRemaining)
+                ReadingCountdownOverlay()
             }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
-        .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
-        .navigationTitle(passage.title)
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .speechBarChrome()
+        .speechBottomBlur(bar: false)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                SpeechBarButton(systemName: "chevron.left", label: "Back") {
+                    dismiss()
+                }
+            }
+        }
         .background(SpeechEdgeSwipe())
         .background {
             CaretClock(
@@ -124,7 +124,6 @@ struct ReadingSessionView: View {
             }
             startTask?.cancel()
             startTask = nil
-            countdownRemaining = nil
             isPreparing = false
             if let session, session.phase != .idle, session.phase != .finished {
                 Task { _ = await session.stop() }
@@ -137,7 +136,6 @@ struct ReadingSessionView: View {
             ScrollView {
                 passageBody
             }
-            .speechBottomBlur(bar: false)
             .coordinateSpace(.named("reading-passage"))
             .onPreferenceChange(WordLineTops.self) { tops in
                 guard layoutReady, tops != wordTops else { return }
@@ -168,28 +166,13 @@ struct ReadingSessionView: View {
     }
 
     private var passageBody: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: SpeechSpacing.cluster) {
-                Text(passage.title)
-                    .speechType(.h2)
-                    .foregroundStyle(isFogged ? .tertiary : .primary)
-
-                Text(passage.durationLabel)
-                    .ceremonyType(.body)
-                    .foregroundStyle(isFogged ? .tertiary : .secondary)
-                    .monospacedDigit()
-            }
-            .padding(.horizontal, SpeechSpacing.page)
-
-            ReadingFollowAlong(
-                words: passage.words,
-                currentWordID: displayWordID,
-                dimmed: isFogged
-            )
-            .equatable()
-            .padding(.horizontal, SpeechSpacing.reading)
-            .padding(.top, SpeechSpacing.section)
-        }
+        ReadingFollowAlong(
+            words: passage.words,
+            currentWordID: displayWordID,
+            dimmed: isFogged
+        )
+        .equatable()
+        .padding(.horizontal, SpeechSpacing.reading)
         .padding(.top, SpeechSpacing.section)
         .padding(.bottom, SpeechSpacing.related)
     }
@@ -279,12 +262,8 @@ struct ReadingSessionView: View {
         }
 
         isPreparing = true
-        countdownRemaining = 3
         VoiceOrbPreloader.warmup()
-        defer {
-            isPreparing = false
-            countdownRemaining = nil
-        }
+        defer { isPreparing = false }
 
         let engine = GrokTranscriptionEngine(
             relayBase: relay.base,
@@ -297,12 +276,7 @@ struct ReadingSessionView: View {
         }
 
         do {
-            for n in [3, 2, 1] {
-                try Task.checkCancellation()
-                countdownRemaining = n
-                try await Task.sleep(for: .seconds(1))
-            }
-            countdownRemaining = nil
+            try Task.checkCancellation()
             try await prepareTask.value
             try Task.checkCancellation()
             caretGeneration += 1
@@ -393,14 +367,13 @@ struct ReadingSessionView: View {
     #endif
 }
 
-/// Passage words with a single underline on the word being spoken.
+/// Passage words. Same face, size, and current-word mark as listen-back.
 private struct ReadingFollowAlong: View, Equatable {
     let words: [ScriptWord]
     let currentWordID: String?
     let dimmed: Bool
 
-    /// 22pt at the Large text size. Same face and leading as before Instrument Serif.
-    @ScaledMetric(relativeTo: .title2) private var size: CGFloat = 22
+    @ScaledMetric(relativeTo: SpeechReading.textStyle) private var size: CGFloat = SpeechReading.size
 
     /// Lets `.equatable()` skip re-diffing every word when only the mic level
     /// or another piece of chrome changed.
@@ -411,25 +384,26 @@ private struct ReadingFollowAlong: View, Equatable {
     }
 
     var body: some View {
-        // System serif. Instrument Serif, and the tighter 11pt line gap, were
-        // harder to read in a long passage. At Large: 8pt between words, 14pt between lines.
-        WordWrapLayout(spacing: size * 8 / 22, lineSpacing: size * 14 / 22) {
+        WordWrapLayout(
+            spacing: SpeechReading.scaledGap(SpeechReading.wordGap, size: size),
+            lineSpacing: SpeechReading.scaledGap(SpeechReading.lineGap, size: size)
+        ) {
             ForEach(words) { word in
-                let isCurrent = word.id == currentWordID
-                Text(word.surface)
-                    .font(.system(size: size, weight: .regular, design: .serif))
-                    .foregroundStyle(dimmed ? .tertiary : .primary)
-                    .underline(isCurrent, color: dimmed ? Color.secondary : Color.primary)
-                    .id(word.id)
-                    .accessibilityAddTraits(isCurrent ? .isSelected : [])
-                    .background {
-                        GeometryReader { proxy in
-                            Color.clear.preference(
-                                key: WordLineTops.self,
-                                value: [word.id: proxy.frame(in: .named("reading-passage")).minY]
-                            )
-                        }
+                SpeechReadingWord(
+                    text: word.surface,
+                    isCurrent: word.id == currentWordID,
+                    dimmed: dimmed,
+                    size: size
+                )
+                .id(word.id)
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: WordLineTops.self,
+                            value: [word.id: proxy.frame(in: .named("reading-passage")).minY]
+                        )
                     }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -552,64 +526,3 @@ private struct CaretClock: UIViewControllerRepresentable {
     }
 }
 
-/// Left-to-right wrapping rows. Used so each passage word can take its own underline.
-private struct WordWrapLayout: Layout {
-    var spacing: CGFloat
-    var lineSpacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? 0
-        let rows = rows(in: width, subviews: subviews)
-        let height = rows.reduce(CGFloat(0)) { $0 + $1.height }
-            + lineSpacing * CGFloat(max(0, rows.count - 1))
-        return CGSize(width: width, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let rows = rows(in: bounds.width, subviews: subviews)
-        var y = bounds.minY
-        for row in rows {
-            var x = bounds.minX
-            for index in row.indexes {
-                let size = subviews[index].sizeThatFits(.unspecified)
-                subviews[index].place(
-                    at: CGPoint(x: x, y: y + (row.height - size.height) / 2),
-                    proposal: ProposedViewSize(size)
-                )
-                x += size.width + spacing
-            }
-            y += row.height + lineSpacing
-        }
-    }
-
-    private struct Row {
-        var indexes: [Int]
-        var height: CGFloat
-    }
-
-    private func rows(in width: CGFloat, subviews: Subviews) -> [Row] {
-        var rows: [Row] = []
-        var indexes: [Int] = []
-        var rowWidth: CGFloat = 0
-        var rowHeight: CGFloat = 0
-
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            let nextWidth = indexes.isEmpty ? size.width : rowWidth + spacing + size.width
-            if !indexes.isEmpty, width > 0, nextWidth > width {
-                rows.append(Row(indexes: indexes, height: rowHeight))
-                indexes = [index]
-                rowWidth = size.width
-                rowHeight = size.height
-            } else {
-                indexes.append(index)
-                rowWidth = nextWidth
-                rowHeight = max(rowHeight, size.height)
-            }
-        }
-        if !indexes.isEmpty {
-            rows.append(Row(indexes: indexes, height: rowHeight))
-        }
-        return rows
-    }
-}

@@ -64,21 +64,23 @@ struct BreatheStep: View {
         var hidden = Transaction()
         hidden.disablesAnimations = true
         withTransaction(hidden) { showCircle = false }
-        try? await Task.sleep(for: .seconds(BreathPacing.settle))
+        // A cancelled run stops here. It must not report the breaths as finished.
+        guard await BreathRun.wait(BreathPacing.settle) else { return }
         // Under Reduce Motion the circle holds at one steady size for the whole run.
         // Snapping it large and small every few seconds would be a slow oscillation,
         // which is the thing the setting exists to avoid. The instruction and the
         // haptic carry the pacing instead.
         if reduceMotion { fill = 0.5 }
         for _ in 0 ..< BreathPacing.cycles {
-            await leg(.inhale, to: 1, seconds: BreathPacing.inhale)
-            await leg(.exhale, to: 0, seconds: BreathPacing.exhale)
+            guard await leg(.inhale, to: 1, seconds: BreathPacing.inhale) else { return }
+            guard await leg(.exhale, to: 0, seconds: BreathPacing.exhale) else { return }
         }
+        guard Task.isCancelled == false else { return }
         phase = .finished
         onDone(true)
     }
 
-    private func leg(_ next: Phase, to target: CGFloat, seconds: Double) async {
+    private func leg(_ next: Phase, to target: CGFloat, seconds: Double) async -> Bool {
         phase = next
         if showCircle == false {
             withAnimation(SpeechBlur.motion(reduceMotion: reduceMotion)) {
@@ -88,16 +90,24 @@ struct BreatheStep: View {
         if reduceMotion == false {
             withAnimation(.easeInOut(duration: seconds)) { fill = target }
         }
-        try? await Task.sleep(for: .seconds(seconds))
+        return await BreathRun.wait(seconds)
     }
 }
 
-/// The pacer: an open grey ring, no fill. Centred on the bottom edge of the display,
+/// The pacer: an open white ring, no fill. Centred on the bottom edge of the display,
 /// so what shows is its upper half, and sized against the screen rather than a box.
 /// At a full inhale the circle is taller than the screen, so the crown sits well up
 /// into the empty space under the instruction instead of hugging the button.
 struct BreathCircle: View {
     var fill: CGFloat
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// What is on screen while a leg is not running. `fill` itself jumps to the
+    /// target as soon as the leg starts, so the ring cannot read it mid-breath.
+    @State private var shownFill: CGFloat = 0
+    @State private var wakeSign: CGFloat = 1
+    @State private var wakeStart: Date?
+    @State private var wakeDuration: Double = BreathPacing.inhale
 
     /// Diameter at a full inhale, as a share of screen height. Larger than the screen
     /// on purpose: the centre sits on the bottom edge, so only the upper half shows,
@@ -110,29 +120,129 @@ struct BreathCircle: View {
     var body: some View {
         GeometryReader { proxy in
             let diameter = proxy.size.height * maxShare
-            let scale = max(restShare + (1 - restShare) * fill, 0.01)
-            // Scale, not frame, so the swell stays on the compositor. Scaling also
-            // multiplies every stroke and blur, which would leave the ring under a
-            // point thick at a full exhale, so each is divided out first and lands at
-            // the same rendered size whatever the circle is doing.
-            ZStack {
-                // Two passes: a close halo and the line itself. Both are 150% thicker
-                // than the 2.5pt halo and 1.4pt line they replace. The blur stays at
-                // 6 so the ring reads heavier without turning into a glow.
-                ring(width: 6.25, white: 0.26, blur: 6, scale: scale)
-                ring(width: 3.5, white: 0.52, blur: 0, scale: scale)
+            // The wake and the ring share one clock. Dividing the smear by a scale
+            // the compositor is still easing would slide it off the stroke.
+            TimelineView(.animation(minimumInterval: 1 / 60, paused: wakeStart == nil)) { context in
+                let sample = BreathWakeMath.sample(
+                    start: wakeStart,
+                    duration: wakeDuration,
+                    date: context.date,
+                    sign: wakeSign,
+                    resting: shownFill
+                )
+                let scale = max(restShare + (1 - restShare) * sample.fill, 0.01)
+                ZStack {
+                    // The even halo is weight, not a trail. The line is solid white.
+                    ring(width: 6.25, color: .white.opacity(0.26), blur: 6, scale: scale)
+                    BreathWake(amount: sample.amount, sign: wakeSign, scale: scale)
+                    ring(width: 3.5 * 1.25, color: .white, blur: 0, scale: scale)
+                }
+                .scaleEffect(scale)
+                .transaction { $0.disablesAnimations = true }
+                .frame(width: diameter, height: diameter)
+                .position(x: proxy.size.width / 2, y: proxy.size.height)
+                .onChange(of: context.date) { _, date in
+                    guard let wakeStart, date.timeIntervalSince(wakeStart) >= wakeDuration else { return }
+                    shownFill = wakeSign > 0 ? 1 : 0
+                    self.wakeStart = nil
+                }
             }
-            .scaleEffect(scale)
-            .frame(width: diameter, height: diameter)
-            .position(x: proxy.size.width / 2, y: proxy.size.height)
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+        .onChange(of: fill) { previous, next in
+            guard next != previous else { return }
+            guard reduceMotion == false else {
+                shownFill = next
+                wakeStart = nil
+                return
+            }
+            wakeSign = next > previous ? 1 : -1
+            wakeDuration = next > previous ? BreathPacing.inhale : BreathPacing.exhale
+            wakeStart = Date()
+        }
     }
 
-    private func ring(width: CGFloat, white: Double, blur: CGFloat, scale: CGFloat) -> some View {
+    private func ring(width: CGFloat, color: Color, blur: CGFloat, scale: CGFloat) -> some View {
         Circle()
-            .strokeBorder(Color(white: white), lineWidth: width / scale)
+            .strokeBorder(color, lineWidth: width / scale)
             .blur(radius: blur / scale)
+    }
+}
+
+/// Copies of the stroke, shifted opposite the motion and faded out.
+/// Growing (crown rising) shifts down. Shrinking shifts up.
+private struct BreathWake: View {
+    var amount: CGFloat
+    var sign: CGFloat
+    var scale: CGFloat
+
+    private let steps = 8
+
+    var body: some View {
+        // About 30% shorter and dimmer than the first phone pass. The smear
+        // read too heavy on a small screen at the prototype's full strength.
+        let length = 8.4 + 11.2 * amount
+        ZStack {
+            ForEach(1...steps, id: \.self) { step in
+                let t = CGFloat(step) / CGFloat(steps)
+                let fade = CGFloat(pow(Double(1 - t), 1.25))
+                let dy = sign * length * t
+                let alpha = 0.294 * fade * amount
+                let blur = 1.1 + 5.5 * t
+                Circle()
+                    .strokeBorder(Color.white.opacity(Double(alpha)), lineWidth: 3.4 * 1.25 / scale)
+                    .blur(radius: blur / scale)
+                    .offset(y: dy / scale)
+            }
+        }
+    }
+}
+
+private enum BreathWakeMath {
+    struct Sample {
+        var fill: CGFloat
+        var amount: CGFloat
+    }
+
+    /// `fill` eases the way SwiftUI's ease-in-out does. `amount` is 0 at both
+    /// ends of the leg and 1 at the midpoint, which is when the smear is strongest.
+    static func sample(
+        start: Date?,
+        duration: Double,
+        date: Date,
+        sign: CGFloat,
+        resting: CGFloat
+    ) -> Sample {
+        guard let start, duration > 0 else { return Sample(fill: resting, amount: 0) }
+        let t = date.timeIntervalSince(start) / duration
+        if t <= 0 { return Sample(fill: sign > 0 ? 0 : 1, amount: 0) }
+        if t >= 1 { return Sample(fill: sign > 0 ? 1 : 0, amount: 0) }
+        let eased = easeInOut(t)
+        let fill = sign > 0 ? eased : 1 - eased
+        return Sample(fill: CGFloat(fill), amount: CGFloat(4 * t * (1 - t)))
+    }
+
+    /// cubic-bezier(0.42, 0, 0.58, 1), the curve behind SwiftUI's ease-in-out.
+    private static func easeInOut(_ x: Double) -> Double {
+        let target = min(1, max(0, x))
+        var u = target
+        for _ in 0 ..< 6 {
+            let estimate = cubic(u, 0, 0.42, 0.58, 1)
+            let slope = cubicSlope(u, 0, 0.42, 0.58, 1)
+            if abs(slope) < 0.000_001 { break }
+            u = min(1, max(0, u - (estimate - target) / slope))
+        }
+        return cubic(u, 0, 0, 1, 1)
+    }
+
+    private static func cubic(_ u: Double, _ p0: Double, _ p1: Double, _ p2: Double, _ p3: Double) -> Double {
+        let c = 1 - u
+        return c * c * c * p0 + 3 * c * c * u * p1 + 3 * c * u * u * p2 + u * u * u * p3
+    }
+
+    private static func cubicSlope(_ u: Double, _ p0: Double, _ p1: Double, _ p2: Double, _ p3: Double) -> Double {
+        let c = 1 - u
+        return 3 * c * c * (p1 - p0) + 6 * c * u * (p2 - p1) + 3 * u * u * (p3 - p2)
     }
 }

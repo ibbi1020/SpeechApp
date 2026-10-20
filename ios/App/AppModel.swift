@@ -62,6 +62,9 @@ final class AppModel {
 
     var isInCeremony: Bool { entry == .ceremony }
 
+    /// Home opens the gallery full screen. The sheet clears this after it opens.
+    var presentGallery = false
+
     var featuredPassage: Passage? {
         NextPassagePicker.pick(catalog: catalog, ledger: ledger)
     }
@@ -124,6 +127,14 @@ final class AppModel {
         weeklyCounts = weeklyPracticeCounts()
         entry = .ceremony
         route = .home
+        Task { await refreshBudget() }
+    }
+
+    /// Asks the mint server how many conversations are left. A down server leaves the last snapshot.
+    func refreshBudget() async {
+        guard let client = MintClient.makeIfConfigured(uuid: account.accountUUID) else { return }
+        guard let snapshot = try? await client.budget() else { return }
+        budget = snapshot
     }
 
     func advanceCeremony() {
@@ -206,8 +217,10 @@ final class AppModel {
         route = .monologueReport(report, regimenID: regimenID)
     }
 
-    func openRecordings(filter: RecordingManifest.Format? = nil) {
-        route = .recordings(filter: filter)
+    /// Leaves the exercise and opens the home gallery. Not the old recordings list.
+    func showGallery() {
+        goHome()
+        presentGallery = true
     }
 
     func startConversation() {

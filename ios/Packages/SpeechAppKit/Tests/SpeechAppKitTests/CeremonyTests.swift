@@ -96,6 +96,18 @@ struct CeremonyControlTests {
     private let open = ConversationBudgetSnapshot(limit: 20, used: 3, month: "2026-10")
     private let spent = ConversationBudgetSnapshot(limit: 20, used: 20, month: "2026-10")
 
+    @Test("a cancelled breath does not count as three breaths")
+    func cancelledBreathIsNotDone() async {
+        let task = Task { await BreathRun.finished() }
+        task.cancel()
+        #expect(await task.value == false)
+    }
+
+    @Test("a wait that runs out counts as finished")
+    func completedWaitCounts() async {
+        #expect(await BreathRun.wait(0.01))
+    }
+
     @Test("the breathing button waits out every cycle")
     func breathe() {
         let waiting = CeremonyControls.control(step: .breathe, chosen: .reading, budget: spent)

@@ -71,7 +71,7 @@ struct SessionReportView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(report.passageTitle)
-                .speechType(.h2)
+                .font(.title3.weight(.semibold))
             Text("\(report.scriptWordCount) words · \(durationLabel)")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -89,49 +89,37 @@ struct SessionReportView: View {
             sectionLabel("This reading")
 
             VStack(alignment: .leading, spacing: 20) {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 20) {
                     metric(title: "Matched", value: "\(report.matchCount)")
                     metric(title: "Skipped", value: "\(report.skipCount)")
                     metric(title: "Extra", value: "\(report.extraCount)")
                     metric(title: "Swapped", value: "\(report.substituteCount)")
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(String(format: "%.0f%%", report.completenessRatio * 100))
-                            .font(.system(size: 34, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                        Text("followed along")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(String(format: "%.0f", report.speechRateSyllablesPerMinute))
-                            .font(.title3.weight(.semibold))
-                            .monospacedDigit()
-                        Text("syllables / min")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let average = report.averageSpeechRateSyllablesPerMinute {
-                        Text(String(format: "Recent average %.0f", average))
-                            .font(.footnote)
-                            .foregroundStyle(.tertiary)
-                    }
-
-                    if report.stallEventCount > 0 {
-                        Text("A longer silence was paused \(report.stallEventCount)×. That’s fine.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Text("Speed is a note, not a goal.")
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
-                        .padding(.top, 4)
+                metric(
+                    title: "Followed along",
+                    value: String(format: "%.0f%%", report.completenessRatio * 100)
+                )
+                metric(
+                    title: "Syllables / min",
+                    value: String(format: "%.0f", report.speechRateSyllablesPerMinute)
+                )
+                if let average = report.averageSpeechRateSyllablesPerMinute {
+                    metric(
+                        title: "Recent average",
+                        value: String(format: "%.0f", average)
+                    )
                 }
+
+                if report.stallEventCount > 0 {
+                    Text("A longer silence was paused \(report.stallEventCount)×. That’s fine.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text("Speed is a note, not a goal.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -226,7 +214,7 @@ struct SessionReportView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
                     Text(word.surface)
-                        .font(SpeechType.reading(17, relativeTo: .body))
+                        .speechReading()
                         .foregroundStyle(.primary)
                     Spacer(minLength: 12)
                     Text(occupancyTitle(word.occupancy))
@@ -310,7 +298,7 @@ struct SessionReportView: View {
                     .foregroundStyle(.primary)
             }
             .tint(.secondary)
-            .padding(20)
+            .padding(24)
             .background(cardBackground)
         }
     }

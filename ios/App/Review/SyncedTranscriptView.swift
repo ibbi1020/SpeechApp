@@ -1,4 +1,3 @@
-import Flow
 import SwiftUI
 import SpeechAppKit
 
@@ -7,9 +6,10 @@ struct SyncedTranscriptView: View {
     let currentTime: TimeInterval
     let onWordTap: (RecordedWord) -> Void
 
+    @ScaledMetric(relativeTo: SpeechReading.textStyle) private var size = SpeechReading.size
+
     private var currentIndex: Int? {
         guard !words.isEmpty else { return nil }
-        // Binary search: last word whose start <= currentTime.
         var lo = 0
         var hi = words.count - 1
         var answer: Int?
@@ -23,45 +23,30 @@ struct SyncedTranscriptView: View {
             }
         }
         if let answer, words[answer].end + 0.15 < currentTime {
-            // Past the word with a little slack — no highlight.
             return nil
         }
         return answer
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                HFlow(itemSpacing: 6, rowSpacing: 6) {
-                    ForEach(Array(words.enumerated()), id: \.element.id) { index, word in
-                        Button {
-                            onWordTap(word)
-                        } label: {
-                            Text(word.surface)
-                                .font(SpeechType.reading(17, relativeTo: .body))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .background {
-                                    if currentIndex == index {
-                                        Capsule(style: .continuous)
-                                            .fill(Color.accentColor.opacity(0.25))
-                                    }
-                                }
-                                .foregroundStyle(word.isFiller ? Color.secondary : Color.primary)
-                        }
-                        .buttonStyle(.plain)
-                        .id(word.id)
-                    }
+        WordWrapLayout(
+            spacing: SpeechReading.scaledGap(SpeechReading.wordGap, size: size),
+            lineSpacing: SpeechReading.scaledGap(SpeechReading.lineGap, size: size)
+        ) {
+            ForEach(Array(words.enumerated()), id: \.element.id) { index, word in
+                Button {
+                    onWordTap(word)
+                } label: {
+                    SpeechReadingWord(
+                        text: word.surface,
+                        isCurrent: currentIndex == index,
+                        quiet: word.isFiller,
+                        size: size
+                    )
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .onChange(of: currentIndex) { _, newValue in
-                guard let newValue else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(words[newValue].id, anchor: .center)
-                }
+                .buttonStyle(.plain)
             }
         }
-        .frame(minHeight: 120, maxHeight: 220)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

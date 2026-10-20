@@ -22,7 +22,9 @@ struct MintResponse: Decodable {
     private struct SecretObject: Decodable { let value: String }
 }
 
-enum MintError: Error, Equatable { case budget, concurrent, rate, auth, unavailable }
+enum MintError: Error, Equatable {
+    case budget, concurrent, rate, auth, unavailable, possibleMinor
+}
 
 /// Screen copy for an error the app already throws. Mint stays specific; everything else is plain.
 enum ShownError {
@@ -42,6 +44,7 @@ extension MintError: LocalizedError {
         case .rate: "Too many tries. Wait a few minutes."
         case .auth: "Sign-in didn’t work. Try again."
         case .unavailable: "Conversation isn’t available right now. Try again."
+        case .possibleMinor: "This account needs a review before another conversation."
         }
     }
 }
@@ -79,6 +82,21 @@ final class MintClient: Sendable {
         return MintClient(base: url, uuid: uuid)
     }
 
+    func budget() async throws -> ConversationBudgetSnapshot {
+        struct Body: Decodable {
+            let used: Int
+            let limit: Int
+            let month: String
+        }
+        let body: Body = try await send(
+            method: "GET",
+            path: "v1/conversation/budget",
+            json: nil,
+            decode: Body.self
+        )
+        return ConversationBudgetSnapshot(limit: body.limit, used: body.used, month: body.month)
+    }
+
     func mint() async throws -> MintResponse {
         try await post("v1/conversation/mint", body: [:], decode: MintResponse.self)
     }
@@ -111,11 +129,22 @@ final class MintClient: Sendable {
     private struct OptionalEmpty: Decodable {}
 
     private func post<T: Decodable>(_ path: String, body: [String: String], decode: T.Type) async throws -> T {
+        try await send(method: "POST", path: path, json: body, decode: decode)
+    }
+
+    private func send<T: Decodable>(
+        method: String,
+        path: String,
+        json: [String: String]?,
+        decode _: T.Type
+    ) async throws -> T {
         var req = URLRequest(url: base.appending(path: path))
-        req.httpMethod = "POST"
+        req.httpMethod = method
         req.setValue("Bearer \(uuid.uuidString)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONEncoder().encode(body)
+        if let json {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try JSONEncoder().encode(json)
+        }
         let (data, resp) = try await URLSession.shared.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if code == 429, let err = try? JSONDecoder().decode(ErrorBody.self, from: data) {
@@ -124,6 +153,11 @@ final class MintClient: Sendable {
             case "concurrent": throw MintError.concurrent
             default: throw MintError.rate
             }
+        }
+        if code == 403,
+           let err = try? JSONDecoder().decode(ErrorBody.self, from: data),
+           err.error == "possible_minor" {
+            throw MintError.possibleMinor
         }
         if code == 401 { throw MintError.auth }
         guard (200...204).contains(code) else { throw MintError.unavailable }

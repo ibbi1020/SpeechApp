@@ -5,6 +5,10 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        navigation
+    }
+
+    private var navigation: some View {
         NavigationStack {
             EntryFlowView()
                 .navigationDestination(isPresented: libraryPresented) {
