@@ -21,6 +21,10 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     /// finishes generating, which can be seconds earlier.
     enum PartnerPlayback: Sendable {
         case started
+        /// PCM queued to the speaker. Listen-back trims this on `.interrupted`.
+        case played(samples: [Float], sampleRate: Double)
+        /// Barge-in: drop partner audio that has not reached the speaker yet.
+        case interrupted
         case finished(transcript: String)
     }
 
@@ -429,10 +433,12 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             mutateBargeIn { $0.noteAgentAudio() }
             continuation.yield(.responseStarted)
         case "response.audio.delta", "response.output_audio.delta", "conversation.output_audio.delta":
+            // Start the turn before the samples, so listen-back has a clock
+            // position before the first buffer lands.
+            notePartnerPlaybackStarted()
             if let delta = json["delta"] as? String {
                 playBase64PCM16(delta)
             }
-            notePartnerPlaybackStarted()
             mutateBargeIn { $0.noteAgentAudio() }
         case "response.audio_transcript.delta", "response.output_audio_transcript.delta":
             if let delta = json["delta"] as? String {
@@ -556,12 +562,18 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             let level = sqrt(sum / Float(frameCount))
             lock.withLock { outputLevel = level }
         }
+        let playedSamples = Array(UnsafeBufferPointer(start: channel, count: frameCount))
         lock.withLock {
             captionLedger.enqueueAudio(frames: frameCount)
             captionPlayhead.enqueue(frames: frameCount, now: ProcessInfo.processInfo.systemUptime)
         }
         startCaptionPlayhead()
         logAudioDelta(deltaFrames: frameCount)
+        // Queue time, not the completion. Completions are easy to miss, and a
+        // barge-in trims whatever has not reached the speaker yet.
+        if !playedSamples.isEmpty {
+            playbackContinuation.yield(.played(samples: playedSamples, sampleRate: Self.sampleRate))
+        }
         player.scheduleBuffer(buffer) { [weak self] in
             self?.noteAudioBufferFinished(frames: frameCount)
         }
@@ -738,6 +750,8 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             )
         }
         // Partner node only. The bed keeps looping through a barge-in.
+        // Tell listen-back before stop(), so the unheard tail is not saved.
+        playbackContinuation.yield(.interrupted)
         player.stop()
         if engine.isRunning { player.play() }
         clearCaptionSyncState()

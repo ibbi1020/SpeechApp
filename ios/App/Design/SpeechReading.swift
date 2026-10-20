@@ -19,9 +19,18 @@ enum SpeechReading {
         size * gap / Self.size
     }
 
+    /// Bundled face. `Font.custom` takes this family name, not the file name.
+    static let instrumentSerifName = "Instrument Serif"
+
     /// New York, the system serif, at `size`.
     static func font(size: CGFloat, weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .serif)
+    }
+
+    /// Instrument Serif at `size`. Only the regular face is bundled; a heavier
+    /// weight is synthesized for the word under the playhead.
+    static func instrumentSerif(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .custom(instrumentSerifName, size: size).weight(weight)
     }
 
     static func uiFont(size: CGFloat, weight: UIFont.Weight = .regular) -> UIFont {
@@ -38,17 +47,46 @@ struct SpeechReadingWord: View {
     var dimmed: Bool = false
     /// A filler, or any word that should sit back. Not the current-word mark.
     var quiet: Bool = false
+    /// Partner words use this so they stay distinct from the speaker.
+    var tint: Color? = nil
+    /// Conversation listen-back uses Instrument Serif for you and SF for the partner.
+    /// Reading and monologue stay on New York.
+    var face: Face = .newYork
     var size: CGFloat
+
+    enum Face {
+        case newYork
+        case instrumentSerif
+        case system
+    }
 
     var body: some View {
         Text(text)
-            .font(SpeechReading.font(size: size, weight: isCurrent ? .semibold : .regular))
+            .font(wordFont)
             .foregroundStyle(ink)
-            .underline(isCurrent, color: dimmed ? Color.secondary : Color.primary)
+            .underline(isCurrent, color: underlineColor)
             .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 
+    private var wordFont: Font {
+        let weight: Font.Weight = isCurrent ? .semibold : .regular
+        switch face {
+        case .newYork:
+            return SpeechReading.font(size: size, weight: weight)
+        case .instrumentSerif:
+            return SpeechReading.instrumentSerif(size: size, weight: weight)
+        case .system:
+            return .system(size: size, weight: weight)
+        }
+    }
+
+    private var underlineColor: Color {
+        if let tint { return tint }
+        return dimmed ? Color.secondary : Color.primary
+    }
+
     private var ink: AnyShapeStyle {
+        if let tint { return AnyShapeStyle(tint) }
         if dimmed { return AnyShapeStyle(.tertiary) }
         if quiet { return AnyShapeStyle(.secondary) }
         return AnyShapeStyle(.primary)

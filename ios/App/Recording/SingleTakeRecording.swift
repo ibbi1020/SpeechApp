@@ -19,10 +19,18 @@ enum SingleTakeRecording {
         var partnerTurns: [PartnerTurn]? = nil
     }
 
-    static func finalizeAndSave(rawURL: URL, content: Content, store: RecordingStore = RecordingsService.store) {
+    static func finalizeAndSave(
+        rawURL: URL,
+        content: Content,
+        partnerSpans: [PartnerAudioSpan] = [],
+        store: RecordingStore = RecordingsService.store
+    ) {
         Task { @MainActor in
             do {
-                let (finalURL, report) = try await TakeFinalizer.finalizeWithReport(rawCAF: rawURL)
+                let (finalURL, report) = try await TakeFinalizer.finalizeWithReport(
+                    rawCAF: rawURL,
+                    partnerSpans: partnerSpans
+                )
                 log.info(
                     "\(content.format.rawValue, privacy: .public) take saved: denoise=\(report.usedDenoise) gain=\(report.gain) outputPeak=\(report.outputPeak) markers=\(content.markers.count)"
                 )

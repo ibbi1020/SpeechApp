@@ -6,7 +6,7 @@ public enum TakeFinalizerError: Error {
     case encodeFailed
 }
 
-/// Denoise (AUSoundIsolation) → delay fix → AAC 16 kHz mono 32 kbps.
+/// Denoise (AUSoundIsolation) → delay fix → partner splice → AAC 16 kHz mono 32 kbps.
 public enum TakeFinalizer {
     public static let outputSampleRate: Double = 16_000
     public static let bitRate = 32_000
@@ -25,7 +25,10 @@ public enum TakeFinalizer {
         try await finalizeWithReport(rawCAF: rawCAF).url
     }
 
-    public static func finalizeWithReport(rawCAF: URL) async throws -> (url: URL, report: Report) {
+    public static func finalizeWithReport(
+        rawCAF: URL,
+        partnerSpans: [PartnerAudioSpan] = []
+    ) async throws -> (url: URL, report: Report) {
         let samples = try readFloatMono(url: rawCAF)
         guard !samples.samples.isEmpty else { throw TakeFinalizerError.empty }
 
@@ -50,6 +53,17 @@ public enum TakeFinalizer {
         } else {
             processed = samples.samples
             rate = samples.sampleRate
+        }
+
+        // Partner voice goes in after denoise, so isolation does not rewrite it,
+        // and before gain, so the partner is not suddenly louder than the mic.
+        if !partnerSpans.isEmpty {
+            processed = ListenBackMix.mix(
+                mic: processed,
+                micRate: rate,
+                spans: partnerSpans,
+                timelineShift: delay
+            )
         }
 
         // `.measurement` mic mode has no automatic gain, so phone takes are often very quiet.

@@ -68,6 +68,7 @@ struct TakeReviewSection: View {
                         duration: player.duration > 0 ? player.duration : take.durationSeconds,
                         currentTime: player.currentTime,
                         markers: take.markers,
+                        partnerTurns: take.partnerTurns ?? [],
                         onSeek: { player.seek(to: $0) },
                         onMarkerTap: { marker in
                             activeMarker = marker
