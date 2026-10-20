@@ -78,13 +78,16 @@ extension View {
 struct CeremonyMeasuredText: View {
     let value: String
     let unit: String
+    /// Countdown digits climb off the top. A count-up leaves this false.
+    var countsDown: Bool
+    var reduceMotion: Bool
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(value)
                 .ceremonyType(.value)
                 .foregroundStyle(.primary)
-                .contentTransition(.numericText())
+                .digitRoll(value, countsDown: countsDown, reduceMotion: reduceMotion)
             Text(unit)
                 .font(.system(size: 17, weight: .regular))
                 .foregroundStyle(.secondary)

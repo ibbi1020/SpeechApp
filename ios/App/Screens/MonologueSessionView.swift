@@ -275,7 +275,7 @@ struct MonologueSessionView: View {
             Text("\(minutes)")
                 .font(.system(size: stageDurationSize, weight: .semibold))
                 .monospacedDigit()
-                .contentTransition(reduceMotion ? .opacity : .numericText(countsDown: true))
+                .digitRoll(minutes, countsDown: true, reduceMotion: reduceMotion)
             Text(minutes == 1 ? "minute" : "minutes")
                 .speechType(.h3)
                 .foregroundStyle(.secondary)
@@ -284,7 +284,6 @@ struct MonologueSessionView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(minutes) \(minutes == 1 ? "minute" : "minutes")")
         .accessibilityAddTraits(.isHeader)
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: minutes)
     }
 
     private func notesEditor(_ session: MonologueSession) -> some View {
@@ -888,11 +887,7 @@ private struct MonologueCountdown: View, Equatable {
                 .font(.system(size: size, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(.primary)
-                .contentTransition(reduceMotion ? .opacity : .numericText(countsDown: true))
-                .animation(
-                    reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle,
-                    value: label
-                )
+                .digitRoll(label, countsDown: true, reduceMotion: reduceMotion)
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
                 .dynamicTypeSize(...DynamicTypeSize.xxxLarge)

@@ -196,4 +196,37 @@ extension View {
     func blurDissolveTransition() -> some View {
         transition(SpeechBlur.dissolve)
     }
+
+    /// Rolls the digits that changed. SwiftUI's `numericText` is the system
+    /// digit move: each changed glyph blurs and travels, and the rest stay put.
+    /// A line dissolve would blur the whole number at once.
+    ///
+    /// `countsDown` aims the travel. A countdown passes `true` so the old digit
+    /// climbs off the top, the same direction as the take clock. A count-up
+    /// passes `false`, and the digit climbs as the number grows.
+    /// Reduce Motion fades. A blur ramp is the motion that setting exists to avoid.
+    func digitRoll<Value: Equatable>(
+        _ value: Value,
+        countsDown: Bool,
+        reduceMotion: Bool
+    ) -> some View {
+        modifier(DigitRoll(value: value, countsDown: countsDown, reduceMotion: reduceMotion))
+    }
+}
+
+/// The roll has to be a modifier so the animation is attached to the text
+/// whose value changed. Putting it on a parent animates the wrong thing.
+private struct DigitRoll<Value: Equatable>: ViewModifier {
+    var value: Value
+    var countsDown: Bool
+    var reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .contentTransition(reduceMotion ? .opacity : .numericText(countsDown: countsDown))
+            .animation(
+                reduceMotion ? SpeechBlur.reducedMotion : SpeechMotion.settle,
+                value: value
+            )
+    }
 }

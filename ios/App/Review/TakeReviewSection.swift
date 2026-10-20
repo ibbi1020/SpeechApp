@@ -90,9 +90,7 @@ struct TakeReviewSection: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
 
-                        Text(timeLabel(player.currentTime))
-                            .font(.subheadline.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                        PlayheadTime(time: player.currentTime)
                         Spacer(minLength: SpeechSpacing.cluster)
                         Text(timeLabel(player.duration > 0 ? player.duration : take.durationSeconds))
                             .font(.subheadline.monospacedDigit())
@@ -151,4 +149,34 @@ struct TakeReviewSection: View {
         return String(format: "%d:%02d", s / 60, s % 60)
     }
 
+}
+
+/// Elapsed playback time. The player reports a new time many times a second.
+/// Only the displayed second may rebuild the digits, or the roll is cancelled.
+private struct PlayheadTime: View {
+    var time: TimeInterval
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        PlayheadDigits(label: Self.label(time), reduceMotion: reduceMotion)
+            .equatable()
+    }
+
+    private static func label(_ time: TimeInterval) -> String {
+        let s = max(0, Int(time.rounded()))
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+private struct PlayheadDigits: View, Equatable {
+    var label: String
+    var reduceMotion: Bool
+
+    var body: some View {
+        Text(label)
+            .font(.subheadline.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .digitRoll(label, countsDown: false, reduceMotion: reduceMotion)
+    }
 }

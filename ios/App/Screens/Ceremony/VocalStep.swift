@@ -68,8 +68,10 @@ struct VocalStep: View {
                 .accessibilityLabel("Voice")
                 .accessibilityValue(progress >= 1 ? "Finished" : "Playing")
             if progress < 1 {
-                CeremonyMeasuredText(value: "\(max(secondsLeft, 1))", unit: "s")
-                    .accessibilityLabel("\(max(secondsLeft, 1)) seconds")
+                // The line and the mic redraw many times a second. The seconds
+                // have to sit in their own view or those redraws cancel the roll.
+                HumCountdown(seconds: max(secondsLeft, 1), reduceMotion: reduceMotion)
+                    .equatable()
             }
             Spacer(minLength: 0)
         }
@@ -94,6 +96,24 @@ struct VocalStep: View {
             try? await Task.sleep(for: .milliseconds(16))
         }
         await playback
+    }
+}
+
+/// Whole seconds of the hum. Equatable so a tone redraw does not rebuild the
+/// digits while they are still rolling.
+private struct HumCountdown: View, Equatable {
+    var seconds: Int
+    var reduceMotion: Bool
+
+    var body: some View {
+        CeremonyMeasuredText(
+            value: "\(seconds)",
+            unit: "s",
+            countsDown: true,
+            reduceMotion: reduceMotion
+        )
+        .accessibilityLabel("\(seconds) seconds")
+        .accessibilityAddTraits(.updatesFrequently)
     }
 }
 
