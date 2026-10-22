@@ -7,108 +7,55 @@ struct ConversationReportView: View {
     let report: ConversationReport
     var recordingID: UUID? = nil
 
+    @State private var offersSave = false
+    @State private var keptThisTake = false
+
     var body: some View {
         ZStack {
             SpeechScreenBackground()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    linesCard
+                    feedback
 
-                    if report.kind == .thin {
-                        Text("Too little speech to score the rest.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, SpeechSpacing.related)
-                    }
-
-                    if recordingID != nil {
-                        RecordingReviewLoader(recordingID: recordingID)
-                            .padding(.top, SpeechSpacing.section)
-                    }
-
-                    if let logPath = report.captionSyncLogPath {
-                        captionSyncSection(path: logPath)
-                            .padding(.top, SpeechSpacing.section)
-                    }
-
-                    Button("Back to home", action: goHome)
-                        .buttonStyle(SpeechPrimaryButtonStyle())
+                    actions
                         .padding(.top, SpeechSpacing.section)
                         .padding(.bottom, 32)
                 }
                 .padding(.horizontal, SpeechSpacing.page)
                 .padding(.top, 20)
+                .id(report.id)
             }
         }
         .speechPageTitle("Your conversation")
         .speechBottomBlur()
-    }
-
-    private var linesCard: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            ForEach(report.lines, id: \.label) { line in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(line.label)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Text(line.value)
-                        .font(.title2.weight(.semibold))
-                        .monospacedDigit()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+        .onAppear {
+            offersSave = recordingID != nil && !RecordingsService.keepRecordings
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
+        .onDisappear {
+            guard offersSave, !keptThisTake, let recordingID else { return }
+            if case .conversationReport = model.route { return }
+            TakeRetention.discard(recordingID)
+        }
     }
 
     @ViewBuilder
-    private func captionSyncSection(path: String) -> some View {
-        let url = URL(fileURLWithPath: path)
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Diagnostics")
-                .speechType(.label)
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
+    private var feedback: some View {
+        if let recordingID {
+            RecordingReviewLoader(recordingID: recordingID)
+        } else {
+            FeedbackPreparing(message: "This take didn't come through.", showsSpinner: false)
+        }
+    }
 
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Caption sync log from this conversation. Share it if partner subtitles lagged or stuck.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if FileManager.default.fileExists(atPath: path) {
-                        ShareLink(item: url) {
-                            Text("Share caption sync log")
-                                .font(.body.weight(.semibold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                        }
-                        .buttonStyle(SpeechSecondaryButtonStyle())
-                    } else {
-                        Text("There’s no log to share.")
-                            .font(.footnote)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .padding(.top, 8)
-            } label: {
-                Text("Caption sync log")
-                    .font(.body)
-                    .foregroundStyle(.primary)
+    private var actions: some View {
+        VStack(spacing: 10) {
+            Button("Back to home", action: goHome)
+                .buttonStyle(SpeechPrimaryButtonStyle())
+
+            if offersSave, let recordingID {
+                SaveThisTakeButton(recordingID: recordingID, kept: $keptThisTake)
             }
-            .tint(.secondary)
-            .padding(24)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
-            )
         }
     }
 

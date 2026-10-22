@@ -7,10 +7,8 @@ struct SessionReportView: View {
     let report: SessionReport
     var recordingID: UUID? = nil
 
-    @State private var showAllWords = false
-    @State private var expandedWordIDs: Set<String> = []
-
-    private let wordPreviewCount = 3
+    @State private var offersSave = false
+    @State private var keptThisTake = false
 
     var body: some View {
         ZStack {
@@ -21,43 +19,11 @@ struct SessionReportView: View {
                     header
                         .padding(.bottom, SpeechSpacing.section)
 
-                    resultsSection
+                    feedback
 
-                    if recordingID != nil {
-                        RecordingReviewLoader(recordingID: recordingID)
-                            .padding(.top, SpeechSpacing.section)
-                    }
-
-                    notesSection
+                    actions
                         .padding(.top, SpeechSpacing.section)
-
-                    if !notableWords.isEmpty {
-                        wordsSection
-                            .padding(.top, SpeechSpacing.section)
-                    }
-
-                    if let logPath = report.diagnosticsLogPath {
-                        diagnosticsSection(path: logPath)
-                            .padding(.top, SpeechSpacing.section)
-                    }
-
-                    VStack(spacing: 10) {
-                        Button("Read this again") {
-                            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                                model.readAgain()
-                            }
-                        }
-                        .buttonStyle(SpeechPrimaryButtonStyle())
-
-                        Button("Choose another passage") {
-                            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                                model.chooseAnotherPassage()
-                            }
-                        }
-                        .buttonStyle(SpeechSecondaryButtonStyle())
-                    }
-                    .padding(.top, SpeechSpacing.section)
-                    .padding(.bottom, 32)
+                        .padding(.bottom, 32)
                 }
                 .padding(.horizontal, SpeechSpacing.page)
                 .padding(.top, 20)
@@ -66,6 +32,12 @@ struct SessionReportView: View {
         .speechPageTitle("Your reading")
         .toolbar(.visible, for: .navigationBar)
         .speechBottomBlur()
+        .onAppear {
+            offersSave = recordingID != nil && !RecordingsService.keepRecordings
+        }
+        .onDisappear {
+            discardUnsavedTake(whileStill: { if case .report = model.route { true } else { false } })
+        }
     }
 
     private var header: some View {
@@ -80,250 +52,43 @@ struct SessionReportView: View {
     }
 
     private var durationLabel: String {
-        let minutes = max(1, Int((report.durationSeconds / 60.0).rounded()))
-        return "~\(minutes) min"
-    }
-
-    private var resultsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionLabel("This reading")
-
-            VStack(alignment: .leading, spacing: 20) {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 20) {
-                    metric(title: "Matched", value: "\(report.matchCount)")
-                    metric(title: "Skipped", value: "\(report.skipCount)")
-                    metric(title: "Extra", value: "\(report.extraCount)")
-                    metric(title: "Swapped", value: "\(report.substituteCount)")
-                }
-
-                metric(
-                    title: "Followed along",
-                    value: String(format: "%.0f%%", report.completenessRatio * 100)
-                )
-                metric(
-                    title: "Syllables / min",
-                    value: String(format: "%.0f", report.speechRateSyllablesPerMinute)
-                )
-                if let average = report.averageSpeechRateSyllablesPerMinute {
-                    metric(
-                        title: "Recent average",
-                        value: String(format: "%.0f", average)
-                    )
-                }
-
-                if report.stallEventCount > 0 {
-                    Text("A longer silence was paused \(report.stallEventCount)×. That’s fine.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                Text("Speed is a note, not a goal.")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(24)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(cardBackground)
-        }
-    }
-
-    private var notesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionLabel("What this means")
-
-            VStack(alignment: .leading, spacing: SpeechSpacing.related) {
-                Text(report.followAlongNote)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !report.contrastFocus.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("This passage practiced")
-                            .font(.subheadline.weight(.semibold))
-                        Text(report.contrastFocus.joined(separator: " · "))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 4)
-                }
-            }
-            .padding(24)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(cardBackground)
-        }
-    }
-
-    private var notableWords: [WordAnalysis] {
-        report.wordAnalyses.filter { $0.occupancy == "skipped" || $0.occupancy == "swapped" }
-    }
-
-    private var visibleWords: [WordAnalysis] {
-        showAllWords ? notableWords : Array(notableWords.prefix(wordPreviewCount))
-    }
-
-    private var hiddenWordCount: Int {
-        max(0, notableWords.count - wordPreviewCount)
-    }
-
-    private var wordsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionLabel("Words that stood out")
-
-            VStack(spacing: 0) {
-                ForEach(Array(visibleWords.enumerated()), id: \.element.id) { index, word in
-                    if index > 0 {
-                        Divider().padding(.leading, 20)
-                    }
-                    notableWordRow(word)
-                }
-
-                if notableWords.count > wordPreviewCount {
-                    Divider().padding(.leading, 20)
-                    Button {
-                        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                            showAllWords.toggle()
-                            if !showAllWords {
-                                expandedWordIDs = Set(
-                                    notableWords.prefix(wordPreviewCount).map(\.id)
-                                ).intersection(expandedWordIDs)
-                            }
-                        }
-                    } label: {
-                        Text(showAllWords ? "Show less" : "Show \(hiddenWordCount) more")
-                    }
-                    .buttonStyle(SpeechSecondaryButtonStyle())
-                    .padding(12)
-                }
-            }
-            .background(cardBackground)
-        }
-    }
-
-    private func notableWordRow(_ word: WordAnalysis) -> some View {
-        let expanded = expandedWordIDs.contains(word.id)
-        return Button {
-            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                if expanded {
-                    expandedWordIDs.remove(word.id)
-                } else {
-                    expandedWordIDs.insert(word.id)
-                }
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
-                    Text(word.surface)
-                        .speechReading()
-                        .foregroundStyle(.primary)
-                    Spacer(minLength: 12)
-                    Text(occupancyTitle(word.occupancy))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Image(systemName: "chevron.down")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(expanded ? 180 : 0))
-                }
-
-                if expanded {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(occupancyDetail(word.occupancy))
-                        if !word.canonicalPhones.isEmpty {
-                            Text("Sounds \(word.canonicalPhones.joined(separator: " "))")
-                        }
-                        if word.soundAssessment != "not assessed" {
-                            Text(word.soundAssessment.capitalized)
-                        }
-                    }
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint(expanded ? "Hides details" : "Shows details")
-    }
-
-    private func occupancyTitle(_ occupancy: String) -> String {
-        switch occupancy {
-        case "skipped": "Skipped"
-        case "swapped": "Swapped"
-        default: occupancy.capitalized
-        }
-    }
-
-    private func occupancyDetail(_ occupancy: String) -> String {
-        switch occupancy {
-        case "skipped": "We didn’t hear this word in the passage."
-        case "swapped": "A different word landed here."
-        default: "Marked during follow-along."
-        }
+        let total = max(0, Int(report.durationSeconds.rounded()))
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     @ViewBuilder
-    private func diagnosticsSection(path: String) -> some View {
-        let url = URL(fileURLWithPath: path)
-        VStack(alignment: .leading, spacing: 12) {
-            sectionLabel("Diagnostics")
+    private var feedback: some View {
+        if let recordingID {
+            RecordingReviewLoader(recordingID: recordingID)
+        } else {
+            FeedbackPreparing(message: "This take didn't come through.", showsSpinner: false)
+        }
+    }
 
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Session lag log from this reading. Share it if follow-along felt stuck.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if FileManager.default.fileExists(atPath: path) {
-                        ShareLink(item: url) {
-                            Text("Share session log")
-                                .font(.body.weight(.semibold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                        }
-                        .buttonStyle(SpeechSecondaryButtonStyle())
-                    } else {
-                        Text("There’s no log to share.")
-                            .font(.footnote)
-                            .foregroundStyle(.tertiary)
-                    }
+    private var actions: some View {
+        VStack(spacing: 10) {
+            Button("Read this again") {
+                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
+                    model.readAgain()
                 }
-                .padding(.top, 8)
-            } label: {
-                Text("Session log")
-                    .font(.body)
-                    .foregroundStyle(.primary)
             }
-            .tint(.secondary)
-            .padding(24)
-            .background(cardBackground)
+            .buttonStyle(SpeechPrimaryButtonStyle())
+
+            Button("Choose another passage") {
+                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
+                    model.chooseAnotherPassage()
+                }
+            }
+            .buttonStyle(SpeechSecondaryButtonStyle())
+
+            if offersSave, let recordingID {
+                SaveThisTakeButton(recordingID: recordingID, kept: $keptThisTake)
+            }
         }
     }
 
-    private func sectionLabel(_ title: String) -> some View {
-        Text(title)
-            .speechType(.label)
-            .foregroundStyle(.secondary)
-            .textCase(.uppercase)
-    }
-
-    private func metric(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title2.weight(.semibold))
-                .monospacedDigit()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .fill(Color(.secondarySystemBackground))
+    private func discardUnsavedTake(whileStill stillHere: () -> Bool) {
+        guard offersSave, !keptThisTake, let recordingID, !stillHere() else { return }
+        TakeRetention.discard(recordingID)
     }
 }

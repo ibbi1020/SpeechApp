@@ -128,8 +128,8 @@ struct RootView: View {
         switch model.route {
         case .crisis where model.hostedFormat == .monologue:
             CrisisReferralView()
-        case .monologueReport(let report, let regimenID):
-            MonologueReportView(report: report, regimenID: regimenID)
+        case .monologueReport(let report, let regimenID, let topic):
+            MonologueReportView(report: report, regimenID: regimenID, topic: topic)
         default:
             MonologueSessionView()
         }

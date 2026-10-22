@@ -36,7 +36,10 @@ public final class RecordingStore: @unchecked Sendable {
         rootURL.appendingPathComponent(id.uuidString, isDirectory: true)
     }
 
-    public func list(format: RecordingManifest.Format? = nil) throws -> [RecordingManifest] {
+    public func list(
+        format: RecordingManifest.Format? = nil,
+        includeHidden: Bool = false
+    ) throws -> [RecordingManifest] {
         try prepareRoot(excludeFromBackup: false)
         let contents = (try? fileManager.contentsOfDirectory(
             at: rootURL,
@@ -49,6 +52,7 @@ public final class RecordingStore: @unchecked Sendable {
             guard let data = try? Data(contentsOf: manifestURL),
                   let manifest = try? decoder.decode(RecordingManifest.self, from: data)
             else { continue }
+            if !includeHidden, !manifest.inLibrary { continue }
             if let format, manifest.format != format { continue }
             manifests.append(manifest)
         }

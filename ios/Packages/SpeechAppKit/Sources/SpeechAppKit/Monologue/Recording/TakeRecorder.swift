@@ -1,34 +1,95 @@
 import AVFoundation
 import Foundation
+import os
 
 /// Writes mic chunks to a temp CAF while the take clock is running.
-@MainActor
-public final class TakeRecorder {
-    public private(set) var fileURL: URL?
+///
+/// `append` returns immediately and is safe to call from the audio thread.
+/// `stop` waits until those chunks are in the file.
+public final class TakeRecorder: @unchecked Sendable {
+    private let writer: Writer
+
+    /// The open file, or nil once recording has stopped.
+    public var fileURL: URL? { writer.fileURL }
+
     /// Seconds of audio written so far. This is the saved file's timeline.
-    public private(set) var writtenSeconds: TimeInterval = 0
-    private var audioFile: AVAudioFile?
-    private var writing = false
-    private let directory: URL
+    public var writtenSeconds: TimeInterval { writer.writtenSeconds }
 
     public init(directory: URL = FileManager.default.temporaryDirectory) {
-        self.directory = directory
+        writer = Writer(directory: directory)
     }
 
     public func start() throws {
-        _ = stop()
-        let url = directory.appendingPathComponent("take-\(UUID().uuidString).caf")
-        fileURL = url
-        writtenSeconds = 0
-        writing = true
+        writer.start()
     }
 
     public func setWriting(_ on: Bool) {
-        writing = on
+        writer.setWriting(on)
     }
 
     public func append(_ chunk: AudioChunk) {
-        guard writing, let fileURL else { return }
+        writer.append(chunk)
+    }
+
+    @discardableResult
+    public func stop() -> URL? {
+        writer.stop()
+    }
+}
+
+/// File writes stay on one queue. The audio thread only hands chunks over.
+private final class Writer: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "speechapp.take-recorder")
+    private let seconds = OSAllocatedUnfairLock(initialState: TimeInterval(0))
+    private let urlBox = OSAllocatedUnfairLock<URL?>(initialState: nil)
+    private let directory: URL
+    private var audioFile: AVAudioFile?
+    private var writing = false
+    private var openURL: URL?
+
+    init(directory: URL) {
+        self.directory = directory
+    }
+
+    var fileURL: URL? { urlBox.withLock { $0 } }
+
+    var writtenSeconds: TimeInterval { seconds.withLock { $0 } }
+
+    func start() {
+        queue.sync {
+            closeFile()
+            let url = directory.appendingPathComponent("take-\(UUID().uuidString).caf")
+            openURL = url
+            urlBox.withLock { $0 = url }
+            seconds.withLock { $0 = 0 }
+            writing = true
+            audioFile = nil
+        }
+    }
+
+    func setWriting(_ on: Bool) {
+        queue.sync { writing = on }
+    }
+
+    func append(_ chunk: AudioChunk) {
+        queue.async {
+            self.write(chunk)
+        }
+    }
+
+    func stop() -> URL? {
+        queue.sync {
+            writing = false
+            closeFile()
+            let url = openURL
+            openURL = nil
+            urlBox.withLock { $0 = nil }
+            return url
+        }
+    }
+
+    private func write(_ chunk: AudioChunk) {
+        guard writing, let openURL else { return }
         guard !chunk.samples.isEmpty, chunk.sampleRate > 0 else { return }
         do {
             let format = AVAudioFormat(
@@ -40,7 +101,7 @@ public final class TakeRecorder {
             guard let format else { return }
             if audioFile == nil {
                 audioFile = try AVAudioFile(
-                    forWriting: fileURL,
+                    forWriting: openURL,
                     settings: format.settings,
                     commonFormat: .pcmFormatFloat32,
                     interleaved: false
@@ -56,18 +117,14 @@ public final class TakeRecorder {
                 }
             }
             try audioFile.write(from: buffer)
-            writtenSeconds += Double(chunk.samples.count) / chunk.sampleRate
+            let added = Double(chunk.samples.count) / chunk.sampleRate
+            seconds.withLock { $0 += added }
         } catch {
             // Leave the partial file; finalizer will fall back or fail visibly.
         }
     }
 
-    @discardableResult
-    public func stop() -> URL? {
-        writing = false
+    private func closeFile() {
         audioFile = nil
-        let url = fileURL
-        fileURL = nil
-        return url
     }
 }

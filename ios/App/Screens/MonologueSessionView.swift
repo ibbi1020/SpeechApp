@@ -439,7 +439,7 @@ struct MonologueSessionView: View {
             Button {
                 if session.phase == .paused {
                     session.resume(atStreamTime: lastStreamTime)
-                    takeRecorder.setWriting(RecordingsService.keepRecordings)
+                    takeRecorder.setWriting(true)
                 } else {
                     session.pause(atStreamTime: lastStreamTime)
                     takeRecorder.setWriting(false)
@@ -655,10 +655,8 @@ struct MonologueSessionView: View {
         committedRanges = []
         committedSpokenTokens = []
         lastStreamTime = 0
-        if RecordingsService.keepRecordings {
-            try? takeRecorder.start()
-            takeRecorder.setWriting(true)
-        }
+        try? takeRecorder.start()
+        takeRecorder.setWriting(true)
         session.ready()
         #else
         Self.log.error("live mic is unavailable off iOS")
@@ -749,13 +747,19 @@ struct MonologueSessionView: View {
         guard !didRouteFinish, let session else { return }
         if session.phase == .report || session.phase == .crisis, let report = session.report {
             didRouteFinish = true
-            let id: UUID? = (report.kind == .crisis || !RecordingsService.keepRecordings)
-                ? nil
-                : regimenID
+            let kept = RecordingsService.keepRecordings
+            let id: UUID? = if report.kind == .crisis {
+                nil
+            } else if kept || !finishedTakes.isEmpty {
+                regimenID
+            } else {
+                nil
+            }
             model.finishMonologue(
                 report: report,
                 possibleMinorFlag: session.possibleMinorFlag,
-                regimenID: id
+                regimenID: id,
+                topic: session.prompt
             )
         }
     }
@@ -789,10 +793,6 @@ struct MonologueSessionView: View {
 
     /// Finalize the just-finished take's audio into `finishedTakes`.
     private func captureTakeAudio(_ session: MonologueSession) async {
-        guard RecordingsService.keepRecordings else {
-            _ = takeRecorder.stop()
-            return
-        }
         guard let take = session.takes.last, !take.words.isEmpty else {
             _ = takeRecorder.stop()
             return
@@ -829,8 +829,8 @@ struct MonologueSessionView: View {
     }
 
     private func persistRegimenIfNeeded(_ session: MonologueSession) async {
-        guard RecordingsService.keepRecordings else { return }
         guard let report = session.report, report.kind != .crisis else { return }
+        let kept = RecordingsService.keepRecordings
         do {
             if !finishedTakes.isEmpty {
                 // Keep the takes that did save. One failed take must not wipe the others.
@@ -838,9 +838,10 @@ struct MonologueSessionView: View {
                     regimenID: regimenID,
                     topic: session.prompt,
                     report: report,
-                    finishedTakes: finishedTakes
+                    finishedTakes: finishedTakes,
+                    inLibrary: kept
                 )
-            } else if let saveErrorMessage {
+            } else if kept, let saveErrorMessage {
                 try MonologueRecordingPipeline.saveFailurePlaceholder(
                     regimenID: regimenID,
                     topic: session.prompt,
@@ -848,7 +849,7 @@ struct MonologueSessionView: View {
                     saveError: saveErrorMessage
                 )
             }
-        } catch RecordingStoreError.diskFull {
+        } catch RecordingStoreError.diskFull where kept {
             try? MonologueRecordingPipeline.saveDiskFullPlaceholder(
                 regimenID: regimenID,
                 topic: session.prompt,

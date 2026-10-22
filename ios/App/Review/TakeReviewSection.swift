@@ -51,6 +51,7 @@ struct TakeReviewSection: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .frame(maxWidth: .infinity)
                 .onChange(of: selectedTakeIndex) { _, _ in
                     if let take = selectedTake { load(take: take) }
                 }

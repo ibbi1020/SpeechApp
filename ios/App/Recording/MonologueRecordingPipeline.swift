@@ -16,6 +16,7 @@ enum MonologueRecordingPipeline {
         topic: String,
         report: MonologueReport,
         finishedTakes: [FinishedTake],
+        inLibrary: Bool = true,
         store: RecordingStore = RecordingsService.store
     ) throws -> RecordingManifest {
         var takeEntries: [RecordingManifest.Take] = []
@@ -44,7 +45,8 @@ enum MonologueRecordingPipeline {
             topic: topic,
             reportLines: report.lines,
             comparison: report.comparison,
-            takes: takeEntries
+            takes: takeEntries,
+            inLibrary: TakeRetention.wantsLibrary(regimenID) || inLibrary
         )
         try store.save(manifest)
         return manifest

@@ -32,16 +32,22 @@ final class ConversationListenBack {
     /// `isLive` says whether the talk is running (not paused, not over).
     func start(isLive: @escaping @MainActor () -> Bool) async {
         try? recorder.start()
+        // Countdown is not part of the take. The session turns capture on at talking.
+        recorder.setWriting(false)
+        let recorder = recorder
+        mouth.setMicListener { chunk in
+            recorder.append(chunk)
+        }
+        setCapturing(isLive())
         transcriber.onFinalWords = { [weak self] batch in
             self?.considerLanguage(batch)
         }
         await transcriber.start()
-        let recorder = recorder
+        setCapturing(isLive())
         let transcriber = transcriber
         micTask = Task { @MainActor [mouth] in
             for await chunk in mouth.micChunks {
                 guard isLive() else { continue }
-                recorder.append(chunk)
                 transcriber.append(chunk)
             }
         }
@@ -92,19 +98,30 @@ final class ConversationListenBack {
         }
     }
 
+    /// True while the talk itself is being recorded. Countdown and pause stay out.
+    func setCapturing(_ on: Bool) {
+        recorder.setWriting(on)
+    }
+
     /// Stops recording and starts saving in the background. Returns the recording id.
-    func finish(report: ConversationReport) -> UUID? {
+    func finish(report: ConversationReport, inLibrary: Bool = true) -> UUID? {
         stopPumps()
         // Chunks are placed when they are queued, which can run ahead of the
         // speaker. Keep only what the mic clock has reached.
-        partnerSpans = ListenBackMix.trimming(partnerSpans, heardThrough: recorder.writtenSeconds)
+        let heardThrough = recorder.writtenSeconds
+        partnerSpans = ListenBackMix.trimming(partnerSpans, heardThrough: heardThrough)
         if let start = openPartnerStart {
-            partnerTurns.append(PartnerTurn(text: "", start: start, end: recorder.writtenSeconds))
+            partnerTurns.append(PartnerTurn(text: "", start: start, end: heardThrough))
             openPartnerStart = nil
             partnerCursor = nil
         }
+        guard let rawURL = recorder.stop() else {
+            discardTranscriber()
+            return nil
+        }
         let duration = recorder.writtenSeconds
-        guard let rawURL = recorder.stop(), duration > 0 else {
+        guard duration > 0 else {
+            try? FileManager.default.removeItem(at: rawURL)
             discardTranscriber()
             return nil
         }
@@ -134,7 +151,8 @@ final class ConversationListenBack {
                     words: words,
                     durationSeconds: duration,
                     markers: ConversationMarkers.build(words: words, partnerTurns: turns, durationSeconds: duration),
-                    partnerTurns: turns
+                    partnerTurns: turns,
+                    inLibrary: inLibrary
                 ),
                 partnerSpans: spans
             )
@@ -154,6 +172,9 @@ final class ConversationListenBack {
     }
 
     private func stopPumps() {
+        mouth.setMicListener(nil)
+        // Waits for mic chunks already handed over, then stops accepting more.
+        recorder.setWriting(false)
         micTask?.cancel()
         micTask = nil
         playbackTask?.cancel()

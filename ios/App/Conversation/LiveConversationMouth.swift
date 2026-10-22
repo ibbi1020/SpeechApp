@@ -31,6 +31,9 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     /// Every microphone buffer, for the listen-back recorder. Gate it on the session phase.
     let micChunks: AsyncStream<AudioChunk>
     private let micContinuation: AsyncStream<AudioChunk>.Continuation
+    /// Called on the audio thread for each mic buffer. Listen-back writes the file here
+    /// so a busy main thread cannot drop the take.
+    private var micListener: (@Sendable (AudioChunk) -> Void)?
     let partnerPlayback: AsyncStream<PartnerPlayback>
     private let playbackContinuation: AsyncStream<PartnerPlayback>.Continuation
     private var partnerPlaying = false
@@ -523,11 +526,19 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         ])
     }
 
+    /// Listen-back sets this before the talk starts. Pass nil to stop.
+    func setMicListener(_ listener: (@Sendable (AudioChunk) -> Void)?) {
+        lock.withLock { micListener = listener }
+    }
+
     private func handleMicBuffer(_ buffer: AVAudioPCMBuffer) {
         let samples = FileReplayAudioSource.floatSamples(from: buffer)
         let rms = Self.rms(samples)
         let rate = buffer.format.sampleRate
-        micContinuation.yield(AudioChunk(samples: samples, sampleRate: rate, hostTime: 0))
+        let chunk = AudioChunk(samples: samples, sampleRate: rate, hostTime: 0)
+        micContinuation.yield(chunk)
+        let listener = lock.withLock { micListener }
+        listener?(chunk)
         let enabled = lock.withLock { () -> Bool in
             inputLevel = rms
             return micEnabled && !closed
