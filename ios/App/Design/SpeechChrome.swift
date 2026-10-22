@@ -236,19 +236,6 @@ struct SpeechBarButton: View {
     }
 }
 
-/// Spinner while the microphone is starting. Not a count.
-struct ReadingCountdownOverlay: View {
-    var body: some View {
-        ProgressView()
-            .controlSize(.large)
-            .tint(.primary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea()
-            .accessibilityLabel("Preparing")
-            .allowsHitTesting(false)
-    }
-}
-
 /// [orb-ui](https://orb-ui.com) cloud theme, the orb on the homepage.
 /// Session chrome uses this instead of `AuroraPill`.
 struct VoiceOrb: View {
@@ -259,6 +246,8 @@ struct VoiceOrb: View {
     var inputVolume: Float = 0
     var outputVolume: Float = 0
     var animating: Bool = true
+    /// The connecting orb has already been up long enough to need a sentence.
+    var showsSlowLine: Bool = false
 
     /// 25% larger than the original 120pt homepage orb.
     static let box: CGFloat = 150
@@ -296,7 +285,11 @@ struct VoiceOrb: View {
         if !animating { return "Paused." }
         switch phase {
         case .speaking: return "Speaking."
-        case .connecting: return "Connecting."
+        case .connecting:
+            if showsSlowLine {
+                return "Connecting. \(ConnectionWaitPolicy.slowLine)"
+            }
+            return "Connecting."
         case .listening: return level > 0.28 ? "Hearing you." : "Listening."
         }
     }
@@ -306,11 +299,21 @@ struct VoiceOrb: View {
 /// Reading, Conversation, and Monologue all mount this. The orb is one WebGL view.
 struct SessionOrbBar<Leading: View, Trailing: View>: View {
     var phase: VoiceOrb.Phase
+    /// When the connecting orb appeared. Nil once the model is up or the wait has ended.
+    var connectingStarted: Date? = nil
     var inputVolume: Float = 0
     var outputVolume: Float = 0
     var animating: Bool = true
     @ViewBuilder var leading: () -> Leading
     @ViewBuilder var trailing: () -> Trailing
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showsSlowLine = false
+
+    private var slowLineID: String {
+        guard phase == .connecting, let connectingStarted else { return "off" }
+        return String(connectingStarted.timeIntervalSinceReferenceDate)
+    }
 
     var body: some View {
         HStack(spacing: VoiceOrb.controlSpacing) {
@@ -319,11 +322,42 @@ struct SessionOrbBar<Leading: View, Trailing: View>: View {
                 phase: phase,
                 inputVolume: inputVolume,
                 outputVolume: outputVolume,
-                animating: animating
+                animating: animating,
+                showsSlowLine: showsSlowLine
             )
             trailing()
         }
         .frame(maxWidth: .infinity)
+        .overlay(alignment: .top) {
+            Text(ConnectionWaitPolicy.slowLine)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, SpeechSpacing.page)
+                .opacity(showsSlowLine ? 1 : 0)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+                .alignmentGuide(.top) { dimensions in
+                    dimensions[.bottom] + 8
+                }
+                .transaction { $0.disablesAnimations = false }
+                .animation(reduceMotion ? .easeOut(duration: 0.2) : .easeOut(duration: 0.35), value: showsSlowLine)
+        }
+        .task(id: slowLineID) {
+            showsSlowLine = false
+            guard phase == .connecting, let connectingStarted else { return }
+            let elapsed = Date().timeIntervalSince(connectingStarted)
+            let wait = ConnectionWaitPolicy.slowLineDelay - elapsed
+            if wait > 0 {
+                try? await Task.sleep(for: .seconds(wait))
+            }
+            guard !Task.isCancelled else { return }
+            showsSlowLine = ConnectionWaitPolicy.showsSlowLine(
+                elapsed: Date().timeIntervalSince(connectingStarted)
+            )
+        }
     }
 }
 

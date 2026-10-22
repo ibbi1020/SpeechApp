@@ -169,7 +169,7 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
                 }
             }
             group.addTask {
-                try await Task.sleep(for: .seconds(8))
+                try await Task.sleep(for: .seconds(ConnectionWaitPolicy.hangLimit))
                 throw GrokTranscriptionError.timedOut
             }
             try await group.next()

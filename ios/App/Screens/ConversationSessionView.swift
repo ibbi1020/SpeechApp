@@ -37,6 +37,11 @@ struct ConversationSessionView: View {
     @State private var ambientPlace = AmbientPreference().place
     @State private var voiceID = VoicePreference().voiceID
     @State private var showVoicePicker = false
+    @State private var islandStartedAt: Date?
+    /// When the connecting orb appeared. The slow line and the hang share this clock.
+    @State private var connectingStarted: Date?
+    @State private var islandPauseBegan: Date?
+    @State private var islandPausedAccumulated: TimeInterval = 0
 
     private var phase: ConversationPhase {
         session?.phase ?? .idle
@@ -137,6 +142,7 @@ struct ConversationSessionView: View {
         }
         .task {
             VoiceOrbPreloader.warmup()
+            installIslandStop()
             await beginSession()
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
@@ -148,9 +154,26 @@ struct ConversationSessionView: View {
         .onChange(of: scenePhase) { _, phase in
             handleScenePhase(phase)
         }
-        .onChange(of: phase) { _, _ in
+        .onChange(of: phase) { old, new in
+            noteIslandClock(from: old, to: new)
             routeIfFinished()
             syncAmbient()
+            Task { await syncIsland() }
+        }
+        .onChange(of: session?.countsAsBudgetStart) { _, started in
+            if started == true, islandStartedAt == nil {
+                islandStartedAt = Date()
+            }
+            Task { await syncIsland() }
+        }
+        .onChange(of: session?.stageLine) { _, _ in
+            Task { await syncIsland() }
+        }
+        .onChange(of: floor) { _, _ in
+            Task { await syncIsland() }
+        }
+        .onChange(of: agentSpeaking) { _, _ in
+            Task { await syncIsland() }
         }
         .sheet(isPresented: $showVoicePicker) {
             PartnerVoiceSheet(selection: voiceID) { id in
@@ -158,6 +181,10 @@ struct ConversationSessionView: View {
             }
         }
         .onDisappear {
+            Task {
+                await syncIsland(leaving: true)
+                ConversationLiveActivityController.shared.releaseStop()
+            }
             tearDownIfLeaving()
         }
     }
@@ -295,6 +322,7 @@ struct ConversationSessionView: View {
     private var conversationOrbBar: some View {
         SessionOrbBar(
             phase: orbPhase,
+            connectingStarted: phase == .connecting ? connectingStarted : nil,
             inputVolume: orbPhase == .listening ? speechEnergy : 0,
             outputVolume: orbPhase == .speaking ? partnerEnergy : 0,
             animating: !isPaused
@@ -351,6 +379,8 @@ struct ConversationSessionView: View {
             startLevelPump()
             await startListenBack(session: built.session, mouth: built.mouth)
 
+            let started = Date()
+            connectingStarted = started
             built.session.enterConnecting()
 
             let prepareTask = Task {
@@ -360,10 +390,15 @@ struct ConversationSessionView: View {
             try await prepareTask.value
 
             if let client = built.mint {
-                let minted = try await client.mint()
+                let minted = try await client.mint(
+                    timeout: ConnectionWaitPolicy.remaining(since: started, now: Date())
+                )
                 didMint = true
                 do {
-                    try await built.session.countdownReachedZero(ephemeralKey: minted.clientSecret)
+                    try await built.session.countdownReachedZero(
+                        ephemeralKey: minted.clientSecret,
+                        timeout: ConnectionWaitPolicy.remaining(since: started, now: Date())
+                    )
                 } catch {
                     await built.session.handle(.failed)
                     throw error
@@ -426,6 +461,7 @@ struct ConversationSessionView: View {
     private func clearLiveSession() {
         listenBack?.discard()
         listenBack = nil
+        connectingStarted = nil
         eventPump?.cancel()
         eventPump = nil
         levelTask?.cancel()
@@ -569,6 +605,52 @@ struct ConversationSessionView: View {
         routeIfFinished()
     }
 
+    private func installIslandStop() {
+        guard let session else { return }
+        ConversationLiveActivityController.shared.bindStop {
+            await session.confirmStop()
+            routeIfFinished()
+        }
+        ConversationLiveActivityController.shared.bindPause {
+            if session.phase == .paused {
+                session.resume()
+            } else {
+                session.pause()
+            }
+        }
+    }
+
+    private func noteIslandClock(from old: ConversationPhase, to new: ConversationPhase) {
+        if session?.countsAsBudgetStart == true, islandStartedAt == nil {
+            islandStartedAt = Date()
+        }
+        if new == .paused, old != .paused {
+            islandPauseBegan = Date()
+        }
+        if old == .paused, new != .paused, let began = islandPauseBegan {
+            islandPausedAccumulated += Date().timeIntervalSince(began)
+            islandPauseBegan = nil
+        }
+    }
+
+    private func syncIsland(leaving: Bool = false) async {
+        installIslandStop()
+        let input = ConversationLiveActivityInput(
+            exercise: .conversation,
+            phase: phase,
+            floor: floor.owner,
+            agentSpeaking: agentSpeaking,
+            startedAt: islandStartedAt,
+            pausedAccumulated: islandPausedAccumulated,
+            pauseBeganAt: islandPauseBegan,
+            phrase: session?.stageLine ?? "",
+            phraseIsPartner: true,
+            activityIsLive: ConversationLiveActivityController.shared.isLive,
+            leaving: leaving
+        )
+        await ConversationLiveActivityController.shared.sync(input, id: conversationID)
+    }
+
     private func handleRouteChange(_ note: Notification) {
         let raw: UInt
         if let value = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt {
@@ -589,6 +671,8 @@ struct ConversationSessionView: View {
             beginConversationBackgroundTask()
         case .active:
             endConversationBackgroundTask()
+            ConversationLiveActivityController.shared.allowStart()
+            Task { await syncIsland() }
         default:
             break
         }
@@ -614,6 +698,7 @@ struct ConversationSessionView: View {
     private func confirmStop() async {
         debugLoop?.cancel()
         await session?.confirmStop()
+        await ConversationLiveActivityController.shared.end()
         routeIfFinished()
     }
 

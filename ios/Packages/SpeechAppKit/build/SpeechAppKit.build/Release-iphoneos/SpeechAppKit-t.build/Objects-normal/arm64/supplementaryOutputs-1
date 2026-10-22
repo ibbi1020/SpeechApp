@@ -1,0 +1,12 @@
+{
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/DerivedSources/resource_bundle_accessor.swift" : {
+    "abi-baseline-json" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit.abi.json",
+    "const-values" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit-primary.swiftconstvalues",
+    "dependencies" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit-primary.d",
+    "diagnostics" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit-primary.dia",
+    "objc-header" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit-Swift.h",
+    "swiftdoc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit.swiftdoc",
+    "swiftmodule" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit.swiftmodule",
+    "swiftsourceinfo" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit.swiftsourceinfo"
+  }
+}

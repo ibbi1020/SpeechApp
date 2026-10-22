@@ -15,6 +15,8 @@ struct ReadingSessionView: View {
     @State private var session: ReadingSession?
     @State private var errorMessage: String?
     @State private var isPreparing = false
+    /// When the connecting orb appeared. The slow line uses this clock.
+    @State private var connectingStarted: Date?
     @State private var startTask: Task<Void, Never>?
     @State private var startPulse = false
     @State private var displayIndex = 0
@@ -68,18 +70,11 @@ struct ReadingSessionView: View {
                     Color.black.opacity(fogWashOpacity)
                         .allowsHitTesting(false)
                 }
-                .safeAreaBar(edge: .bottom, spacing: 0) {
-                    bottomChrome
-                        .opacity(isFogged ? 0 : 1)
-                        .accessibilityHidden(isFogged)
-                        .allowsHitTesting(!isFogged)
-                }
                 .accessibilityHidden(isFogged)
                 .allowsHitTesting(!isFogged)
-
-            if isFogged {
-                ReadingCountdownOverlay()
-            }
+                .safeAreaBar(edge: .bottom, spacing: 0) {
+                    bottomChrome
+                }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
         .navigationTitle("")
@@ -125,6 +120,7 @@ struct ReadingSessionView: View {
             startTask?.cancel()
             startTask = nil
             isPreparing = false
+            connectingStarted = nil
             if let session, session.phase != .idle, session.phase != .finished {
                 Task { _ = await session.stop() }
             }
@@ -196,11 +192,8 @@ struct ReadingSessionView: View {
 
     @ViewBuilder
     private var actionRow: some View {
-        if isLive || isPaused || isFinishing || isFogged {
+        if isLive || isPaused || isFinishing || isPreparing {
             liveControlRow
-                .opacity(isLive || isPaused || isFinishing ? 1 : 0)
-                .allowsHitTesting(isLive || isPaused || isFinishing)
-                .accessibilityHidden(!(isLive || isPaused || isFinishing))
         } else {
             Button("Start") {
                 startPulse.toggle()
@@ -214,7 +207,8 @@ struct ReadingSessionView: View {
 
     private var liveControlRow: some View {
         SessionOrbBar(
-            phase: .listening,
+            phase: isPreparing ? .connecting : .listening,
+            connectingStarted: isPreparing ? connectingStarted : nil,
             inputVolume: isLive ? (session?.speechEnergy ?? 0) : 0,
             animating: isLive
         ) {
@@ -229,7 +223,10 @@ struct ReadingSessionView: View {
                     .speechGlassCircle()
             }
             .buttonStyle(.plain)
-            .disabled(isFinishing)
+            .disabled(isPreparing || isFinishing)
+            .opacity(isPreparing ? 0 : 1)
+            .allowsHitTesting(!isPreparing)
+            .accessibilityHidden(isPreparing)
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
         } trailing: {
             Button {
@@ -239,7 +236,10 @@ struct ReadingSessionView: View {
                     .speechGlassCircle(tint: .accentColor)
             }
             .buttonStyle(.plain)
-            .disabled(isFinishing)
+            .disabled(isPreparing || isFinishing)
+            .opacity(isPreparing ? 0 : 1)
+            .allowsHitTesting(!isPreparing)
+            .accessibilityHidden(isPreparing)
             .accessibilityLabel("Done")
         }
         .opacity(isFinishing ? 0.7 : 1)
@@ -262,8 +262,12 @@ struct ReadingSessionView: View {
         }
 
         isPreparing = true
+        connectingStarted = Date()
         VoiceOrbPreloader.warmup()
-        defer { isPreparing = false }
+        defer {
+            isPreparing = false
+            connectingStarted = nil
+        }
 
         let engine = GrokTranscriptionEngine(
             relayBase: relay.base,

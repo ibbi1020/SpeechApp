@@ -1,0 +1,9 @@
+Target dependency graph (4 targets)
+Target 'SpeechAppWidget' in project 'SpeechApp'
+➜ Explicit dependency on target 'SpeechAppKit-product' in project 'SpeechAppKit'
+Target 'SpeechAppKit-product' in project 'SpeechAppKit'
+➜ Explicit dependency on target 'SpeechAppKit' in project 'SpeechAppKit'
+➜ Explicit dependency on target 'SpeechAppKit_SpeechAppKit' in project 'SpeechAppKit'
+Target 'SpeechAppKit' in project 'SpeechAppKit'
+➜ Explicit dependency on target 'SpeechAppKit_SpeechAppKit' in project 'SpeechAppKit'
+Target 'SpeechAppKit_SpeechAppKit' in project 'SpeechAppKit' (no dependencies)

@@ -16,7 +16,11 @@ struct SpeechAppApp: App {
                 .environment(appModel)
                 .onAppear {
                     VoiceOrbPreloader.warmup()
+                    ConversationLiveActivityController.shared.prepare()
                     Task { await appModel.refreshBudget() }
+                }
+                .onOpenURL { url in
+                    appModel.openFromLiveActivity(url)
                 }
         }
     }

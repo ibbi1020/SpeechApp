@@ -28,6 +28,8 @@ public protocol ConversationMouth: AnyObject, Sendable {
     /// Warm audio session, peer connection, and ICE during the countdown. No-op by default.
     func prepare() async throws
     func connect(ephemeralKey: String) async throws
+    /// `timeout` is the time left on the connecting-orb clock. Zero fails at once.
+    func connect(ephemeralKey: String, timeout: TimeInterval) async throws
     func sendResponseCreate(instructions: String) async throws
     func updateTurnDetectionNull() async throws
     /// Cancel the in-flight partner response (client barge-in). No-op when idle.
@@ -47,6 +49,10 @@ public protocol ConversationMouth: AnyObject, Sendable {
 extension ConversationMouth {
     public var captionSyncLogURL: URL? { nil }
     public func prepare() async throws {}
+    public func connect(ephemeralKey: String, timeout: TimeInterval) async throws {
+        _ = timeout
+        try await connect(ephemeralKey: ephemeralKey)
+    }
     public func currentInputLevel() async -> Float { 0 }
     public func currentOutputLevel() async -> Float { 0 }
     public func cancelResponse() async throws {}

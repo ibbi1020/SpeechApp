@@ -18,6 +18,8 @@ struct MonologueSessionView: View {
     @State private var showLeaveConfirm = false
     @State private var didRouteFinish = false
     @State private var isPreparing = false
+    /// When the connecting orb appeared. The slow line uses this clock.
+    @State private var connectingStarted: Date?
     @State private var startTask: Task<Void, Never>?
 
     // Live capture — held so the pump Tasks and engine/source can be cancelled/stopped.
@@ -75,10 +77,6 @@ struct MonologueSessionView: View {
             // whole screen also springs the orb bar, and a WebGL view laid out
             // at zero height stays blank for the rest of the take.
             ZStack {
-                if isFogged {
-                    ReadingCountdownOverlay()
-                }
-
                 if showLeaveConfirm {
                     SessionStopModal(
                         title: "Leave this talk?",
@@ -192,13 +190,15 @@ struct MonologueSessionView: View {
                 Color.black.opacity(fogWashOpacity)
                     .allowsHitTesting(false)
             }
+            .accessibilityHidden(isFogged || showLeaveConfirm)
+            .allowsHitTesting(!isFogged && !showLeaveConfirm)
             .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: session.phase)
             .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
             .safeAreaBar(edge: .bottom, spacing: 0) {
                 sessionChrome(session, live: live)
+                    .accessibilityHidden(showLeaveConfirm)
+                    .allowsHitTesting(!showLeaveConfirm)
             }
-            .accessibilityHidden(isFogged || showLeaveConfirm)
-            .allowsHitTesting(!isFogged && !showLeaveConfirm)
     }
 
     @ViewBuilder
@@ -215,11 +215,11 @@ struct MonologueSessionView: View {
 
     @ViewBuilder
     private func sessionChrome(_ session: MonologueSession, live: Bool) -> some View {
-        // Mount the orb only once the take is up. Preparing still shows the
-        // planning page; swapping that page out from under a live WebGL view
-        // is what blanks the orb. Format 2 inserts the orb once listening starts.
-        if live {
-            liveChrome(session, live: true)
+        // The connecting orb is the same bar the take uses, so it is already
+        // up while the model connects. Mounting it only as the phase changes
+        // blanks the WebGL view.
+        if live || isPreparing {
+            liveChrome(session, live: live)
         } else if session.phase == .planning || session.phase == .between {
             planningChrome(session)
                 .opacity(isFogged ? 0 : 1)
@@ -426,6 +426,7 @@ struct MonologueSessionView: View {
     private func orbBar(session: MonologueSession, live: Bool) -> some View {
         SessionOrbBar(
             phase: .monologue(isPreparing: !live, phase: session.phase),
+            connectingStarted: isPreparing ? connectingStarted : nil,
             inputVolume: session.phase == .taking ? speechEnergy : 0,
             animating: session.phase != .paused
         ) {
@@ -442,6 +443,10 @@ struct MonologueSessionView: View {
                     .speechGlassCircle()
             }
             .buttonStyle(.plain)
+            .disabled(!live)
+            .opacity(live ? 1 : 0)
+            .allowsHitTesting(live)
+            .accessibilityHidden(!live)
             .accessibilityLabel(session.phase == .paused ? "Resume" : "Pause")
         } trailing: {
             Button {
@@ -453,6 +458,10 @@ struct MonologueSessionView: View {
                     .speechGlassCircle(tint: .accentColor)
             }
             .buttonStyle(.plain)
+            .disabled(!live)
+            .opacity(live ? 1 : 0)
+            .allowsHitTesting(live)
+            .accessibilityHidden(!live)
             .accessibilityLabel("Done")
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -543,8 +552,12 @@ struct MonologueSessionView: View {
         }
 
         isPreparing = true
+        connectingStarted = Date()
         VoiceOrbPreloader.warmup()
-        defer { isPreparing = false }
+        defer {
+            isPreparing = false
+            connectingStarted = nil
+        }
 
         let engine = GrokTranscriptionEngine(
             relayBase: relay.base,

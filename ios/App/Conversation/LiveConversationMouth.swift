@@ -113,12 +113,20 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     }
 
     func connect(ephemeralKey: String) async throws {
+        try await connect(ephemeralKey: ephemeralKey, timeout: ConnectionWaitPolicy.hangLimit)
+    }
+
+    func connect(ephemeralKey: String, timeout: TimeInterval) async throws {
         try throwIfClosed()
+        guard timeout > 0 else {
+            teardown()
+            throw MouthError.connectFailed
+        }
         do {
             try await prepare()
             try throwIfClosed()
             try await openSocket(token: ephemeralKey)
-            try await waitUntilSocketReady()
+            try await waitUntilSocketReady(timeout: timeout)
             try throwIfClosed()
             setMicEnabled(true)
             startCaptionSyncLog()
@@ -310,7 +318,8 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         receiveNext(task)
     }
 
-    private func waitUntilSocketReady() async throws {
+    private func waitUntilSocketReady(timeout: TimeInterval) async throws {
+        guard timeout > 0 else { throw MouthError.connectFailed }
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { [weak self] in
                 guard let self else { return }
@@ -327,7 +336,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
                 }
             }
             group.addTask {
-                try await Task.sleep(for: .seconds(12))
+                try await Task.sleep(for: .seconds(timeout))
                 throw MouthError.connectFailed
             }
             try await group.next()

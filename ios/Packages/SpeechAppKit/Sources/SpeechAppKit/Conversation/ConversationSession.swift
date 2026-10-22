@@ -110,9 +110,12 @@ public final class ConversationSession {
         phase = .connecting
     }
 
-    public func countdownReachedZero(ephemeralKey: String) async throws {
+    public func countdownReachedZero(
+        ephemeralKey: String,
+        timeout: TimeInterval = ConnectionWaitPolicy.hangLimit
+    ) async throws {
         phase = .connecting
-        try await mouth.connect(ephemeralKey: ephemeralKey)
+        try await mouth.connect(ephemeralKey: ephemeralKey, timeout: timeout)
     }
 
     public func pause() {

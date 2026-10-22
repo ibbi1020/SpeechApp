@@ -104,6 +104,12 @@ final class AppModel {
         route = .crisis
     }
 
+    /// A tap on the island foregrounds the app. It does not start a new conversation,
+    /// and it does not leave a report or the crisis screen.
+    func openFromLiveActivity(_ url: URL) {
+        guard ConversationLiveActivityLink.conversationID(from: url) != nil else { return }
+    }
+
     func readAgain() {
         if currentPassage == nil {
             currentPassage = NextPassagePicker.pick(catalog: catalog, ledger: ledger)

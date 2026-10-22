@@ -97,8 +97,8 @@ final class MintClient: Sendable {
         return ConversationBudgetSnapshot(limit: body.limit, used: body.used, month: body.month)
     }
 
-    func mint() async throws -> MintResponse {
-        try await post("v1/conversation/mint", body: [:], decode: MintResponse.self)
+    func mint(timeout: TimeInterval) async throws -> MintResponse {
+        try await post("v1/conversation/mint", body: [:], decode: MintResponse.self, timeout: timeout)
     }
 
     func started(sessionID: UUID) async throws -> Int {
@@ -128,18 +128,26 @@ final class MintClient: Sendable {
 
     private struct OptionalEmpty: Decodable {}
 
-    private func post<T: Decodable>(_ path: String, body: [String: String], decode: T.Type) async throws -> T {
-        try await send(method: "POST", path: path, json: body, decode: decode)
+    private func post<T: Decodable>(
+        _ path: String,
+        body: [String: String],
+        decode: T.Type,
+        timeout: TimeInterval? = nil
+    ) async throws -> T {
+        try await send(method: "POST", path: path, json: body, decode: decode, timeout: timeout)
     }
 
     private func send<T: Decodable>(
         method: String,
         path: String,
         json: [String: String]?,
-        decode _: T.Type
+        decode _: T.Type,
+        timeout: TimeInterval? = nil
     ) async throws -> T {
+        if let timeout, timeout <= 0 { throw URLError(.timedOut) }
         var req = URLRequest(url: base.appending(path: path))
         req.httpMethod = method
+        if let timeout { req.timeoutInterval = timeout }
         req.setValue("Bearer \(uuid.uuidString)", forHTTPHeaderField: "Authorization")
         if let json {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")

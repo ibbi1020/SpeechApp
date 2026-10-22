@@ -33,6 +33,19 @@
 	<string>Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Speech is sent to xAI for transcription and live conversation. Topic talks can be kept on this phone so you can listen back. You can delete them anytime.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Orator uses on-device speech recognition to follow reading and to time topic talks. Recognition runs on your device.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.speechapp.conversation</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>orator</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIAppFonts</key>
 	<array>
 		<string>InstrumentSerif-Regular.ttf</string>
