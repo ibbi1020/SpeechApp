@@ -31,4 +31,20 @@ struct UserFacingFailureTests {
         #expect(UserFacingFailure.message(for: RecordingStoreError.diskFull) == UserFacingFailure.diskFull)
         #expect(UserFacingFailure.diskFull.contains("Free up space"))
     }
+
+    @Test("a phone recognizer that is not ready says speech is still downloading")
+    func speechDownloading() {
+        for error in [TranscriptionEngineError.unavailable, TranscriptionEngineError.onDeviceUnsupported] {
+            let shown = UserFacingFailure.message(for: error)
+            #expect(shown == UserFacingFailure.speechStillDownloading)
+            #expect(shown.contains("downloading"))
+        }
+    }
+
+    @Test("speech recognition turned off points to Settings")
+    func speechRecognitionOff() {
+        let shown = UserFacingFailure.message(for: TranscriptionEngineError.speechAuthorizationDenied)
+        #expect(shown == UserFacingFailure.speechRecognitionOff)
+        #expect(shown.contains("Settings"))
+    }
 }

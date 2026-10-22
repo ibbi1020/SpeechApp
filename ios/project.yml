@@ -46,6 +46,13 @@ targets:
         # Personal Team (free provisioning) — Ibraheem Farooq
         DEVELOPMENT_TEAM: 45SVH8S72R
         SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+    postBuildScripts:
+      - name: Copy XAI key
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ -f "$SRCROOT/App/XAISecrets.plist" ]; then
+            cp "$SRCROOT/App/XAISecrets.plist" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/XAISecrets.plist"
+          fi
     dependencies:
       - package: SpeechAppKit
       - package: DSWaveformImage
@@ -67,7 +74,7 @@ targets:
         CONVERSATION_API_BASE: "http://Ibraheens-MacBook-Air.local:8787"
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        NSLocalNetworkUsageDescription: Orator connects to your Mac on the local network to transcribe reading and topic talks.
+        NSLocalNetworkUsageDescription: Orator can connect to your Mac on the local network for practice limits. Speech is sent to xAI.
         NSSupportsLiveActivities: true
         CFBundleURLTypes:
           - CFBundleURLName: com.speechapp.conversation

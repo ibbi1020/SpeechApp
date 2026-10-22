@@ -107,3 +107,21 @@ struct GrokRelayURLTests {
         #expect(parts?.queryItems?.map(\.value) == ["ship", "sheep"])
     }
 }
+
+@Suite("Grok direct API")
+struct GrokDirectURLTests {
+    @Test("direct speech-to-text uses xAI and pins the model")
+    func buildsDirectURL() {
+        let url = GrokTranscriptionEngine.directWebSocketURL(keyterms: ["ship", "  sheep  ", " "])
+        let parts = URLComponents(url: url!, resolvingAgainstBaseURL: false)
+        #expect(parts?.scheme == "wss")
+        #expect(parts?.host == "api.x.ai")
+        #expect(parts?.path == "/v1/stt")
+        #expect(parts?.queryItems?.first { $0.name == "model" }?.value == "grok-voice-transcribe-2.0")
+        #expect(parts?.queryItems?.first { $0.name == "sample_rate" }?.value == "16000")
+        #expect(parts?.queryItems?.first { $0.name == "encoding" }?.value == "pcm")
+        #expect(parts?.queryItems?.first { $0.name == "interim_results" }?.value == "true")
+        #expect(parts?.queryItems?.first { $0.name == "filler_words" }?.value == "true")
+        #expect(parts?.queryItems?.filter { $0.name == "keyterm" }.map(\.value) == ["ship", "sheep"])
+    }
+}

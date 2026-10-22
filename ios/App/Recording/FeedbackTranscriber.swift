@@ -17,8 +17,8 @@ final class FeedbackTranscriber {
     /// Fired on the main actor when new final timed words arrive (Conversation live nudge).
     var onFinalWords: (([RecordedWord]) -> Void)?
 
-    init(relayBase: URL, bearerToken: String) {
-        engine = GrokTranscriptionEngine(relayBase: relayBase, bearerToken: bearerToken)
+    init(apiKey: String) {
+        engine = GrokTranscriptionEngine(endpoint: .direct, bearerToken: apiKey)
     }
 
     func start() async {

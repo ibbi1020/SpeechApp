@@ -255,12 +255,6 @@ struct ReadingSessionView: View {
             errorMessage = UserFacingFailure.microphoneOff
             return
         }
-        guard let relay = MintClient.makeIfConfigured(uuid: model.account.accountUUID) else {
-            Self.log.error("transcription relay is not configured")
-            errorMessage = UserFacingFailure.practiceDidNotStart
-            return
-        }
-
         isPreparing = true
         connectingStarted = Date()
         VoiceOrbPreloader.warmup()
@@ -269,19 +263,20 @@ struct ReadingSessionView: View {
             connectingStarted = nil
         }
 
-        let engine = GrokTranscriptionEngine(
-            relayBase: relay.base,
-            bearerToken: relay.uuid.uuidString
-        )
-        model.speechEngineKind = .grokVoiceTranscribe
-        engine.setContextualPhrases(ReadingSession.contextualPhrases(for: passage, fromIndex: 0))
-        let prepareTask = Task {
-            try await engine.prepareIfNeeded(locale: Locale(identifier: "en-US"))
+        let apiKey = XAIDirectKey.load()
+        let phrases = ReadingSession.contextualPhrases(for: passage, fromIndex: 0)
+        let engine: any TranscriptionEngine
+        do {
+            engine = try await LiveSpeech.engine(apiKey: apiKey, phrases: phrases)
+        } catch is CancellationError {
+            return
+        } catch {
+            UserFacingFailure.log(error, context: "reading start")
+            errorMessage = UserFacingFailure.message(for: error)
+            return
         }
 
         do {
-            try Task.checkCancellation()
-            try await prepareTask.value
             try Task.checkCancellation()
             caretGeneration += 1
             displayIndex = 0
@@ -291,12 +286,18 @@ struct ReadingSessionView: View {
                 let recorder = TakeRecorder()
                 try? recorder.start()
                 takeRecorder = recorder
-                let transcriber = FeedbackTranscriber(relayBase: relay.base, bearerToken: relay.uuid.uuidString)
-                await transcriber.start()
-                feedbackTranscriber = transcriber
-                session?.onRecordedChunk = { chunk in
-                    recorder.append(chunk)
-                    transcriber.append(chunk)
+                if engine.engineKind == .grokVoiceTranscribe, let apiKey {
+                    let transcriber = FeedbackTranscriber(apiKey: apiKey)
+                    await transcriber.start()
+                    feedbackTranscriber = transcriber
+                    session?.onRecordedChunk = { chunk in
+                        recorder.append(chunk)
+                        transcriber.append(chunk)
+                    }
+                } else {
+                    session?.onRecordedChunk = { chunk in
+                        recorder.append(chunk)
+                    }
                 }
             }
             try await session?.start(
@@ -304,10 +305,11 @@ struct ReadingSessionView: View {
                 engine: engine,
                 preference: .autoPreferSpeechTranscriber
             )
+            model.speechEngineKind = session?.engineKind ?? engine.engineKind
         } catch is CancellationError {
-            prepareTask.cancel()
+            await engine.stop()
         } catch {
-            prepareTask.cancel()
+            await engine.stop()
             UserFacingFailure.log(error, context: "reading start")
             errorMessage = UserFacingFailure.message(for: error)
         }

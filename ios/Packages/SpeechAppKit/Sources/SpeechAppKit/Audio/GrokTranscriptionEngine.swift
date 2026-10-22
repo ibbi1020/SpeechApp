@@ -10,11 +10,19 @@ public enum GrokTranscriptionError: Error, LocalizedError, Equatable {
     }
 }
 
-/// Streaming Grok speech-to-text. The xAI key stays on the relay; this client only sends PCM.
+/// Where the speech-to-text socket opens.
+public enum GrokEndpoint: Sendable {
+    /// Mint relay. The server adds the model and keeps the xAI key.
+    case relay(URL)
+    /// `wss://api.x.ai/v1/stt`. The bearer token is the xAI key.
+    case direct
+}
+
+/// Streaming Grok speech-to-text.
 public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Sendable {
     public private(set) var engineKind: LiveTranscriptionEngine.EngineKind = .grokVoiceTranscribe
 
-    private let relayBase: URL
+    private let endpoint: GrokEndpoint
     private let bearerToken: String
     private let lock = NSLock()
     private var contextualPhrases: [String] = []
@@ -33,9 +41,14 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var doneContinuation: CheckedContinuation<Void, Never>?
 
-    public init(relayBase: URL, bearerToken: String) {
-        self.relayBase = relayBase
+    public init(endpoint: GrokEndpoint, bearerToken: String) {
+        self.endpoint = endpoint
         self.bearerToken = bearerToken
+    }
+
+    /// Relay socket. Eval and the mint server use this. The app uses `.direct` until launch.
+    public convenience init(relayBase: URL, bearerToken: String) {
+        self.init(endpoint: .relay(relayBase), bearerToken: bearerToken)
     }
 
     public func setContextualPhrases(_ phrases: [String]) {
@@ -112,13 +125,35 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
             return nil
         }
         parts.path = "/v1/stt"
-        let terms = keyterms.prefix(100).compactMap { phrase -> String? in
+        let terms = keytermItems(keyterms)
+        parts.queryItems = terms.isEmpty ? nil : terms
+        return parts.url
+    }
+
+    /// Same query the mint relay adds before it opens xAI. The phone sends this itself until launch.
+    public static func directWebSocketURL(keyterms: [String]) -> URL? {
+        var parts = URLComponents()
+        parts.scheme = "wss"
+        parts.host = "api.x.ai"
+        parts.path = "/v1/stt"
+        parts.queryItems = [
+            URLQueryItem(name: "model", value: "grok-voice-transcribe-2.0"),
+            URLQueryItem(name: "sample_rate", value: "16000"),
+            URLQueryItem(name: "encoding", value: "pcm"),
+            URLQueryItem(name: "interim_results", value: "true"),
+            URLQueryItem(name: "smart_turn", value: "0.7"),
+            URLQueryItem(name: "smart_turn_timeout", value: "3000"),
+            URLQueryItem(name: "filler_words", value: "true"),
+        ] + keytermItems(keyterms)
+        return parts.url
+    }
+
+    private static func keytermItems(_ keyterms: [String]) -> [URLQueryItem] {
+        keyterms.prefix(100).compactMap { phrase in
             let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
-            return String(trimmed.prefix(50))
+            return URLQueryItem(name: "keyterm", value: String(trimmed.prefix(50)))
         }
-        parts.queryItems = terms.isEmpty ? nil : terms.map { URLQueryItem(name: "keyterm", value: $0) }
-        return parts.url
     }
 
     private func connectIfNeeded() async throws {
@@ -138,7 +173,14 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
 
     private func openAndWait() async throws {
         let phrases = lock.withLock { contextualPhrases }
-        guard let url = Self.webSocketURL(httpBase: relayBase, keyterms: phrases) else {
+        let url: URL?
+        switch endpoint {
+        case .relay(let base):
+            url = Self.webSocketURL(httpBase: base, keyterms: phrases)
+        case .direct:
+            url = Self.directWebSocketURL(keyterms: phrases)
+        }
+        guard let url else {
             throw GrokTranscriptionError.relayNotConfigured
         }
         var request = URLRequest(url: url)

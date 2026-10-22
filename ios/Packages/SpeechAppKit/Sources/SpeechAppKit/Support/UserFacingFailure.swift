@@ -13,6 +13,8 @@ public enum UserFacingFailure {
     public static let speakerDidNotStart = "The speaker didn’t turn on. Try again."
     public static let playbackDidNotStart = "Playback didn’t start. Try again."
     public static let recordingsDidNotLoad = "Recordings didn’t load. Go back and try again."
+    public static let speechStillDownloading = "Speech is still downloading. Try again in a moment."
+    public static let speechRecognitionOff = "Speech recognition is off. Turn it on in Settings and try again."
 
     private static let log = Logger(subsystem: "com.speechapp", category: "Errors")
 
@@ -24,6 +26,14 @@ public enum UserFacingFailure {
                 return diskFull
             case .ioFailed:
                 return recordingsDidNotLoad
+            }
+        }
+        if let speech = error as? TranscriptionEngineError {
+            switch speech {
+            case .unavailable, .onDeviceUnsupported:
+                return speechStillDownloading
+            case .speechAuthorizationDenied:
+                return speechRecognitionOff
             }
         }
         return practiceDidNotStart

@@ -524,7 +524,7 @@ struct MonologueSessionView: View {
 
     // MARK: - Live capture
 
-    /// The microphone starts after the Grok relay is ready, then `session.ready()` starts the take clock.
+    /// The microphone starts after Grok is ready, or after the phone backup is ready. `session.ready()` starts the take clock.
     private func beginListen(_ session: MonologueSession) async {
         dismissKeyboardImmediately()
         guard !isStartingListen else { return }
@@ -545,12 +545,6 @@ struct MonologueSessionView: View {
             listenError = UserFacingFailure.microphoneOff
             return
         }
-        guard let relay = MintClient.makeIfConfigured(uuid: model.account.accountUUID) else {
-            Self.log.error("transcription relay is not configured")
-            listenError = UserFacingFailure.practiceDidNotStart
-            return
-        }
-
         isPreparing = true
         connectingStarted = Date()
         VoiceOrbPreloader.warmup()
@@ -559,33 +553,36 @@ struct MonologueSessionView: View {
             connectingStarted = nil
         }
 
-        let engine = GrokTranscriptionEngine(
-            relayBase: relay.base,
-            bearerToken: relay.uuid.uuidString
-        )
-        engine.setContextualPhrases(Self.keyterms(prompt: session.prompt, reuseLine: session.reuseLine))
-        // Subscribe before prepare. A later read of `updates` would replace the stream and drop words.
-        let updates = engine.updates
-        let prepareTask = Task {
-            try await engine.prepareIfNeeded(locale: Locale(identifier: "en-US"))
+        let engine: any TranscriptionEngine
+        do {
+            engine = try await LiveSpeech.engine(
+                apiKey: XAIDirectKey.load(),
+                phrases: Self.keyterms(prompt: session.prompt, reuseLine: session.reuseLine)
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            UserFacingFailure.log(error, context: "monologue start")
+            listenError = UserFacingFailure.message(for: error)
+            return
         }
+        // One read. A later read of `updates` would replace the stream and drop words.
+        let updates = engine.updates
 
         var startedSource: MicAudioSource?
         do {
-            try Task.checkCancellation()
-            try await prepareTask.value
             try Task.checkCancellation()
             try await engine.start(locale: Locale(identifier: "en-US"), preference: .autoPreferSpeechTranscriber)
             let source = MicAudioSource()
             try await source.start()
             startedSource = source
         } catch is CancellationError {
-            prepareTask.cancel()
             await startedSource?.stop()
+            await engine.stop()
             return
         } catch {
-            prepareTask.cancel()
             await startedSource?.stop()
+            await engine.stop()
             UserFacingFailure.log(error, context: "monologue start")
             listenError = UserFacingFailure.message(for: error)
             return
@@ -663,7 +660,7 @@ struct MonologueSessionView: View {
         #endif
     }
 
-    /// Topic words to bias Grok toward. Each term is capped at 50 characters by the relay.
+    /// Topic words to bias Grok toward. Each term is capped at 50 characters.
     private static func keyterms(prompt: String, reuseLine: String) -> [String] {
         [prompt, reuseLine]
             .flatMap { $0.split(whereSeparator: \.isWhitespace).map(String.init) }

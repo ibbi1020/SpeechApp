@@ -389,14 +389,10 @@ struct ConversationSessionView: View {
             try Task.checkCancellation()
             try await prepareTask.value
 
-            if let client = built.mint {
-                let minted = try await client.mint(
-                    timeout: ConnectionWaitPolicy.remaining(since: started, now: Date())
-                )
-                didMint = true
+            if let apiKey = XAIDirectKey.load() {
                 do {
                     try await built.session.countdownReachedZero(
-                        ephemeralKey: minted.clientSecret,
+                        ephemeralKey: apiKey,
                         timeout: ConnectionWaitPolicy.remaining(since: started, now: Date())
                     )
                 } catch {
@@ -446,9 +442,9 @@ struct ConversationSessionView: View {
         listenBack = nil
         guard RecordingsService.keepRecordings,
               let live = mouth as? LiveConversationMouth,
-              let relay = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
+              let apiKey = XAIDirectKey.load()
         else { return }
-        let recorder = ConversationListenBack(mouth: live, relayBase: relay.base, bearerToken: relay.uuid.uuidString)
+        let recorder = ConversationListenBack(mouth: live, apiKey: apiKey)
         recorder.onLanguageSlip = { end in
             session.noteOtherLanguageSpan(end: end)
         }
@@ -515,7 +511,7 @@ struct ConversationSessionView: View {
         let client = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
         let mouth: any ConversationMouth
         let fake: FakeConversationMouth?
-        if client != nil {
+        if XAIDirectKey.load() != nil {
             mouth = LiveConversationMouth(voiceID: voiceID)
             fake = nil
         } else {

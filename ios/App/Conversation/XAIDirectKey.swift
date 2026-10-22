@@ -1,8 +1,10 @@
 import Foundation
 
 /// Local testing only: load `XAI_API_KEY` from the gitignored `XAISecrets.plist`
-/// written by `server/sync-xai-secret.sh`. Format 2 skips mint and uses this key
-/// as the WebSocket Bearer token.
+/// written by `server/sync-xai-secret.sh`.
+///
+/// Reading, Monologue, listen-back, and Conversation use this key on api.x.ai.
+/// The mint server replaces it before launch so the key is not in the app.
 enum XAIDirectKey {
     private static let plistName = "XAISecrets"
     private static let keyName = "XAI_API_KEY"
