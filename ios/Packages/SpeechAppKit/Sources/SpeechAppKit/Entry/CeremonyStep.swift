@@ -51,6 +51,14 @@ public enum CeremonyCopy {
 
     public static let exerciseButton = "This one"
 
+    /// Shown only when the room is loud enough to get into the recording.
+    public static let roomLoud = "This room is loud."
+    public static let roomLoudDetail = "It will get into what you say."
+    /// The room fell back to a usable level while the warning was up.
+    public static let roomClear = "Quieter now. Go ahead."
+    public static let roomContinue = "Continue"
+    public static let roomContinueAnyway = "Continue anyway"
+
     /// Shown before any sound plays. The breath cue lives here, where it is support
     /// for holding a note, not a technique for nerves.
     public static let humReady = "Ready"
@@ -188,12 +196,23 @@ public struct CeremonyControl: Equatable, Sendable {
 public enum CeremonyControls {
     /// The pinned button for one step. A spent conversation month is stopped here,
     /// before the hum, so the user is not walked to a control that cannot start.
+    /// The pinned button while the loud-room warning is up. Copy follows the
+    /// button band, which has hysteresis. The field color does not.
+    public static func roomWarning(warning: Bool) -> CeremonyControl {
+        CeremonyControl(
+            title: warning ? CeremonyCopy.roomContinueAnyway : CeremonyCopy.roomContinue,
+            isEnabled: true,
+            advance: .step
+        )
+    }
+
     public static func control(
         step: CeremonyStep,
         chosen: PracticeFormat.Kind,
         budget: ConversationBudgetSnapshot,
         breatheDone: Bool = false,
-        humPhase: HumPhase = .explain
+        humPhase: HumPhase = .explain,
+        roomReady: Bool = false
     ) -> CeremonyControl {
         switch step {
         case .breathe:
@@ -207,7 +226,11 @@ public enum CeremonyControls {
                 let blocked = PracticeFormat.startControl(for: .conversation, budget: budget)
                 return CeremonyControl(title: blocked.title, isEnabled: false, advance: .step)
             }
-            return CeremonyControl(title: CeremonyCopy.exerciseButton, isEnabled: true, advance: .step)
+            return CeremonyControl(
+                title: CeremonyCopy.exerciseButton,
+                isEnabled: roomReady,
+                advance: .step
+            )
         case .hum:
             switch humPhase {
             case .explain:

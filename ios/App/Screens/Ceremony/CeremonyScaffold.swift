@@ -14,6 +14,13 @@ struct CeremonyScaffold: View {
     @State private var showCircle = false
     @State private var humProgress: CGFloat = 0
     @State private var humVoice: Double = 0
+    @State private var showingRoomWarning = false
+    @State private var room = RoomMeter()
+    @State private var roomReady = false
+    @State private var roomWarning = false
+    @State private var roomVoice = 0.0
+    @State private var roomDecibels = -160.0
+    @State private var roomDenied = false
 
     private var chosen: PracticeFormat.Kind {
         model.chosenKind ?? .conversation
@@ -31,12 +38,16 @@ struct CeremonyScaffold: View {
     }
 
     private var control: CeremonyControl {
-        CeremonyControls.control(
+        if showingRoomWarning {
+            return CeremonyControls.roomWarning(warning: roomWarning)
+        }
+        return CeremonyControls.control(
             step: model.ceremonyStep,
             chosen: chosen,
             budget: model.budget,
             breatheDone: breatheDone,
-            humPhase: humPhase
+            humPhase: humPhase,
+            roomReady: roomReady
         )
     }
 
@@ -51,28 +62,33 @@ struct CeremonyScaffold: View {
             CeremonyPalette.background
                 .ignoresSafeArea()
 
-            if model.ceremonyStep == .breathe, showCircle {
+            if showingRoomWarning {
+                HumField(voice: roomVoice, ink: RoomInk.color(decibels: roomDecibels))
+                    .ignoresSafeArea()
+                    .transition(SpeechBlur.dissolve)
+            } else if model.ceremonyStep == .breathe, showCircle {
                 BreathCircle(fill: breathFill)
                     .ignoresSafeArea()
                     .transition(SpeechBlur.dissolve)
-            }
-
-            if model.ceremonyStep == .hum {
+            } else if model.ceremonyStep == .hum {
                 HumField(voice: humVoice)
                     .ignoresSafeArea()
                     .transition(SpeechBlur.dissolve)
-            }
-
-            if model.ceremonyStep == .exercise {
-                ExerciseField(kind: exerciseKind)
-                    .ignoresSafeArea()
-                    .transition(SpeechBlur.dissolve)
-                ExerciseScrim()
-                    .ignoresSafeArea()
+            } else if model.ceremonyStep == .exercise {
+                ZStack {
+                    ExerciseField(kind: exerciseKind)
+                    ExerciseScrim()
+                }
+                .ignoresSafeArea()
+                .transition(SpeechBlur.dissolve)
             }
 
             VStack(alignment: .leading, spacing: 0) {
                 GlassCircleButton(systemName: "chevron.left", label: "Back") {
+                    if showingRoomWarning {
+                        showingRoomWarning = false
+                        return
+                    }
                     breatheDone = false
                     humPhase = .explain
                     model.retreatCeremony()
@@ -80,7 +96,7 @@ struct CeremonyScaffold: View {
 
                 ZStack {
                     step
-                        .id(model.ceremonyStep)
+                        .id(showingRoomWarning ? "room" : model.ceremonyStep.rawValue)
                         .transition(SpeechBlur.dissolve)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -103,8 +119,12 @@ struct CeremonyScaffold: View {
             .padding(.bottom, SpeechSpacing.page)
         }
         .animation(motion, value: model.ceremonyStep)
+        .animation(motion, value: showingRoomWarning)
         .sensoryFeedback(.impact(weight: .medium, intensity: 0.7), trigger: model.ceremonyStep)
         .onChange(of: model.ceremonyStep) { _, step in
+            if step != .exercise {
+                showingRoomWarning = false
+            }
             if step != .breathe {
                 breatheDone = false
                 breathFill = 0
@@ -116,17 +136,44 @@ struct CeremonyScaffold: View {
                 humVoice = 0
             }
         }
+        .task(id: model.ceremonyStep) {
+            guard model.ceremonyStep == .exercise else { return }
+            roomReady = false
+            roomDenied = false
+            let token = await room.start()
+            defer { room.stop(token: token) }
+            while Task.isCancelled == false {
+                let snap = room.snapshot
+                roomReady = snap.ready
+                roomWarning = snap.warning
+                roomVoice = snap.voice
+                if let decibels = snap.decibels {
+                    roomDecibels = decibels
+                }
+                roomDenied = snap.denied
+                try? await Task.sleep(for: .milliseconds(32))
+            }
+        }
     }
 
     @ViewBuilder
     private var step: some View {
+        if showingRoomWarning {
+            RoomWarningStep(warning: roomWarning)
+        } else {
+            stepBody
+        }
+    }
+
+    @ViewBuilder
+    private var stepBody: some View {
         switch model.ceremonyStep {
         case .breathe:
             BreatheStep(fill: $breathFill, showCircle: $showCircle) { done in
                 breatheDone = done
             }
         case .exercise:
-            ExerciseStep()
+            ExerciseStep(blocked: roomDenied ? UserFacingFailure.microphoneOff : nil)
         case .hum:
             VocalStep(clip: clip, phase: humPhase, progress: $humProgress, voice: $humVoice) {
                 humPhase = .finished
@@ -137,9 +184,23 @@ struct CeremonyScaffold: View {
     }
 
     private func commit() {
+        if showingRoomWarning {
+            showingRoomWarning = false
+            model.advanceCeremony()
+            return
+        }
         switch control.advance {
         case .step:
-            model.advanceCeremony()
+            if model.ceremonyStep == .exercise {
+                guard roomReady else { return }
+                if roomWarning {
+                    showingRoomWarning = true
+                } else {
+                    model.advanceCeremony()
+                }
+            } else {
+                model.advanceCeremony()
+            }
         case .armHum:
             humPhase = .playing
         case .start:

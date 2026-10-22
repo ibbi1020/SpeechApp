@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import OSLog
 import SwiftUI
 import SpeechAppKit
@@ -100,6 +101,11 @@ struct ReadingSessionView: View {
                 displayIndex: $displayIndex,
                 layoutReady: $layoutReady
             )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { note in
+            if SessionInterruption.shouldPause(note) {
+                session?.pause()
+            }
         }
         .onAppear {
             VoiceOrbPreloader.warmup()
