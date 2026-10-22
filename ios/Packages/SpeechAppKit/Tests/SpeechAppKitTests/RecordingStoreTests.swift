@@ -39,6 +39,50 @@ struct RecordingStoreTests {
         #expect(try store.list(format: .reading).isEmpty)
     }
 
+    @Test("a take kept off the library stays loadable and out of the list")
+    func hiddenTakeStaysOutOfTheLibrary() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpeechAppRecordings-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = RecordingStore(rootURL: root)
+        var held = makeManifest(topic: "held")
+        held.inLibrary = false
+        try store.save(held)
+        try store.save(makeManifest(topic: "kept"))
+
+        #expect(try store.list().map(\.topic) == ["kept"])
+        #expect(try store.load(id: held.id)?.inLibrary == false)
+        let everything = try store.list(includeHidden: true)
+        #expect(everything.contains { $0.id == held.id })
+    }
+
+    @Test("an older manifest with no library flag stays in the list")
+    func legacyManifestStaysListed() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpeechAppRecordings-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = RecordingStore(rootURL: root)
+        let id = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+        let dir = store.regimenDirectory(id: id)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let json = """
+        {
+          "comparison" : "",
+          "createdAt" : "2026-01-01T00:00:00Z",
+          "format" : "reading",
+          "id" : "\(id.uuidString)",
+          "reportLines" : [],
+          "takes" : [],
+          "topic" : "legacy"
+        }
+        """
+        try json.write(to: dir.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
+
+        let loaded = try store.load(id: id)
+        #expect(loaded?.inLibrary == true)
+        #expect(try store.list().map(\.topic) == ["legacy"])
+    }
+
     @Test("crisis delete removes the whole regimen folder")
     func crisisDelete() throws {
         let root = FileManager.default.temporaryDirectory

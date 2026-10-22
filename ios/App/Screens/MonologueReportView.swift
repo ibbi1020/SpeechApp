@@ -6,6 +6,12 @@ struct MonologueReportView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let report: MonologueReport
     let regimenID: UUID?
+    var topic: String = ""
+    /// The gallery keeps the profile lines. The report after a talk does not.
+    var showsLines: Bool = false
+
+    @State private var offersSave = false
+    @State private var keptThisTake = false
 
     var body: some View {
         ZStack {
@@ -13,33 +19,11 @@ struct MonologueReportView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    linesCard
-
-                    if report.kind == .thin {
-                        Text("Too little speech to score the rest.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, SpeechSpacing.related)
+                    if showsLines {
+                        libraryContent
+                    } else {
+                        exerciseContent
                     }
-
-                    if !report.comparison.isEmpty {
-                        Text(report.comparison)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, SpeechSpacing.related)
-                    }
-
-                    if regimenID != nil {
-                        RecordingReviewLoader(recordingID: regimenID)
-                            .padding(.top, SpeechSpacing.section)
-                    }
-
-                    Button("Back to home", action: goHome)
-                        .buttonStyle(SpeechPrimaryButtonStyle())
-                        .padding(.top, SpeechSpacing.section)
-                        .padding(.bottom, 32)
                 }
                 .padding(.horizontal, SpeechSpacing.page)
                 .padding(.top, 20)
@@ -47,6 +31,84 @@ struct MonologueReportView: View {
         }
         .speechPageTitle("Your talk")
         .speechBottomBlur()
+        .onAppear {
+            offersSave = !showsLines && regimenID != nil && !RecordingsService.keepRecordings
+        }
+        .onDisappear {
+            guard offersSave, !keptThisTake, let regimenID else { return }
+            if case .monologueReport = model.route { return }
+            TakeRetention.discard(regimenID)
+        }
+    }
+
+    private var exerciseContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !topic.isEmpty {
+                Text(topic)
+                    .font(.title3.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !report.comparison.isEmpty {
+                Text(report.comparison)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, topic.isEmpty ? 0 : SpeechSpacing.related)
+            }
+
+            if regimenID != nil {
+                RecordingReviewLoader(recordingID: regimenID)
+                    .padding(.top, SpeechSpacing.section)
+            }
+
+            actions
+                .padding(.top, SpeechSpacing.section)
+                .padding(.bottom, 32)
+        }
+    }
+
+    private var libraryContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            linesCard
+
+            if report.kind == .thin {
+                Text("Too little speech to score the rest.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, SpeechSpacing.related)
+            }
+
+            if !report.comparison.isEmpty {
+                Text(report.comparison)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, SpeechSpacing.related)
+            }
+
+            if regimenID != nil {
+                RecordingReviewLoader(recordingID: regimenID)
+                    .padding(.top, SpeechSpacing.section)
+            }
+
+            Button("Back to home", action: goHome)
+                .buttonStyle(SpeechPrimaryButtonStyle())
+                .padding(.top, SpeechSpacing.section)
+                .padding(.bottom, 32)
+        }
+    }
+
+    private var actions: some View {
+        VStack(spacing: 10) {
+            Button("Back to home", action: goHome)
+                .buttonStyle(SpeechPrimaryButtonStyle())
+
+            if offersSave, let regimenID {
+                SaveThisTakeButton(recordingID: regimenID, kept: $keptThisTake)
+            }
+        }
     }
 
     private var linesCard: some View {

@@ -17,6 +17,7 @@ enum SingleTakeRecording {
         let durationSeconds: TimeInterval
         let markers: [ReviewMarker]
         var partnerTurns: [PartnerTurn]? = nil
+        var inLibrary: Bool = true
     }
 
     static func finalizeAndSave(
@@ -37,6 +38,10 @@ enum SingleTakeRecording {
                 let fileName = "take-1.m4a"
                 _ = try store.storeAudio(regimenID: content.id, from: finalURL, fileName: fileName)
                 try? FileManager.default.removeItem(at: finalURL)
+                if TakeRetention.isDiscarded(content.id) {
+                    try? store.delete(id: content.id)
+                    return
+                }
                 try store.save(RecordingManifest(
                     id: content.id,
                     format: content.format,
@@ -52,11 +57,13 @@ enum SingleTakeRecording {
                             markers: content.markers,
                             partnerTurns: content.partnerTurns
                         ),
-                    ]
+                    ],
+                    inLibrary: TakeRetention.wantsLibrary(content.id) || content.inLibrary
                 ))
             } catch {
                 log.error("save failed: \(error.localizedDescription, privacy: .public)")
                 try? FileManager.default.removeItem(at: rawURL)
+                if TakeRetention.isDiscarded(content.id) { return }
                 let outOfSpace = (error as? RecordingStoreError) == .diskFull
                 try? store.save(RecordingManifest(
                     id: content.id,
@@ -67,7 +74,8 @@ enum SingleTakeRecording {
                     takes: [],
                     saveError: outOfSpace
                         ? UserFacingFailure.diskFull
-                        : UserFacingFailure.nothingToPlay
+                        : UserFacingFailure.nothingToPlay,
+                    inLibrary: TakeRetention.wantsLibrary(content.id) || content.inLibrary
                 ))
             }
         }

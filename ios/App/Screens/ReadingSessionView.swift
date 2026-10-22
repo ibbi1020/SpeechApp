@@ -288,22 +288,20 @@ struct ReadingSessionView: View {
             displayIndex = 0
             lastScrolledLine = nil
             let source = MicAudioSource()
-            if RecordingsService.keepRecordings {
-                let recorder = TakeRecorder()
-                try? recorder.start()
-                takeRecorder = recorder
-                if engine.engineKind == .grokVoiceTranscribe, let apiKey {
-                    let transcriber = FeedbackTranscriber(apiKey: apiKey)
-                    await transcriber.start()
-                    feedbackTranscriber = transcriber
-                    session?.onRecordedChunk = { chunk in
-                        recorder.append(chunk)
-                        transcriber.append(chunk)
-                    }
-                } else {
-                    session?.onRecordedChunk = { chunk in
-                        recorder.append(chunk)
-                    }
+            let recorder = TakeRecorder()
+            try? recorder.start()
+            takeRecorder = recorder
+            if engine.engineKind == .grokVoiceTranscribe, let apiKey {
+                let transcriber = FeedbackTranscriber(apiKey: apiKey)
+                await transcriber.start()
+                feedbackTranscriber = transcriber
+                session?.onRecordedChunk = { chunk in
+                    recorder.append(chunk)
+                    transcriber.append(chunk)
+                }
+            } else {
+                session?.onRecordedChunk = { chunk in
+                    recorder.append(chunk)
                 }
             }
             try await session?.start(
@@ -334,7 +332,7 @@ struct ReadingSessionView: View {
         model.finish(report: report, recordingID: recordingID)
     }
 
-    /// Starts saving the take for listen-back and returns its id, or nil when not kept.
+    /// Starts saving the take for listen-back and returns its id when there is audio.
     private func saveRecording(session: ReadingSession, report: SessionReport) async -> UUID? {
         guard let recorder = takeRecorder else { return nil }
         takeRecorder = nil
@@ -357,7 +355,8 @@ struct ReadingSessionView: View {
                 ],
                 words: words,
                 durationSeconds: duration,
-                markers: ReadingMarkers.build(passage: passage, words: words, durationSeconds: duration)
+                markers: ReadingMarkers.build(passage: passage, words: words, durationSeconds: duration),
+                inLibrary: RecordingsService.keepRecordings
             )
         )
         return id

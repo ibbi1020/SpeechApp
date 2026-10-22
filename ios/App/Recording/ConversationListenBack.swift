@@ -93,7 +93,7 @@ final class ConversationListenBack {
     }
 
     /// Stops recording and starts saving in the background. Returns the recording id.
-    func finish(report: ConversationReport) -> UUID? {
+    func finish(report: ConversationReport, inLibrary: Bool = true) -> UUID? {
         stopPumps()
         // Chunks are placed when they are queued, which can run ahead of the
         // speaker. Keep only what the mic clock has reached.
@@ -134,7 +134,8 @@ final class ConversationListenBack {
                     words: words,
                     durationSeconds: duration,
                     markers: ConversationMarkers.build(words: words, partnerTurns: turns, durationSeconds: duration),
-                    partnerTurns: turns
+                    partnerTurns: turns,
+                    inLibrary: inLibrary
                 ),
                 partnerSpans: spans
             )

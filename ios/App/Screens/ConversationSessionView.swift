@@ -445,8 +445,7 @@ struct ConversationSessionView: View {
     private func startListenBack(session: ConversationSession, mouth: any ConversationMouth) async {
         listenBack?.discard()
         listenBack = nil
-        guard RecordingsService.keepRecordings,
-              let live = mouth as? LiveConversationMouth,
+        guard let live = mouth as? LiveConversationMouth,
               let apiKey = XAIDirectKey.load()
         else { return }
         let recorder = ConversationListenBack(mouth: live, apiKey: apiKey)
@@ -727,7 +726,9 @@ struct ConversationSessionView: View {
                 return
             }
             markRoutedAndPostEnded()
-            let recordingID = report.kind == .crisis ? nil : listenBack?.finish(report: report)
+            let recordingID = report.kind == .crisis
+                ? nil
+                : listenBack?.finish(report: report, inLibrary: RecordingsService.keepRecordings)
             if recordingID == nil { listenBack?.discard() }
             listenBack = nil
             model.finishConversation(

@@ -139,7 +139,9 @@ struct RecordingsLibraryView: View {
                     lines: item.reportLines,
                     comparison: item.comparison
                 ),
-                regimenID: item.id
+                regimenID: item.id,
+                topic: item.topic,
+                showsLines: true
             )
         case .reading, .conversation:
             SavedRecordingView(manifest: item)

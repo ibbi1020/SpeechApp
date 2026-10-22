@@ -43,6 +43,8 @@ public struct RecordingManifest: Equatable, Hashable, Sendable, Codable, Identif
     public let takes: [Take]
     /// Set when audio could not be saved (e.g. disk full).
     public let saveError: String?
+    /// False while the take is only on the report. The gallery lists saved takes.
+    public var inLibrary: Bool
 
     public init(
         id: UUID = UUID(),
@@ -52,7 +54,8 @@ public struct RecordingManifest: Equatable, Hashable, Sendable, Codable, Identif
         reportLines: [MonologueReport.Line],
         comparison: String,
         takes: [Take],
-        saveError: String? = nil
+        saveError: String? = nil,
+        inLibrary: Bool = true
     ) {
         self.id = id
         self.format = format
@@ -62,7 +65,38 @@ public struct RecordingManifest: Equatable, Hashable, Sendable, Codable, Identif
         self.comparison = comparison
         self.takes = takes
         self.saveError = saveError
+        self.inLibrary = inLibrary
     }
 
     public var takeCount: Int { takes.count }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, format, createdAt, topic, reportLines, comparison, takes, saveError, inLibrary
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        format = try container.decodeIfPresent(Format.self, forKey: .format) ?? .monologue
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        topic = try container.decode(String.self, forKey: .topic)
+        reportLines = try container.decode([MonologueReport.Line].self, forKey: .reportLines)
+        comparison = try container.decode(String.self, forKey: .comparison)
+        takes = try container.decode([Take].self, forKey: .takes)
+        saveError = try container.decodeIfPresent(String.self, forKey: .saveError)
+        inLibrary = try container.decodeIfPresent(Bool.self, forKey: .inLibrary) ?? true
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(format, forKey: .format)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(topic, forKey: .topic)
+        try container.encode(reportLines, forKey: .reportLines)
+        try container.encode(comparison, forKey: .comparison)
+        try container.encode(takes, forKey: .takes)
+        try container.encodeIfPresent(saveError, forKey: .saveError)
+        try container.encode(inLibrary, forKey: .inLibrary)
+    }
 }

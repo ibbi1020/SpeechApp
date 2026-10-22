@@ -13,7 +13,7 @@ final class AppModel {
         case conversation
         case conversationReport(ConversationReport, recordingID: UUID?)
         case monologue
-        case monologueReport(MonologueReport, regimenID: UUID?)
+        case monologueReport(MonologueReport, regimenID: UUID?, topic: String)
         case recordings(filter: RecordingManifest.Format?)
         case crisis
     }
@@ -27,6 +27,10 @@ final class AppModel {
     /// from `route` so popping a session returns to the screen it was started from.
     enum EntrySurface: Equatable {
         case home, ceremony
+    }
+
+    init() {
+        TakeRetention.discardTakesLeftFromLastLaunch()
     }
 
     var hostedFormat: HostedFormat = .conversation
@@ -213,14 +217,15 @@ final class AppModel {
     func finishMonologue(
         report: MonologueReport,
         possibleMinorFlag: Bool = false,
-        regimenID: UUID? = nil
+        regimenID: UUID? = nil,
+        topic: String = ""
     ) {
         notePossibleMinorIfNeeded(possibleMinorFlag)
         if report.kind == .crisis {
             route = .crisis
             return
         }
-        route = .monologueReport(report, regimenID: regimenID)
+        route = .monologueReport(report, regimenID: regimenID, topic: topic)
     }
 
     /// Leaves the exercise and opens the home gallery. Not the old recordings list.
