@@ -9,6 +9,9 @@ import SwiftUI
 /// The discs do not carry words. The name is the kicker, because a blank disc
 /// cannot say "Reading" and the heading should not have to.
 struct ExerciseStep: View {
+    /// Shown when the microphone cannot be used to check the room.
+    var blocked: String?
+
     @Environment(AppModel.self) private var model
 
     private var counts: WeeklyPracticeCounts { model.weeklyCounts }
@@ -69,6 +72,13 @@ struct ExerciseStep: View {
                         Text(line)
                             .ceremonyType(.body)
                             .foregroundStyle(.tertiary)
+                    }
+                }
+                if let blocked {
+                    BlurDissolve(blocked, size: CeremonyType.metrics(.body).size) { line in
+                        Text(line)
+                            .ceremonyType(.body)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }

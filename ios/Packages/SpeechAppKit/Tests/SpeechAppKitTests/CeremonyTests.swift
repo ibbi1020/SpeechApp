@@ -79,6 +79,11 @@ struct CeremonyStepTests {
             CeremonyCopy.breatheRate,
             CeremonyCopy.breatheSettle,
             CeremonyCopy.exerciseButton,
+            CeremonyCopy.roomLoud,
+            CeremonyCopy.roomLoudDetail,
+            CeremonyCopy.roomClear,
+            CeremonyCopy.roomContinue,
+            CeremonyCopy.roomContinueAnyway,
             CeremonyCopy.humReady,
             CeremonyCopy.humWaiting,
             CeremonyCopy.humBreath,
@@ -121,17 +126,23 @@ struct CeremonyControlTests {
         #expect(done.advance == .step)
     }
 
-    @Test("exercise advances, unless conversation is spent")
+    @Test("exercise waits for a room reading, unless conversation is spent")
     func exercise() {
-        let openControl = CeremonyControls.control(
+        let waiting = CeremonyControls.control(
             step: .exercise, chosen: .conversation, budget: open
+        )
+        #expect(waiting.title == "This one")
+        #expect(waiting.isEnabled == false)
+
+        let openControl = CeremonyControls.control(
+            step: .exercise, chosen: .conversation, budget: open, roomReady: true
         )
         #expect(openControl.title == "This one")
         #expect(openControl.isEnabled)
         #expect(openControl.advance == .step)
 
         let spentControl = CeremonyControls.control(
-            step: .exercise, chosen: .conversation, budget: spent
+            step: .exercise, chosen: .conversation, budget: spent, roomReady: true
         )
         #expect(spentControl.title == "Back next month")
         #expect(spentControl.isEnabled == false)
@@ -140,10 +151,32 @@ struct CeremonyControlTests {
     @Test("a spent month does not block reading or monologue")
     func otherFormats() {
         for kind in [PracticeFormat.Kind.reading, .monologue] {
-            let control = CeremonyControls.control(step: .exercise, chosen: kind, budget: spent)
+            let waiting = CeremonyControls.control(step: .exercise, chosen: kind, budget: spent)
+            #expect(waiting.isEnabled == false)
+
+            let control = CeremonyControls.control(
+                step: .exercise, chosen: kind, budget: spent, roomReady: true
+            )
             #expect(control.isEnabled)
             #expect(control.title == "This one")
         }
+    }
+
+    @Test("the room warning lets them go on, and says so differently once it is quiet")
+    func roomWarning() {
+        let loud = CeremonyControls.roomWarning(warning: true)
+        #expect(loud.title == "Continue anyway")
+        #expect(loud.isEnabled)
+        #expect(loud.advance == .step)
+
+        let quiet = CeremonyControls.roomWarning(warning: false)
+        #expect(quiet.title == "Continue")
+        #expect(quiet.isEnabled)
+        #expect(quiet.advance == .step)
+
+        #expect(CeremonyCopy.roomLoud == "This room is loud.")
+        #expect(CeremonyCopy.roomLoudDetail == "It will get into what you say.")
+        #expect(CeremonyCopy.roomClear == "Quieter now. Go ahead.")
     }
 
     @Test("the siren waits for Ready, then the exercise's own start title")
