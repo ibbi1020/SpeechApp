@@ -19,9 +19,7 @@ struct SessionReportView: View {
                     header
                         .padding(.bottom, SpeechSpacing.section)
 
-                    if recordingID != nil {
-                        RecordingReviewLoader(recordingID: recordingID)
-                    }
+                    feedback
 
                     actions
                         .padding(.top, SpeechSpacing.section)
@@ -56,6 +54,15 @@ struct SessionReportView: View {
     private var durationLabel: String {
         let total = max(0, Int(report.durationSeconds.rounded()))
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    @ViewBuilder
+    private var feedback: some View {
+        if let recordingID {
+            RecordingReviewLoader(recordingID: recordingID)
+        } else {
+            FeedbackPreparing(message: "This take didn't come through.", showsSpinner: false)
+        }
     }
 
     private var actions: some View {

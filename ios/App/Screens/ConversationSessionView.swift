@@ -160,6 +160,7 @@ struct ConversationSessionView: View {
             handleScenePhase(phase)
         }
         .onChange(of: phase) { old, new in
+            listenBack?.setCapturing(new == .talking || new == .wrapping)
             noteIslandClock(from: old, to: new)
             routeIfFinished()
             syncAmbient()

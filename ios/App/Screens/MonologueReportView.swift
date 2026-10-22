@@ -57,14 +57,21 @@ struct MonologueReportView: View {
                     .padding(.top, topic.isEmpty ? 0 : SpeechSpacing.related)
             }
 
-            if regimenID != nil {
-                RecordingReviewLoader(recordingID: regimenID)
-                    .padding(.top, SpeechSpacing.section)
-            }
+            feedback
+                .padding(.top, SpeechSpacing.section)
 
             actions
                 .padding(.top, SpeechSpacing.section)
                 .padding(.bottom, 32)
+        }
+    }
+
+    @ViewBuilder
+    private var feedback: some View {
+        if let regimenID {
+            RecordingReviewLoader(recordingID: regimenID)
+        } else {
+            FeedbackPreparing(message: "This take didn't come through.", showsSpinner: false)
         }
     }
 

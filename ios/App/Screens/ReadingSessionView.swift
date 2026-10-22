@@ -336,8 +336,12 @@ struct ReadingSessionView: View {
     private func saveRecording(session: ReadingSession, report: SessionReport) async -> UUID? {
         guard let recorder = takeRecorder else { return nil }
         takeRecorder = nil
+        guard let rawURL = recorder.stop() else { return nil }
         let duration = recorder.writtenSeconds
-        guard let rawURL = recorder.stop(), duration > 0 else { return nil }
+        guard duration > 0 else {
+            try? FileManager.default.removeItem(at: rawURL)
+            return nil
+        }
         let id = UUID()
         // Unhinted words show what was really said; the hinted live words are the fallback.
         var words = await feedbackTranscriber?.finish() ?? []

@@ -16,9 +16,7 @@ struct ConversationReportView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if recordingID != nil {
-                        RecordingReviewLoader(recordingID: recordingID)
-                    }
+                    feedback
 
                     actions
                         .padding(.top, SpeechSpacing.section)
@@ -38,6 +36,15 @@ struct ConversationReportView: View {
             guard offersSave, !keptThisTake, let recordingID else { return }
             if case .conversationReport = model.route { return }
             TakeRetention.discard(recordingID)
+        }
+    }
+
+    @ViewBuilder
+    private var feedback: some View {
+        if let recordingID {
+            RecordingReviewLoader(recordingID: recordingID)
+        } else {
+            FeedbackPreparing(message: "This take didn't come through.", showsSpinner: false)
         }
     }
 
