@@ -154,6 +154,12 @@ struct MonologueSessionView: View {
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { note in
             handleRouteChange(note)
         }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { note in
+            if SessionInterruption.shouldPause(note) {
+                session?.pause(atStreamTime: lastStreamTime)
+                takeRecorder.setWriting(false)
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 session?.pause(atStreamTime: lastStreamTime)

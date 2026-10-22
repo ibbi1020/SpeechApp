@@ -6,12 +6,14 @@ import SwiftUI
 /// Breathing does not use this. That step keeps its ring.
 struct HumField: View {
     var voice: Double
+    /// The hum step keeps the amber. The room warning passes green, yellow, or orange.
+    var ink: Color = Self.amber
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Evening palette from the prototype. Morning is the cool alternative there;
     /// the ceremony ships the warm one.
-    private static let ink = Color(red: 1, green: 196.0 / 255, blue: 128.0 / 255)
+    static let amber = Color(red: 1, green: 196.0 / 255, blue: 128.0 / 255)
 
     /// Holds each dot's opacity between frames. A class so a redraw can continue
     /// a fade that started on the previous one.
@@ -26,7 +28,7 @@ struct HumField: View {
                     date: timeline.date,
                     voice: voice,
                     reduceMotion: reduceMotion,
-                    ink: Self.ink
+                    ink: ink
                 )
             }
         }

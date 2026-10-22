@@ -151,6 +151,11 @@ struct ConversationSessionView: View {
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { note in
             handleRouteChange(note)
         }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { note in
+            if SessionInterruption.shouldPause(note) {
+                session?.pause()
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             handleScenePhase(phase)
         }
