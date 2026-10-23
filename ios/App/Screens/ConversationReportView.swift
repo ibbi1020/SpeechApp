@@ -14,21 +14,15 @@ struct ConversationReportView: View {
         ZStack {
             SpeechScreenBackground()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    feedback
-
-                    actions
-                        .padding(.top, SpeechSpacing.section)
-                        .padding(.bottom, 32)
-                }
-                .padding(.horizontal, SpeechSpacing.page)
-                .padding(.top, 20)
-                .id(report.id)
+            FeedbackPageScroll {
+                feedback
+            } actions: {
+                actions
             }
+            .id(report.id)
         }
         .speechPageTitle("Your conversation")
-        .speechBottomBlur()
+        .speechBottomBlur(bar: false)
         .onAppear {
             offersSave = recordingID != nil && !RecordingsService.keepRecordings
         }

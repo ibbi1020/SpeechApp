@@ -13,18 +13,20 @@ struct ConversationLiveActivityWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    IslandOrb(look: context.state.orb, size: ExpandedFit.mark)
-                        .frame(maxHeight: .infinity, alignment: .center)
+                    IslandOrb(look: context.state.orb, size: ExpandedFit.orb)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                         .accessibilityLabel("Conversation. This partner is AI, not a person.")
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     IslandActions(
                         state: context.state,
                         surface: .expanded,
-                        button: ExpandedFit.mark,
-                        spacing: ExpandedFit.padding
+                        button: ExpandedFit.button,
+                        spacing: ExpandedFit.buttonSpacing
                     )
-                    .frame(maxHeight: .infinity, alignment: .center)
+                    // Hug the outer end. The free space stays next to the camera,
+                    // so the pair does not slide back under the lens.
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                 }
             } compactLeading: {
                 CompactOrb(look: context.state.orb)
@@ -34,9 +36,9 @@ struct ConversationLiveActivityWidget: Widget {
                 MinimalMark(state: context.state)
             }
             .widgetURL(ConversationLiveActivityLink.url(for: context.attributes.conversationID))
-            .keylineTint(Color(red: 0.48, green: 0.56, blue: 0.985))
-            // Same inset on every edge, so the circles sit in the middle of the pill.
-            .contentMargins(.all, ExpandedFit.padding, for: .expanded)
+            .keylineTint(.white)
+            // Inset from the pill edge so the circles clear the rounded ends.
+            .contentMargins(.all, ExpandedFit.edge, for: .expanded)
             // Outer edges of the compact pill. Only the outside edge, so left and right match.
             .contentMargins(.leading, CompactFit.inset, for: .compactLeading)
             .contentMargins(.trailing, CompactFit.inset, for: .compactTrailing)
@@ -45,11 +47,14 @@ struct ConversationLiveActivityWidget: Widget {
     }
 }
 
-/// Expanded island corner radius. A circle inset by `padding` shares that center.
+/// Sizes for the expanded island. The camera housing sits in the middle of the
+/// pill, and both ends are round. A 64pt circle on each control reached the lens
+/// and the end caps. These sit in the side lobes with room at the outer edge.
 private enum ExpandedFit {
-    static let cornerRadius: CGFloat = 44
-    static let padding: CGFloat = 12
-    static let mark: CGFloat = (cornerRadius - padding) * 2
+    static let orb: CGFloat = 48
+    static let button: CGFloat = 44
+    static let buttonSpacing: CGFloat = 6
+    static let edge: CGFloat = 16
 }
 
 /// Distance from the compact pill edge to the orb, and from the other edge to the timer.

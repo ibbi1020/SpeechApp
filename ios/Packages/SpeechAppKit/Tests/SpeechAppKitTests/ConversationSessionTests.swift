@@ -106,6 +106,21 @@ struct ConversationSessionTests {
         #expect(session.phase == .talking)
     }
 
+    @Test("pause closes the mic, and a turn while paused does not get a reply")
+    @MainActor
+    func pauseClosesMic() async throws {
+        let (session, mouth, _) = makeSession()
+        try await reachTalking(session)
+        let repliesBeforePause = mouth.responseCreates.count
+        session.pause()
+        #expect(mouth.inputPaused)
+        session.ingestUserText("still talking")
+        await session.handle(.speechStopped)
+        #expect(mouth.responseCreates.count == repliesBeforePause)
+        session.resume()
+        #expect(mouth.inputPaused == false)
+    }
+
     @Test("pause TTL 10 min hangs up with no close")
     @MainActor
     func pauseTTL() async throws {

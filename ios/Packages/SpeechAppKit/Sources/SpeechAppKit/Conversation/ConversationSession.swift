@@ -122,6 +122,9 @@ public final class ConversationSession {
         guard phase == .talking else { return }
         phase = .paused
         pausedAt = time.now
+        // The screen was already showing Paused while the mic stayed open,
+        // so the model kept hearing them and answering.
+        mouth.setInputPaused(true)
     }
 
     public func resume() {
@@ -130,6 +133,7 @@ public final class ConversationSession {
         self.pausedAt = nil
         lastUserSpeechAt = time.now
         phase = .talking
+        mouth.setInputPaused(false)
     }
 
     public func requestStop() {}

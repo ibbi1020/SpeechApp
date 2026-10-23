@@ -5,6 +5,7 @@ public final class FakeConversationMouth: ConversationMouth, @unchecked Sendable
     private let continuation: AsyncStream<MouthEvent>.Continuation
     public private(set) var responseCreates: [String] = []
     public private(set) var responseCancels = 0
+    public private(set) var inputPaused = false
     public private(set) var didClose = false
     public private(set) var voiceUpdates: [String] = []
     public private(set) var turnDetectionNulled = false
@@ -31,6 +32,10 @@ public final class FakeConversationMouth: ConversationMouth, @unchecked Sendable
 
     public func cancelResponse() async throws {
         responseCancels += 1
+    }
+
+    public func setInputPaused(_ paused: Bool) {
+        inputPaused = paused
     }
 
     public func updateVoice(_ id: String) async {

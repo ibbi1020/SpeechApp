@@ -344,7 +344,7 @@ struct ConversationSessionView: View {
             } label: {
                 Image(systemName: "stop.fill")
             }
-            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session, fill: .red))
             .accessibilityLabel("Stop")
         }
     }

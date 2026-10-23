@@ -79,6 +79,30 @@ extension View {
     }
 }
 
+/// Feedback actions stay at the bottom of the screen when the notes are short.
+/// When the notes run past the screen, the actions follow them instead of covering them.
+struct FeedbackPageScroll<Content: View, Actions: View>: View {
+    @ViewBuilder var content: () -> Content
+    @ViewBuilder var actions: () -> Actions
+
+    var body: some View {
+        GeometryReader { geo in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    content()
+                    Spacer(minLength: SpeechSpacing.section)
+                    actions()
+                }
+                .padding(.horizontal, SpeechSpacing.page)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+                .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+    }
+}
+
 /// Keeps the edge swipe after the navigation bar is hidden.
 ///
 /// Hiding the bar also hides the system back button, and the navigation
@@ -232,6 +256,8 @@ struct SpeechIconCircleStyle: ButtonStyle {
     static let session: CGFloat = 52
 
     var diameter: CGFloat = gallery
+    /// Stop and Done. Pause stays the quiet white disc.
+    var fill: Color = Color.white.opacity(0.12)
 
     @Environment(\.isEnabled) private var isEnabled
 
@@ -242,7 +268,7 @@ struct SpeechIconCircleStyle: ButtonStyle {
             .font(.body.weight(.semibold))
             .foregroundStyle(Color.white)
             .frame(width: side, height: side)
-            .background(Color.white.opacity(0.12), in: Circle())
+            .background(fill, in: Circle())
             .contentShape(Circle())
             .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
             .animation(SpeechMotion.press, value: configuration.isPressed)

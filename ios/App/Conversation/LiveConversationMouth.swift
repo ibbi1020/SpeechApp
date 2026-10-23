@@ -47,6 +47,10 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var socketReady = false
     private var micEnabled = false
+    /// Pause. The mic is not sent. A reply already sounding stays queued and continues on resume.
+    private var userPaused = false
+    /// The partner node was paused mid-buffer, so resume can start it again.
+    private var heldPartnerAudio = false
     private var responseTranscript = ""
     private var captionLedger = CaptionAudioLedger()
     private var captionPlayhead = CaptionPlayhead()
@@ -163,6 +167,46 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         try throwIfClosed()
         interruptPlaybackAndCaptions(reason: .cancel)
         try sendEvent(["type": "response.cancel"])
+    }
+
+    /// Stop the model from hearing the mic. The socket stays up so resume is the same talk.
+    ///
+    /// A reply already in the speaker is held, not cancelled. Cancelling marks the
+    /// audio still queued — and the words that go with it — as already heard, so
+    /// resume jumps to the end of the sentence.
+    func setInputPaused(_ paused: Bool) {
+        let holdPlayback = lock.withLock { () -> Bool in
+            userPaused = paused
+            micEnabled = !paused && !closed
+            if paused {
+                inputLevel = 0
+                frames = PCM16FrameBuffer(rate: Self.sampleRate)
+            }
+            let hold = paused && (partnerPlaying || player.isPlaying)
+            if hold {
+                heldPartnerAudio = true
+                captionPlayhead.pause(now: ProcessInfo.processInfo.systemUptime)
+            }
+            return hold
+        }
+        if paused {
+            try? sendEvent(["type": "input_audio_buffer.clear"])
+            if holdPlayback {
+                player.pause()
+            }
+            return
+        }
+        let resumePlayback = lock.withLock { () -> Bool in
+            let held = heldPartnerAudio
+            heldPartnerAudio = false
+            if held {
+                captionPlayhead.resume(now: ProcessInfo.processInfo.systemUptime)
+            }
+            return held
+        }
+        if resumePlayback, engine.isRunning {
+            player.play()
+        }
     }
 
     /// Stores the choice immediately. The server hears it only between replies,
@@ -437,14 +481,18 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
                 }
             }
         case "input_audio_buffer.speech_started":
+            if lock.withLock({ userPaused }) { return }
             handleSpeechStarted()
         case "input_audio_buffer.speech_stopped":
+            if lock.withLock({ userPaused }) { return }
             handleSpeechStopped()
         case "response.created":
             beginPartnerResponse()
             mutateBargeIn { $0.noteAgentAudio() }
             continuation.yield(.responseStarted)
         case "response.audio.delta", "response.output_audio.delta", "conversation.output_audio.delta":
+            // Keep queuing while paused. The node is held, so this does not sound
+            // until resume, and the caption stays on the word that was playing.
             // Start the turn before the samples, so listen-back has a clock
             // position before the first buffer lands.
             notePartnerPlaybackStarted()
@@ -540,8 +588,9 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         let listener = lock.withLock { micListener }
         listener?(chunk)
         let enabled = lock.withLock { () -> Bool in
-            inputLevel = rms
-            return micEnabled && !closed
+            let on = micEnabled && !closed && !userPaused
+            inputLevel = on ? rms : 0
+            return on
         }
         guard enabled else { return }
         let chunks: [Data] = lock.withLock {
@@ -583,9 +632,16 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             lock.withLock { outputLevel = level }
         }
         let playedSamples = Array(UnsafeBufferPointer(start: channel, count: frameCount))
-        lock.withLock {
+        let hold = lock.withLock { () -> Bool in
+            let now = ProcessInfo.processInfo.systemUptime
             captionLedger.enqueueAudio(frames: frameCount)
-            captionPlayhead.enqueue(frames: frameCount, now: ProcessInfo.processInfo.systemUptime)
+            captionPlayhead.enqueue(frames: frameCount, now: now)
+            // A buffer that arrives during pause must not start the caption clock.
+            if userPaused {
+                heldPartnerAudio = true
+                captionPlayhead.pause(now: now)
+            }
+            return userPaused
         }
         startCaptionPlayhead()
         logAudioDelta(deltaFrames: frameCount)
@@ -596,6 +652,10 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         }
         player.scheduleBuffer(buffer) { [weak self] in
             self?.noteAudioBufferFinished(frames: frameCount)
+        }
+        // scheduleBuffer can start a node that was only paused. Hold it again.
+        if hold {
+            player.pause()
         }
     }
 
@@ -716,7 +776,8 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             let clear = drainingAfterDone
                 && captionLedger.queuedFrames > 0
                 && captionLedger.completedFrames >= captionLedger.queuedFrames
-            return (clear, !clear && !captionPlayhead.isPlaying)
+            let held = userPaused || captionPlayhead.pausedAt != nil
+            return (clear, !clear && !captionPlayhead.isPlaying && !held)
         }
         if finish.clear {
             publishCaptionFromLedger(forceFull: true)

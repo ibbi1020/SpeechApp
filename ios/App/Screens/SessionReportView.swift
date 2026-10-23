@@ -14,24 +14,18 @@ struct SessionReportView: View {
         ZStack {
             SpeechScreenBackground()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    header
-                        .padding(.bottom, SpeechSpacing.section)
+            FeedbackPageScroll {
+                header
+                    .padding(.bottom, SpeechSpacing.section)
 
-                    feedback
-
-                    actions
-                        .padding(.top, SpeechSpacing.section)
-                        .padding(.bottom, 32)
-                }
-                .padding(.horizontal, SpeechSpacing.page)
-                .padding(.top, 20)
+                feedback
+            } actions: {
+                actions
             }
         }
         .speechPageTitle("Your reading")
         .toolbar(.visible, for: .navigationBar)
-        .speechBottomBlur()
+        .speechBottomBlur(bar: false)
         .onAppear {
             offersSave = recordingID != nil && !RecordingsService.keepRecordings
         }

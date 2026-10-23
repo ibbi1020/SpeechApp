@@ -239,7 +239,7 @@ struct ReadingSessionView: View {
             } label: {
                 Image(systemName: "checkmark")
             }
-            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session, fill: .red))
             .disabled(isPreparing || isFinishing)
             .opacity(isPreparing ? 0 : 1)
             .allowsHitTesting(!isPreparing)

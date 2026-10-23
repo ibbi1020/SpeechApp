@@ -461,7 +461,7 @@ struct MonologueSessionView: View {
             } label: {
                 Image(systemName: "checkmark")
             }
-            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session, fill: .red))
             .disabled(!live)
             .opacity(live ? 1 : 0)
             .allowsHitTesting(live)

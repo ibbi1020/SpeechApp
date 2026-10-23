@@ -17,20 +17,18 @@ struct MonologueReportView: View {
         ZStack {
             SpeechScreenBackground()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    if showsLines {
-                        libraryContent
-                    } else {
-                        exerciseContent
-                    }
+            FeedbackPageScroll {
+                if showsLines {
+                    libraryContent
+                } else {
+                    exerciseContent
                 }
-                .padding(.horizontal, SpeechSpacing.page)
-                .padding(.top, 20)
+            } actions: {
+                actions
             }
         }
         .speechPageTitle("Your talk")
-        .speechBottomBlur()
+        .speechBottomBlur(bar: false)
         .onAppear {
             offersSave = !showsLines && regimenID != nil && !RecordingsService.keepRecordings
         }
@@ -59,10 +57,6 @@ struct MonologueReportView: View {
 
             feedback
                 .padding(.top, SpeechSpacing.section)
-
-            actions
-                .padding(.top, SpeechSpacing.section)
-                .padding(.bottom, 32)
         }
     }
 
@@ -99,11 +93,6 @@ struct MonologueReportView: View {
                 RecordingReviewLoader(recordingID: regimenID)
                     .padding(.top, SpeechSpacing.section)
             }
-
-            Button("Back to home", action: goHome)
-                .buttonStyle(SpeechPrimaryButtonStyle())
-                .padding(.top, SpeechSpacing.section)
-                .padding(.bottom, 32)
         }
     }
 

@@ -160,6 +160,8 @@ public struct CaptionPlayhead: Sendable {
     public private(set) var confirmedFrames = 0
     public private(set) var pendingBuffers: [Int] = []
     public private(set) var currentStartedAt: TimeInterval?
+    /// Set while the user has paused, so the clock does not treat that gap as heard audio.
+    public private(set) var pausedAt: TimeInterval?
 
     public init() {}
 
@@ -167,9 +169,23 @@ public struct CaptionPlayhead: Sendable {
         confirmedFrames = 0
         pendingBuffers = []
         currentStartedAt = nil
+        pausedAt = nil
     }
 
-    public var isPlaying: Bool { currentStartedAt != nil }
+    public var isPlaying: Bool { currentStartedAt != nil && pausedAt == nil }
+
+    /// Freeze the sounding buffer. Wall time spent paused is not heard audio.
+    public mutating func pause(now: TimeInterval) {
+        guard currentStartedAt != nil, pausedAt == nil else { return }
+        pausedAt = now
+    }
+
+    /// Continue the sounding buffer from the sample that was playing at `pause`.
+    public mutating func resume(now: TimeInterval) {
+        guard let paused = pausedAt, let start = currentStartedAt else { return }
+        currentStartedAt = start + (now - paused)
+        pausedAt = nil
+    }
 
     /// Queue a buffer. The clock starts immediately when nothing else is sounding.
     public mutating func enqueue(frames: Int, now: TimeInterval) {
@@ -181,11 +197,13 @@ public struct CaptionPlayhead: Sendable {
     }
 
     /// Finished frames plus how far into the current buffer `now` has reached.
+    /// While paused, the sample is the one that was sounding at `pause`.
     public func heardFrames(now: TimeInterval, sampleRate: Double) -> Int {
         guard let start = currentStartedAt, let current = pendingBuffers.first, sampleRate > 0 else {
             return confirmedFrames
         }
-        let elapsed = max(0, now - start)
+        let mark = pausedAt ?? now
+        let elapsed = max(0, mark - start)
         let partial = min(current, Int(elapsed * sampleRate))
         return confirmedFrames + partial
     }
@@ -196,7 +214,16 @@ public struct CaptionPlayhead: Sendable {
         guard let frames = pendingBuffers.first else { return 0 }
         pendingBuffers.removeFirst()
         confirmedFrames += frames
-        currentStartedAt = pendingBuffers.isEmpty ? nil : now
+        if pendingBuffers.isEmpty {
+            currentStartedAt = nil
+            pausedAt = nil
+        } else if pausedAt != nil {
+            // The next buffer has not sounded. Keep the pause parked on it.
+            currentStartedAt = now
+            pausedAt = now
+        } else {
+            currentStartedAt = now
+        }
         return frames
     }
 }

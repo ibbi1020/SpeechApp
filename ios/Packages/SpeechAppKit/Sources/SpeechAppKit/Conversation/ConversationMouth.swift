@@ -34,6 +34,8 @@ public protocol ConversationMouth: AnyObject, Sendable {
     func updateTurnDetectionNull() async throws
     /// Cancel the in-flight partner response (client barge-in). No-op when idle.
     func cancelResponse() async throws
+    /// Pause stops the mic the model hears. Resume opens it on the same session.
+    func setInputPaused(_ paused: Bool)
     func close() async
     /// Linear mic level, 0…1, for the listen pill and barge-in sustain check. 0 when unavailable.
     func currentInputLevel() async -> Float
@@ -56,6 +58,7 @@ extension ConversationMouth {
     public func currentInputLevel() async -> Float { 0 }
     public func currentOutputLevel() async -> Float { 0 }
     public func cancelResponse() async throws {}
+    public func setInputPaused(_ paused: Bool) {}
     public func setAmbient(place: AmbientPlace, playing: Bool) async {}
     public func updateVoice(_ id: String) async {}
 }
