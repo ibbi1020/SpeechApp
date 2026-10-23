@@ -52,8 +52,8 @@ struct SpeechReadingWord: View {
     var quiet: Bool = false
     /// Partner words use this so they stay distinct from the speaker.
     var tint: Color? = nil
-    /// Conversation listen-back uses Instrument Serif for you and SF for the partner.
-    /// Reading and monologue stay on New York.
+    /// New York is the reading and transcript face.
+    /// Instrument Serif stays available; transcripts do not use it.
     var face: Face = .newYork
     var size: CGFloat
 
