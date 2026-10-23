@@ -149,7 +149,7 @@ struct GallerySheet: View {
             }
             Spacer(minLength: 0)
             if case .recording(let item) = page {
-                symbolButton("trash", label: "Delete recording", tint: Color(red: 1, green: 0.41, blue: 0.38)) {
+                symbolButton("trash", label: "Delete recording") {
                     pendingDelete = item
                 }
             }
@@ -349,17 +349,12 @@ struct GallerySheet: View {
     private func symbolButton(
         _ systemName: String,
         label: String,
-        tint: Color = .white,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 44, height: 44)
-                .background(Color.white.opacity(0.12), in: Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.gallery))
         .accessibilityLabel(label)
     }
 

@@ -214,13 +214,8 @@ struct ConversationSessionView: View {
             showVoicePicker = true
         } label: {
             Image(systemName: "music.note")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 48, height: 48)
-                .contentShape(Circle())
-                .glassEffect(.regular.interactive(), in: .circle)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.standard))
         .accessibilityLabel("Voice")
         .accessibilityValue(PartnerVoice.named(voiceID)?.name ?? voiceID)
     }
@@ -288,13 +283,8 @@ struct ConversationSessionView: View {
             }
         } label: {
             Image(systemName: ambientPlace == .off ? "speaker.slash" : "speaker.wave.2")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 48, height: 48)
-                .contentShape(Circle())
-                .glassEffect(.regular.interactive(), in: .circle)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.standard))
         .accessibilityLabel("Background")
         .accessibilityValue(ambientPlace.title)
     }
@@ -341,9 +331,8 @@ struct ConversationSessionView: View {
                 }
             } label: {
                 Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                    .speechGlassCircle()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
             .opacity(showPauseControl ? 1 : 0)
             .allowsHitTesting(showPauseControl)
             .accessibilityHidden(!showPauseControl)
@@ -354,9 +343,8 @@ struct ConversationSessionView: View {
                 showStopConfirm = true
             } label: {
                 Image(systemName: "stop.fill")
-                    .speechGlassCircle(tint: .red)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
             .accessibilityLabel("Stop")
         }
     }

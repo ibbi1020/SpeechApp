@@ -226,9 +226,8 @@ struct ReadingSessionView: View {
                 }
             } label: {
                 Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                    .speechGlassCircle()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
             .disabled(isPreparing || isFinishing)
             .opacity(isPreparing ? 0 : 1)
             .allowsHitTesting(!isPreparing)
@@ -239,9 +238,8 @@ struct ReadingSessionView: View {
                 Task { await stopSession() }
             } label: {
                 Image(systemName: "checkmark")
-                    .speechGlassCircle(tint: .accentColor)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
             .disabled(isPreparing || isFinishing)
             .opacity(isPreparing ? 0 : 1)
             .allowsHitTesting(!isPreparing)

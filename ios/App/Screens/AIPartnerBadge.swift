@@ -1,18 +1,17 @@
 import SwiftUI
 
-/// Persistent SB 243 notice. A glass capsule in the same column as the session
-/// buttons. Collapsed to “AI”; a tap grows it from that edge.
+/// Persistent SB 243 notice. A solid white capsule in the same column as the
+/// session circles. Collapsed to “AI”; a tap grows it from that edge.
 struct AIPartnerBadge: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @State private var expanded = false
 
     /// Counsel has not written a longer line. Do not invent one.
     static let notice = "This partner is AI, not a person."
 
-    /// Matches the session glass buttons so the column shares one trailing edge.
-    private static let column: CGFloat = 48
+    /// Matches the voice and background circles so the column shares one trailing edge.
+    private static let column: CGFloat = SpeechIconCircleStyle.standard
 
     var body: some View {
         Button {
@@ -23,7 +22,7 @@ struct AIPartnerBadge: View {
             Text(expanded ? Self.notice : "AI")
                 .font(.caption.weight(.semibold))
                 .tracking(expanded ? 0 : 0.4)
-                .foregroundStyle(.primary)
+                .foregroundStyle(Color.black)
                 .multilineTextAlignment(.leading)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -34,15 +33,7 @@ struct AIPartnerBadge: View {
                     height: expanded ? nil : 36,
                     alignment: expanded ? .leading : .center
                 )
-                .background {
-                    if reduceTransparency {
-                        Capsule().fill(Color.primary.opacity(0.12))
-                    }
-                }
-                .glassEffect(
-                    reduceTransparency ? .identity : .regular.interactive(),
-                    in: .capsule
-                )
+                .background(Color.white, in: Capsule())
                 .contentTransition(.opacity)
         }
         .buttonStyle(AIPartnerBadgePressStyle())
@@ -53,11 +44,12 @@ struct AIPartnerBadge: View {
     }
 }
 
-/// Press scales from the current size. The glass highlight is the material's own.
+/// Same press as the wide capsule. The badge keeps its own size as it expands.
 private struct AIPartnerBadgePressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.92 : 1)
             .animation(SpeechMotion.press, value: configuration.isPressed)
     }
 }

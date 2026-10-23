@@ -13,6 +13,5 @@ struct SaveThisTakeButton: View {
         }
         .buttonStyle(SpeechSecondaryButtonStyle())
         .disabled(kept)
-        .opacity(kept ? 0.55 : 1)
     }
 }
