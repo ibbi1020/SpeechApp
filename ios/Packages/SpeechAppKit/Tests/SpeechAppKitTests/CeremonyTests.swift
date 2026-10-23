@@ -34,8 +34,8 @@ struct CeremonyStepTests {
         #expect(BreathPacing.rate == 6)
         #expect(BreathPacing.inhale == 4)
         #expect(BreathPacing.exhale == 6)
-        #expect(BreathPacing.cycles == 3)
-        #expect(BreathPacing.total == 30)
+        #expect(BreathPacing.cycles == 2)
+        #expect(BreathPacing.total == 20)
         #expect(BreathPacing.settle == 3)
     }
 
@@ -66,7 +66,7 @@ struct CeremonyStepTests {
         #expect(CeremonyCopy.breatheLine.lowercased().contains("deep") == false)
         #expect(CeremonyCopy.breatheIn == "Breathe in")
         #expect(CeremonyCopy.breatheOut == "Breathe out")
-        #expect(CeremonyCopy.breatheRate == "Three breaths")
+        #expect(CeremonyCopy.breatheRate == "Two breaths")
     }
 
     @Test("copy never tells the user to relax or calm down")
@@ -101,7 +101,7 @@ struct CeremonyControlTests {
     private let open = ConversationBudgetSnapshot(limit: 20, used: 3, month: "2026-10")
     private let spent = ConversationBudgetSnapshot(limit: 20, used: 20, month: "2026-10")
 
-    @Test("a cancelled breath does not count as three breaths")
+    @Test("a cancelled breath does not count as two breaths")
     func cancelledBreathIsNotDone() async {
         let task = Task { await BreathRun.finished() }
         task.cancel()

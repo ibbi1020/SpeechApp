@@ -46,8 +46,8 @@ public enum CeremonyCopy {
     public static let breatheOut = "Breathe out"
     public static let breatheButton = "Done"
     /// What they just did. The pace is still six a minute, four in and six out, but
-    /// that number here reads as if the exercise was six breaths. It is three.
-    public static let breatheRate = "Three breaths"
+    /// that number here reads as if the exercise was six breaths. It is two.
+    public static let breatheRate = "Two breaths"
 
     public static let exerciseButton = "This one"
 
@@ -70,7 +70,7 @@ public enum CeremonyCopy {
 ///
 /// Six breaths a minute is the standard target and 4 + 6 is the protocol used in the
 /// literature, though the ratio itself is not established: 1:2 and 1:1 produced no
-/// measurable HRV difference at this rate. Three cycles is a deliberate shortening to
+/// measurable HRV difference at this rate. Two cycles is a deliberate shortening to
 /// fit the ceremony. The shortest *tested* dose is five minutes, so the length is
 /// inference and the pacing is not. See docs/scoping-entry-ritual.md.
 public enum BreathPacing {
@@ -79,7 +79,7 @@ public enum BreathPacing {
     public static let settle: Double = 3
     public static let inhale: Double = 4
     public static let exhale: Double = 6
-    public static let cycles = 3
+    public static let cycles = 2
 
     public static var cycle: Double { inhale + exhale }
     public static var total: Double { cycle * Double(cycles) }
@@ -91,7 +91,7 @@ public enum BreathPacing {
 ///
 /// SwiftUI often starts this task, cancels it, and starts it again as the step
 /// appears. `Task.sleep` throws as soon as the task is cancelled. Treating that
-/// as a finished wait would skip the three breaths and turn Done on.
+/// as a finished wait would skip the two breaths and turn Done on.
 public enum BreathRun {
     /// Waits for one part of the breath.
     /// False when the wait is cut short, so a cancelled run is not finished.
@@ -104,7 +104,7 @@ public enum BreathRun {
         return Task.isCancelled == false
     }
 
-    /// Settle, then every inhale and exhale. True means all three breaths finished.
+    /// Settle, then every inhale and exhale. True means both breaths finished.
     public static func finished() async -> Bool {
         guard await wait(BreathPacing.settle) else { return false }
         for _ in 0 ..< BreathPacing.cycles {
