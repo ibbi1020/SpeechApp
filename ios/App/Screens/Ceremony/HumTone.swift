@@ -118,6 +118,7 @@ final class HumTone {
                 mode: .measurement,
                 options: [.defaultToSpeaker, .allowBluetoothHFP]
             )
+#if compiler(>=6.3) // iOS 27 SDK (Xcode 27+); Xcode 26 builds take the fallback
             if #available(iOS 27, *) {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     session.activate(options: []) { activated, error in
@@ -131,6 +132,9 @@ final class HumTone {
             } else {
                 try session.setActive(true)
             }
+#else
+            try session.setActive(true)
+#endif
             // The receiver is too quiet to hear in a room. This forces the
             // loudspeaker after the session is on.
             try session.overrideOutputAudioPort(.speaker)
@@ -167,11 +171,15 @@ final class HumTone {
             await self.player.scheduleBuffer(tone.buffer, at: nil, options: .interrupts)
         }
         await Task.yield()
+#if compiler(>=6.3) // iOS 27 SDK (Xcode 27+); Xcode 26 builds take the fallback
         if #available(iOS 27, *) {
             try? player.playAudio()
         } else {
             player.play()
         }
+#else
+        player.play()
+#endif
         // The schedule call can return before the tone has finished playing.
         // Hold the leak cut for the whole exercise either way.
         await withTaskCancellationHandler {

@@ -127,6 +127,7 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
     }
 
     private nonisolated static func deactivate(_ session: AVAudioSession) async {
+#if compiler(>=6.3) // iOS 27 SDK (Xcode 27+); Xcode 26 builds take the fallback
         if #available(iOS 27, *) {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 session.deactivate(options: []) { _, _ in
@@ -136,9 +137,13 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
         } else {
             try? session.setActive(false, options: [.notifyOthersOnDeactivation])
         }
+#else
+        try? session.setActive(false, options: [.notifyOthersOnDeactivation])
+#endif
     }
 
     private nonisolated static func activate(_ session: AVAudioSession) async throws {
+#if compiler(>=6.3) // iOS 27 SDK (Xcode 27+); Xcode 26 builds take the fallback
         if #available(iOS 27, *) {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 session.activate(options: []) { activated, error in
@@ -152,6 +157,9 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
         } else {
             try session.setActive(true)
         }
+#else
+        try session.setActive(true)
+#endif
     }
 
     private func startTicker() {

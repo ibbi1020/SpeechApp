@@ -173,14 +173,19 @@ private struct IslandWidth<Content: View>: View {
     @ViewBuilder var content: (Bool) -> Content
 
     var body: some View {
+#if compiler(>=6.3) // iOS 27 SDK (Xcode 27+); Xcode 26 builds take the fallback
         if #available(iOS 27, *) {
             IslandWidthProbe(content: content)
         } else {
             content(false)
         }
+#else
+        content(false)
+#endif
     }
 }
 
+#if compiler(>=6.3)
 @available(iOS 27, *)
 private struct IslandWidthProbe<Content: View>: View {
     @Environment(\.isDynamicIslandLimitedInWidth) private var limitedWidth
@@ -190,6 +195,7 @@ private struct IslandWidthProbe<Content: View>: View {
         content(limitedWidth)
     }
 }
+#endif
 
 private struct IslandTimer: View {
     var state: ConversationAttributes.ContentState

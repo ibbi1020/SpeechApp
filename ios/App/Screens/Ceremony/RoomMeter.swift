@@ -127,6 +127,7 @@ final class RoomMeter {
         do {
             try session.setCategory(.record, mode: .measurement, options: [.duckOthers])
             try? session.setPreferredIOBufferDuration(0.02)
+#if compiler(>=6.3) // iOS 27 SDK (Xcode 27+); Xcode 26 builds take the fallback
             if #available(iOS 27, *) {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     session.activate(options: []) { activated, error in
@@ -140,6 +141,9 @@ final class RoomMeter {
             } else {
                 try session.setActive(true)
             }
+#else
+            try session.setActive(true)
+#endif
             return true
         } catch {
             return false
