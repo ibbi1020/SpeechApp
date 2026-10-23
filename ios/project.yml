@@ -68,7 +68,7 @@ targets:
       properties:
         CFBundleDisplayName: Orator
         CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "3"
+        CFBundleVersion: "4"
         # Bonjour name of this Mac. Stays valid when the DHCP address changes.
         # Phone and Mac have to be on the same Wi-Fi. Do not put a 192.168 address here.
         CONVERSATION_API_BASE: "http://Ibraheens-MacBook-Air.local:8787"
@@ -84,7 +84,10 @@ targets:
           - audio
         UIAppFonts:
           - InstrumentSerif-Regular.ttf
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+          UIImageName: LaunchMark
+          UIImageRespectsSafeAreaInsets: false
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
@@ -119,7 +122,7 @@ targets:
       properties:
         CFBundleDisplayName: Orator
         CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "3"
+        CFBundleVersion: "4"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 schemes:

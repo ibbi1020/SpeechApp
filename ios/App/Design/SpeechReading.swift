@@ -40,7 +40,10 @@ enum SpeechReading {
     }
 }
 
-/// One word in New York. The spoken word is semibold and underlined.
+/// One whole word. The spoken word is semibold and underlined.
+///
+/// The box stays the regular width of the whole word, so a heavier face
+/// cannot push the line. The extra ink draws into the gap after the word.
 struct SpeechReadingWord: View {
     var text: String
     var isCurrent: Bool
@@ -62,14 +65,26 @@ struct SpeechReadingWord: View {
 
     var body: some View {
         Text(text)
-            .font(wordFont)
+            .font(font(weight: .regular))
             .foregroundStyle(ink)
             .underline(isCurrent, color: underlineColor)
+            .opacity(isCurrent ? 0 : 1)
+            .overlay(alignment: .leading) {
+                if isCurrent {
+                    Text(text)
+                        .font(font(weight: .semibold))
+                        .foregroundStyle(ink)
+                        .underline(true, color: underlineColor)
+                        .fixedSize(horizontal: true, vertical: true)
+                        .accessibilityHidden(true)
+                }
+            }
+            .accessibilityLabel(text)
             .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 
-    private var wordFont: Font {
-        let weight: Font.Weight = isCurrent ? .semibold : .regular
+    /// The whole surface, one face. Weight changes the drawing, not the box.
+    private func font(weight: Font.Weight) -> Font {
         switch face {
         case .newYork:
             return SpeechReading.font(size: size, weight: weight)
