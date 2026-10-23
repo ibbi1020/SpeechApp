@@ -16,6 +16,7 @@ struct ConversationReportView: View {
 
             FeedbackPageScroll {
                 feedback
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } actions: {
                 actions
             }
@@ -38,7 +39,7 @@ struct ConversationReportView: View {
         if let recordingID {
             RecordingReviewLoader(recordingID: recordingID)
         } else {
-            FeedbackPreparing(message: "This take didn't come through.", showsSpinner: false)
+            FeedbackPreparing(message: "This take didn't come through.")
         }
     }
 

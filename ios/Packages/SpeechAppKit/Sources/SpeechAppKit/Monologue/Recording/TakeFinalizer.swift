@@ -21,15 +21,21 @@ public enum TakeFinalizer {
     }
 
     /// Returns a local `.m4a` URL. Falls back to encoding the raw file when denoise fails.
+    @concurrent
     public static func finalize(rawCAF: URL) async throws -> URL {
         try await finalizeWithReport(rawCAF: rawCAF).url
     }
 
+    /// Runs off the caller's actor. The read, clean, and encode loops report how far
+    /// along they are. A skipped clean is not reported, so the ring does not jump.
+    @concurrent
     public static func finalizeWithReport(
         rawCAF: URL,
-        partnerSpans: [PartnerAudioSpan] = []
+        partnerSpans: [PartnerAudioSpan] = [],
+        onProgress: SaveProgressHandler? = nil
     ) async throws -> (url: URL, report: Report) {
-        let samples = try readFloatMono(url: rawCAF)
+        onProgress?(.reading, 0)
+        let samples = try readFloatMono(url: rawCAF) { onProgress?(.reading, $0) }
         guard !samples.samples.isEmpty else { throw TakeFinalizerError.empty }
 
         var processed: [Float]
@@ -39,8 +45,15 @@ public enum TakeFinalizer {
         // Offline denoise holds a second full copy and renders slower than
         // realtime. Past 3 minutes, save the original so a conversation still appears.
         let tooLongToDenoise = Double(samples.samples.count) / samples.sampleRate > 180
+        if !tooLongToDenoise {
+            onProgress?(.cleaning, 0)
+        }
         if !tooLongToDenoise,
-           let denoised = try? denoise(samples: samples.samples, sampleRate: samples.sampleRate),
+           let denoised = try? denoise(
+               samples: samples.samples,
+               sampleRate: samples.sampleRate,
+               onFraction: { onProgress?(.cleaning, $0) }
+           ),
            audible(denoised.samples, comparedTo: samples.samples) {
             delay = DelayEstimator.delaySeconds(
                 reference: samples.samples,
@@ -73,7 +86,11 @@ public enum TakeFinalizer {
         let resampled = resample(processed, from: rate, to: outputSampleRate)
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("take-final-\(UUID().uuidString).m4a")
-        try writeAAC(samples: resampled, sampleRate: outputSampleRate, to: outURL)
+        onProgress?(.encoding, 0)
+        try writeAAC(samples: resampled, sampleRate: outputSampleRate, to: outURL) {
+            onProgress?(.encoding, $0)
+        }
+        onProgress?(.encoding, 1)
         try? FileManager.default.removeItem(at: rawCAF)
         let report = Report(
             inputPeak: peak(samples.samples),
@@ -87,7 +104,10 @@ public enum TakeFinalizer {
 
     // MARK: - Read / write
 
-    private static func readFloatMono(url: URL) throws -> (samples: [Float], sampleRate: Double) {
+    private static func readFloatMono(
+        url: URL,
+        onFraction: ((Double) -> Void)? = nil
+    ) throws -> (samples: [Float], sampleRate: Double) {
         let file = try AVAudioFile(forReading: url)
         let format = file.processingFormat
         // A 15-minute take does not fit in one buffer, so read a second at a time.
@@ -97,6 +117,8 @@ public enum TakeFinalizer {
         }
         var samples: [Float] = []
         samples.reserveCapacity(Int(file.length))
+        let total = Double(file.length)
+        onFraction?(0)
         while file.framePosition < file.length {
             try file.read(into: buffer, frameCount: chunk)
             let count = Int(buffer.frameLength)
@@ -111,11 +133,20 @@ public enum TakeFinalizer {
                     samples.append(sum / Float(channelCount))
                 }
             }
+            if total > 0 {
+                onFraction?(min(1, Double(file.framePosition) / total))
+            }
         }
+        onFraction?(1)
         return (samples, format.sampleRate)
     }
 
-    private static func writeAAC(samples: [Float], sampleRate: Double, to url: URL) throws {
+    private static func writeAAC(
+        samples: [Float],
+        sampleRate: Double,
+        to url: URL,
+        onFraction: ((Double) -> Void)? = nil
+    ) throws {
         if FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
         }
@@ -160,6 +191,8 @@ public enum TakeFinalizer {
             throw TakeFinalizerError.encodeFailed
         }
         var offset = 0
+        let total = Double(writeSamples.count)
+        onFraction?(0)
         while offset < writeSamples.count {
             let count = min(chunkFrames, writeSamples.count - offset)
             buffer.frameLength = AVAudioFrameCount(count)
@@ -168,6 +201,9 @@ public enum TakeFinalizer {
             }
             try file.write(from: buffer)
             offset += count
+            if total > 0 {
+                onFraction?(min(1, Double(offset) / total))
+            }
         }
     }
 
@@ -188,9 +224,14 @@ public enum TakeFinalizer {
 
     // MARK: - Denoise
 
-    private static func denoise(samples: [Float], sampleRate: Double) throws -> (samples: [Float], sampleRate: Double) {
+    private static func denoise(
+        samples: [Float],
+        sampleRate: Double,
+        onFraction: ((Double) -> Void)? = nil
+    ) throws -> (samples: [Float], sampleRate: Double) {
         #if targetEnvironment(simulator)
         // Isolation unit is uneven on Simulator — fall through to encode path.
+        _ = onFraction
         throw TakeFinalizerError.encodeFailed
         #else
         let engine = AVAudioEngine()
@@ -254,12 +295,16 @@ public enum TakeFinalizer {
             throw TakeFinalizerError.encodeFailed
         }
 
+        let renderTotal = Double(frameCount + padFrames)
         while engine.manualRenderingSampleTime < Int64(frameCount + padFrames) {
             let framesToRender = min(
                 engine.manualRenderingMaximumFrameCount,
                 AVAudioFrameCount(Int64(frameCount + padFrames) - engine.manualRenderingSampleTime)
             )
             let status = try engine.renderOffline(framesToRender, to: renderBuffer)
+            if renderTotal > 0 {
+                onFraction?(min(1, Double(engine.manualRenderingSampleTime) / renderTotal))
+            }
             if status == .success, let channel = renderBuffer.floatChannelData?[0] {
                 let n = Int(renderBuffer.frameLength)
                 output.append(contentsOf: UnsafeBufferPointer(start: channel, count: n))

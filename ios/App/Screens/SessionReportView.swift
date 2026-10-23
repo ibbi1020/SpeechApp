@@ -15,10 +15,13 @@ struct SessionReportView: View {
             SpeechScreenBackground()
 
             FeedbackPageScroll {
-                header
-                    .padding(.bottom, SpeechSpacing.section)
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+                        .padding(.bottom, SpeechSpacing.section)
 
-                feedback
+                    feedback
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } actions: {
                 actions
             }
@@ -55,7 +58,7 @@ struct SessionReportView: View {
         if let recordingID {
             RecordingReviewLoader(recordingID: recordingID)
         } else {
-            FeedbackPreparing(message: "This take didn't come through.", showsSpinner: false)
+            FeedbackPreparing(message: "This take didn't come through.")
         }
     }
 

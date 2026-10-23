@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SpeechAppKit
 
 /// A take can play on the report before it is in the gallery.
@@ -39,5 +40,79 @@ enum TakeRetention {
         if let manifest = try? RecordingsService.store.load(id: id), manifest.inLibrary { return }
         discarded.insert(id)
         try? RecordingsService.store.delete(id: id)
+    }
+}
+
+/// The save steps for takes still being written. The gallery never reads this.
+/// It only reads the finished manifest, so the report and the gallery stay the same take.
+enum SaveProgressBoard {
+    struct Snapshot: Sendable {
+        var progress: SaveProgress
+        var finished: Bool
+    }
+
+    private struct Entry: Sendable {
+        var progress: SaveProgress
+        var finished = false
+    }
+
+    private static let state = OSAllocatedUnfairLock<[UUID: Entry]>(initialState: [:])
+
+    static var runsOnSimulator: Bool {
+        #if targetEnvironment(simulator)
+        true
+        #else
+        false
+        #endif
+    }
+
+    static func begin(
+        id: UUID,
+        durationSeconds: TimeInterval,
+        willClean: Bool,
+        includesTranscription: Bool
+    ) {
+        let progress = SaveProgress(
+            durationSeconds: durationSeconds,
+            willClean: willClean,
+            includesTranscription: includesTranscription
+        )
+        state.withLock { entries in
+            entries[id] = Entry(progress: progress)
+        }
+    }
+
+    static func update(id: UUID, _ step: SaveStep, _ fraction: Double) {
+        state.withLock { entries in
+            guard var entry = entries[id], !entry.finished else { return }
+            entry.progress = entry.progress.updating(step, fraction: fraction)
+            entries[id] = entry
+        }
+    }
+
+    /// The save task has returned. A manifest may already be on disk.
+    static func markFinished(id: UUID) {
+        state.withLock { entries in
+            if var entry = entries[id] {
+                entry.finished = true
+                entries[id] = entry
+            } else {
+                entries[id] = Entry(
+                    progress: SaveProgress(
+                        durationSeconds: 0,
+                        willClean: false,
+                        includesTranscription: false
+                    ),
+                    finished: true
+                )
+            }
+        }
+    }
+
+    static func snapshot(id: UUID) -> Snapshot? {
+        state.withLock { entries in
+            guard let entry = entries[id] else { return nil }
+            return Snapshot(progress: entry.progress, finished: entry.finished)
+        }
     }
 }

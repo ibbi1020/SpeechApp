@@ -57,7 +57,9 @@ struct MonologueReportView: View {
 
             feedback
                 .padding(.top, SpeechSpacing.section)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     @ViewBuilder
@@ -65,7 +67,7 @@ struct MonologueReportView: View {
         if let regimenID {
             RecordingReviewLoader(recordingID: regimenID)
         } else {
-            FeedbackPreparing(message: "This take didn't come through.", showsSpinner: false)
+            FeedbackPreparing(message: "This take didn't come through.")
         }
     }
 

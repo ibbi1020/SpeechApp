@@ -326,12 +326,13 @@ struct ReadingSessionView: View {
         guard let session else { return }
         let report = await session.stop()
         session.onRecordedChunk = nil
-        let recordingID = await saveRecording(session: session, report: report)
+        let recordingID = saveRecording(session: session, report: report)
         model.finish(report: report, recordingID: recordingID)
     }
 
     /// Starts saving the take for listen-back and returns its id when there is audio.
-    private func saveRecording(session: ReadingSession, report: SessionReport) async -> UUID? {
+    /// The score is already on `report`. Unhinted words finish in the background, under the ring.
+    private func saveRecording(session: ReadingSession, report: SessionReport) -> UUID? {
         guard let recorder = takeRecorder else { return nil }
         takeRecorder = nil
         guard let rawURL = recorder.stop() else { return nil }
@@ -341,26 +342,46 @@ struct ReadingSessionView: View {
             return nil
         }
         let id = UUID()
-        // Unhinted words show what was really said; the hinted live words are the fallback.
-        var words = await feedbackTranscriber?.finish() ?? []
+        let fallback = session.spokenWords
+        let transcriber = feedbackTranscriber
         feedbackTranscriber = nil
-        if words.isEmpty { words = session.spokenWords }
-        SingleTakeRecording.finalizeAndSave(
-            rawURL: rawURL,
-            content: .init(
-                id: id,
-                format: .reading,
-                topic: passage.title,
-                lines: [
-                    .init(label: "Words read", value: "\(report.matchCount) of \(report.scriptWordCount)"),
-                    .init(label: "Time", value: Self.timeLabel(report.durationSeconds)),
-                ],
-                words: words,
+        let readingPassage = passage
+        let inLibrary = RecordingsService.keepRecordings
+        SaveProgressBoard.begin(
+            id: id,
+            durationSeconds: duration,
+            willClean: SaveProgress.needsCleaning(
                 durationSeconds: duration,
-                markers: ReadingMarkers.build(passage: passage, words: words, durationSeconds: duration),
-                inLibrary: RecordingsService.keepRecordings
-            )
+                runsOnSimulator: SaveProgressBoard.runsOnSimulator
+            ),
+            includesTranscription: transcriber != nil
         )
+        Task { @MainActor in
+            // Unhinted words show what was really said; the hinted live words are the fallback.
+            var words = fallback
+            if let transcriber {
+                SaveProgressBoard.update(id: id, .catchingWords, 0)
+                let heard = await transcriber.finish()
+                if !heard.isEmpty { words = heard }
+                SaveProgressBoard.update(id: id, .catchingWords, 1)
+            }
+            await SingleTakeRecording.finalizeAndSave(
+                rawURL: rawURL,
+                content: .init(
+                    id: id,
+                    format: .reading,
+                    topic: readingPassage.title,
+                    lines: [
+                        .init(label: "Words read", value: "\(report.matchCount) of \(report.scriptWordCount)"),
+                        .init(label: "Time", value: Self.timeLabel(report.durationSeconds)),
+                    ],
+                    words: words,
+                    durationSeconds: duration,
+                    markers: ReadingMarkers.build(passage: readingPassage, words: words, durationSeconds: duration),
+                    inLibrary: inLibrary
+                )
+            )
+        }
         return id
     }
 

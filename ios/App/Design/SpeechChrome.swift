@@ -90,8 +90,9 @@ struct FeedbackPageScroll<Content: View, Actions: View>: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     content()
-                    Spacer(minLength: SpeechSpacing.section)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     actions()
+                        .padding(.top, SpeechSpacing.section)
                 }
                 .padding(.horizontal, SpeechSpacing.page)
                 .padding(.top, 20)
