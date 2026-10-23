@@ -72,24 +72,40 @@ final class HumTone {
         wire(format)
 
         let input = engine.inputNode
-        let inputFormat = input.outputFormat(forBus: 0)
-        guard inputFormat.sampleRate > 0 else { return false }
-        input.removeTap(onBus: 0)
-        // The tap runs on the audio thread. A closure written here would be
-        // isolated to the main actor and trap the first time a buffer arrives.
-        Self.installMeterTap(on: input, format: inputFormat, meter: meter)
-
-        if engine.isRunning == false {
-            engine.prepare()
-            do {
-                try engine.start()
-            } catch {
+        let hardware = input.outputFormat(forBus: 0)
+        guard hardware.sampleRate > 0, hardware.channelCount > 0 else { return false }
+        // Float at the hardware rate, so the callback gets float samples. A
+        // different rate or channel count makes the tap fail and the tone never
+        // starts, so that case keeps the hardware format. Integer buffers are
+        // still read if the callback arrives as int16.
+        let preferred = Self.meterTapFormat(hardware)
+        if startMeter(on: input, format: preferred) == false {
+            let changed = preferred.commonFormat != hardware.commonFormat
+                || preferred.isInterleaved != hardware.isInterleaved
+            guard changed, startMeter(on: input, format: hardware) else {
                 input.removeTap(onBus: 0)
                 return false
             }
         }
         isListening = true
         return true
+    }
+
+    /// Installs the tap and starts the engine. On failure the tap stays, so a
+    /// retry can replace it.
+    private func startMeter(on input: AVAudioInputNode, format: AVAudioFormat) -> Bool {
+        input.removeTap(onBus: 0)
+        // The tap runs on the audio thread. A closure written here would be
+        // isolated to the main actor and trap the first time a buffer arrives.
+        Self.installMeterTap(on: input, format: format, meter: meter)
+        if engine.isRunning { return true }
+        engine.prepare()
+        do {
+            try engine.start()
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// Category change and activation run off the main actor. On iOS 27 the
@@ -180,6 +196,25 @@ final class HumTone {
             engine.stop()
         }
         meter.reset()
+    }
+
+    /// Non-interleaved float at the same rate and channel count as the hardware.
+    /// An already-float input keeps its own format object.
+    private nonisolated static func meterTapFormat(_ hardware: AVAudioFormat) -> AVAudioFormat {
+        if hardware.commonFormat == .pcmFormatFloat32, hardware.isInterleaved == false {
+            return hardware
+        }
+        guard hardware.sampleRate > 0, hardware.channelCount > 0,
+              let floatFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: hardware.sampleRate,
+                channels: hardware.channelCount,
+                interleaved: false
+              ),
+              floatFormat.sampleRate == hardware.sampleRate,
+              floatFormat.channelCount == hardware.channelCount
+        else { return hardware }
+        return floatFormat
     }
 
     private nonisolated static func installMeterTap(
@@ -297,15 +332,19 @@ private final class VoiceMeter: @unchecked Sendable {
     }
 
     func observe(_ buffer: AVAudioPCMBuffer) {
-        guard let channel = buffer.floatChannelData?[0] else { return }
         let count = Int(buffer.frameLength)
-        guard count > 0 else { return }
-        var sum = 0.0
-        for index in 0 ..< count {
-            let sample = Double(channel[index])
-            sum += sample * sample
+        let rms: Double
+        if let channel = buffer.floatChannelData?[0] {
+            rms = SampleLoudness.rms(
+                floatSamples: UnsafeBufferPointer(start: channel, count: count)
+            )
+        } else if let channel = buffer.int16ChannelData?[0] {
+            rms = SampleLoudness.rms(
+                int16Samples: UnsafeBufferPointer(start: channel, count: count)
+            )
+        } else {
+            return
         }
-        let rms = (sum / Double(count)).squareRoot()
         lock.lock()
         state.observe(micRMS: rms)
         lock.unlock()
