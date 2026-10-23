@@ -118,7 +118,7 @@ final class HumTone {
                 mode: .measurement,
                 options: [.defaultToSpeaker, .allowBluetoothHFP]
             )
-#if compiler(>=6.3) // iOS 27 SDK (Xcode 27+); Xcode 26 builds take the fallback
+#if compiler(>=6.4) // iOS 27 SDK (Xcode 27+); Xcode 26 (Swift 6.3) builds take the fallback
             if #available(iOS 27, *) {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     session.activate(options: []) { activated, error in
@@ -171,7 +171,7 @@ final class HumTone {
             await self.player.scheduleBuffer(tone.buffer, at: nil, options: .interrupts)
         }
         await Task.yield()
-#if compiler(>=6.3) // iOS 27 SDK (Xcode 27+); Xcode 26 builds take the fallback
+#if compiler(>=6.4) // iOS 27 SDK (Xcode 27+); Xcode 26 (Swift 6.3) builds take the fallback
         if #available(iOS 27, *) {
             try? player.playAudio()
         } else {
