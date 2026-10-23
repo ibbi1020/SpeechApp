@@ -5,29 +5,20 @@ public struct StanceCard: Sendable {
 }
 
 public struct StanceDeck: Sendable {
-    public let views: [String]
+    public let cards: [ConversationCard]
+    public var views: [String] { cards.flatMap(\.views) }
     public enum BankError: Error { case missing }
 
     public static func loadBundled() throws -> StanceDeck {
-        guard let url = Bundle.module.url(
-            forResource: "stances", withExtension: "json", subdirectory: "Conversation"
-        ) ?? Bundle.module.url(forResource: "stances", withExtension: "json")
-        else { throw BankError.missing }
-        let views = try JSONDecoder().decode([String].self, from: Data(contentsOf: url))
-        return StanceDeck(views: views)
+        let bank = try OpenPromptBank.loadBundled()
+        guard !bank.cards.isEmpty else { throw BankError.missing }
+        return StanceDeck(cards: bank.cards)
     }
 
-    /// One view by default; ~10% of the time two. More views fuel preference monologues.
+    /// Every view from one card. A single borrowed opinion from another topic is not a person.
     public func sample(rng: inout SplitMix64) -> StanceCard {
-        var pool = views
-        var picked: [String] = []
-        let wantTwo = rng.next() % 10 == 0
-        let count = min(wantTwo ? 2 : 1, pool.count)
-        for _ in 0..<count {
-            let i = Int(rng.next() % UInt64(pool.count))
-            picked.append(pool.remove(at: i))
-        }
-        return StanceCard(views: picked)
+        let card = cards[Int(rng.next() % UInt64(cards.count))]
+        return StanceCard(views: card.views)
     }
 }
 

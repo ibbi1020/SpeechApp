@@ -492,15 +492,15 @@ struct ConversationSessionView: View {
     }
 
     private func makeSession() throws -> SessionStart {
-        let deck = try StanceDeck.loadBundled()
         let bank = try OpenPromptBank.loadBundled()
-        guard !bank.prompts.isEmpty else {
+        guard !bank.cards.isEmpty else {
             throw ConversationSessionError.missingOpens
         }
 
         var rng = SplitMix64(seed: UInt64.random(in: 1...UInt64.max))
-        let stance = deck.sample(rng: &rng).views.joined(separator: "\n")
-        let openQuestion = bank.prompts[Int(rng.next() % UInt64(bank.prompts.count))]
+        let card = bank.sample(rng: &rng)
+        let stance = card.views.joined(separator: "\n")
+        let openQuestion = card.question
         let client = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
         let mouth: any ConversationMouth
         let fake: FakeConversationMouth?

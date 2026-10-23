@@ -13,9 +13,11 @@ struct ConversationCueTests {
         #expect(text.contains("PREFIX"))
         #expect(text.contains("STANCE: cats > dogs"))
         #expect(text.contains("Coffee or tea when you need to wake up?"))
-        #expect(text.contains("One short stake"))
-        #expect(text.contains("No second question"))
-        #expect(!text.localizedCaseInsensitiveContains("no opinion"))
+        #expect(text.contains("## Your views"))
+        #expect(text.contains("## This turn"))
+        #expect(text.localizedCaseInsensitiveContains("ask them this"))
+        #expect(text.localizedCaseInsensitiveContains("nothing before it"))
+        #expect(!text.localizedCaseInsensitiveContains("one short stake"))
         #expect(text.contains("Do not announce a timer"))
     }
 
@@ -33,15 +35,12 @@ struct ConversationCueTests {
     @Test("continue aside makes one forward move and still answers their question")
     func continueAsideFloorHand() {
         let aside = ConversationCueAssembler.continueAside
-        #expect(aside.contains("at most three sentences"))
-        #expect(aside.localizedCaseInsensitiveContains("when it sounds natural"))
-        #expect(aside.localizedCaseInsensitiveContains("one forward move"))
-        #expect(aside.localizedCaseInsensitiveContains("one hook"))
-        #expect(aside.localizedCaseInsensitiveContains("short hook"))
-        #expect(aside.localizedCaseInsensitiveContains("one-word"))
-        #expect(aside.localizedCaseInsensitiveContains("never a second question"))
-        #expect(!aside.localizedCaseInsensitiveContains("likes or wants"))
-        #expect(!aside.localizedCaseInsensitiveContains("only hand the floor"))
+        #expect(aside.localizedCaseInsensitiveContains("first sentence"))
+        #expect(aside.localizedCaseInsensitiveContains("loose end"))
+        #expect(aside.localizedCaseInsensitiveContains("one or two sentences"))
+        #expect(!aside.localizedCaseInsensitiveContains("hand the floor"))
+        #expect(!aside.localizedCaseInsensitiveContains("agreement alone"))
+        #expect(!aside.localizedCaseInsensitiveContains("no question"))
     }
 
     @Test("continue instructions stack prefix, stance, and aside")
@@ -63,8 +62,8 @@ struct ConversationCueTests {
             stance: "STANCE",
             cue: .wrapWarn
         )
-        #expect(text.contains("two minutes left"))
-        #expect(text.localizedCaseInsensitiveContains("hand the floor at most once"))
+        #expect(text.contains("two minutes"))
+        #expect(!text.localizedCaseInsensitiveContains("hand the floor"))
         #expect(ConversationCueAssembler.heard(.wrapWarn, in: "About two minutes left — what next?"))
     }
 
@@ -83,14 +82,24 @@ struct ConversationCueTests {
     @Test("frozen persona is anti-tutor and never always-asks")
     func frozenPersonaIdentityOnly() {
         let prefix = FrozenPersona.prefix
+        #expect(prefix.contains("## Role & Persona"))
+        #expect(prefix.contains("## Objective"))
+        #expect(prefix.contains("## How you talk"))
+        #expect(prefix.contains("## Guardrails & Escalation"))
+        #expect(prefix.contains("## Voice & Communication Style"))
+        #expect(!prefix.contains("## CRITICAL INSTRUCTIONS"))
         #expect(prefix.localizedCaseInsensitiveContains("not a"))
         #expect(prefix.localizedCaseInsensitiveContains("teacher"))
         #expect(prefix.localizedCaseInsensitiveContains("no grammar"))
-        #expect(prefix.localizedCaseInsensitiveContains("likes, wants"))
-        #expect(prefix.localizedCaseInsensitiveContains("do not claim to be human"))
-        #expect(prefix.localizedCaseInsensitiveContains("one sentence"))
+        #expect(prefix.localizedCaseInsensitiveContains("not human"))
+        #expect(prefix.localizedCaseInsensitiveContains("hold them"))
+        #expect(prefix.localizedCaseInsensitiveContains("first sentence"))
         #expect(prefix.localizedCaseInsensitiveContains("only if they brought it up"))
         #expect(prefix.localizedCaseInsensitiveContains("background sound"))
+        #expect(prefix.localizedCaseInsensitiveContains("riddle"))
+        #expect(!prefix.localizedCaseInsensitiveContains("hand the floor"))
+        #expect(!prefix.localizedCaseInsensitiveContains("agreement alone"))
+        #expect(!prefix.localizedCaseInsensitiveContains("one short stake"))
         #expect(!prefix.localizedCaseInsensitiveContains("end with a question"))
         #expect(!prefix.localizedCaseInsensitiveContains("always ask"))
         #expect(!prefix.localizedCaseInsensitiveContains("always end"))
