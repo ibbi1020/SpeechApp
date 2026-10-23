@@ -38,8 +38,8 @@ struct ConversationTranscriptView: View {
             .last { $0.start <= currentTime && currentTime <= $0.end + 0.15 }?.id
     }
 
-    /// Smaller than a passage. Same size for both speakers.
-    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 17
+    /// Same face and size as the reading passage. The partner stays tinted.
+    @ScaledMetric(relativeTo: TranscriptStyle.textStyle) private var size: CGFloat = TranscriptStyle.size
     private let turnGap: CGFloat = 28
 
     var body: some View {
@@ -50,7 +50,7 @@ struct ConversationTranscriptView: View {
                         partnerLine(partner)
                     }
                     if !block.words.isEmpty {
-                        words(block.words, face: .instrumentSerif, tint: nil)
+                        words(block.words, tint: nil, quietFillers: true)
                     }
                 }
             }
@@ -61,25 +61,33 @@ struct ConversationTranscriptView: View {
     @ViewBuilder
     private func partnerLine(_ partner: PartnerTurn) -> some View {
         if let timed = partner.words, !timed.isEmpty {
-            words(timed, face: .system, tint: Color.secondary, accessibilityPrefix: "Partner, ")
+            words(timed, tint: Color.secondary, quietFillers: false, accessibilityPrefix: "Partner, ")
         } else if !partner.text.isEmpty {
             Text(partner.text)
-                .font(.system(size: size))
+                .font(SpeechReading.font(size: size))
                 .foregroundStyle(Color.secondary)
-                .lineSpacing(SpeechReading.scaledGap(SpeechReading.lineGap, size: size))
+                .lineSpacing(SpeechReading.scaledGap(TranscriptStyle.lineGap, size: size))
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// New York, from `TranscriptStyle`. Both speakers share it.
+    private var wordFace: SpeechReadingWord.Face {
+        switch TranscriptStyle.face {
+        case .newYork:
+            .newYork
         }
     }
 
     private func words(
         _ words: [RecordedWord],
-        face: SpeechReadingWord.Face,
         tint: Color?,
+        quietFillers: Bool,
         accessibilityPrefix: String = ""
     ) -> some View {
         WordWrapLayout(
-            spacing: SpeechReading.scaledGap(SpeechReading.wordGap, size: size),
-            lineSpacing: SpeechReading.scaledGap(SpeechReading.lineGap, size: size)
+            spacing: SpeechReading.scaledGap(TranscriptStyle.wordGap, size: size),
+            lineSpacing: SpeechReading.scaledGap(TranscriptStyle.lineGap, size: size)
         ) {
             ForEach(words) { word in
                 Button {
@@ -88,9 +96,9 @@ struct ConversationTranscriptView: View {
                     SpeechReadingWord(
                         text: word.surface,
                         isCurrent: currentWordID == word.id,
-                        quiet: face == .instrumentSerif && word.isFiller,
+                        quiet: quietFillers && word.isFiller,
                         tint: tint,
-                        face: face,
+                        face: wordFace,
                         size: size
                     )
                 }
