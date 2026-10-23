@@ -59,6 +59,10 @@ public final class ReadingSession {
     public private(set) var stuckSpanIndex: Int?
     /// JSONL diagnostics log for this session (share after Stop).
     public private(set) var diagnosticsLogURL: URL?
+    /// Every final timed word Grok returned, fillers included, on the recording's timeline.
+    public private(set) var spokenWords: [RecordedWord] = []
+    /// Receives exactly the audio Grok hears (nothing while paused), for listen-back.
+    @ObservationIgnored public var onRecordedChunk: (@MainActor (AudioChunk) -> Void)?
 
     public let passage: Passage
     public let ledgerAverageRate: Double?
@@ -71,6 +75,8 @@ public final class ReadingSession {
     private var audioSource: (any AudioSource)?
     private var engine: (any TranscriptionEngine)?
     private var audioTask: Task<Void, Never>?
+    private var audioForwardTask: Task<Void, Never>?
+    private let sendGate = AudioSendGate()
     private var transcriptTask: Task<Void, Never>?
     private var runningAccumulated: TimeInterval = 0
     private var runningStartedAt: Date?
@@ -123,6 +129,7 @@ public final class ReadingSession {
         provisionalMatchedIDs = []
         committedMatchedIDs = []
         heardWordIDs = []
+        spokenWords = []
         stallEventCount = 0
         pcmStore.secureClear()
         liveSkipMarks = []
@@ -159,10 +166,31 @@ public final class ReadingSession {
         engineKind = engine.engineKind
 
         try await audioSource.start()
+        // Mic audio goes to Grok straight from the audio stream, off the main
+        // actor. It used to wait for a main-thread hop (and any SwiftUI work
+        // queued there) before every send, which delayed every interim.
+        let gate = sendGate
+        gate.set(open: true)
+        let (mainChunks, mainContinuation) = AsyncStream<(chunk: AudioChunk, heard: Bool)>.makeStream(
+            bufferingPolicy: .bufferingNewest(64)
+        )
+        let forwardSource = audioSource
+        let forwardEngine = engine
+        audioForwardTask = Task.detached(priority: .userInitiated) {
+            for await chunk in forwardSource.chunks {
+                // Decide once per chunk, so the recording and Grok always agree
+                // on what was heard, however late the main actor runs.
+                let heard = gate.isOpen
+                if heard {
+                    forwardEngine.append(chunk)
+                }
+                mainContinuation.yield((chunk, heard))
+            }
+            mainContinuation.finish()
+        }
         audioTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            for await chunk in audioSource.chunks {
-                self.handle(chunk: chunk)
+            for await item in mainChunks {
+                self?.handle(chunk: item.chunk, heard: item.heard)
             }
         }
     }
@@ -179,6 +207,7 @@ public final class ReadingSession {
         guard phase == .running || phase == .stalled else { return }
         accumulateRunningTime()
         phase = .paused
+        sendGate.set(open: false)
         isHearingSpeech = false
         speechEnergy = 0
         registrationHealth = .idle
@@ -190,6 +219,7 @@ public final class ReadingSession {
         guard phase == .paused else { return }
         runningStartedAt = Date()
         phase = .running
+        sendGate.set(open: true)
         stallDetector.dismiss()
     }
 
@@ -211,6 +241,7 @@ public final class ReadingSession {
             await Self.awaitTask(audioTask, timeoutMs: Self.audioDrainTimeoutMs)
         }
         audioTask = nil
+        audioForwardTask = nil
 
         // Engine drains late finals into transcriptTask before closing updates.
         // Apple final p50 on device is ~6s; a 2.5s cap cut the tail.
@@ -356,10 +387,19 @@ public final class ReadingSession {
     }
 
     private func handle(update: TranscriptionUpdate) {
+        // Paused audio never reaches Grok, so these times are already on the
+        // saved recording's timeline. Keep late finals that land during a pause.
+        for token in update.tokens where token.isFinal {
+            if let start = token.startTime, let end = token.endTime {
+                spokenWords.append(RecordedWord(surface: token.surface, start: start, end: end))
+            }
+        }
         guard phase != .paused else { return }
         engineKind = update.engineKind
-        let finals = update.tokens.filter(\.isFinal)
-        let volatileTokens = update.tokens.filter { !$0.isFinal }
+        // Fillers stay in the Grok stream for review elsewhere; they are not
+        // passage words and would inflate Extra if they reached the aligner.
+        let finals = FillerWords.strippingTokens(update.tokens.filter(\.isFinal))
+        let volatileTokens = FillerWords.strippingTokens(update.tokens.filter { !$0.isFinal })
         let hasVolatile = !volatileTokens.isEmpty || (finals.isEmpty && !update.rawText.isEmpty)
         let previousCaret = currentWordID
         let previousHeardCount = heardWordIDs.count
@@ -399,7 +439,7 @@ public final class ReadingSession {
             if let best = aligner.bestScriptAlternative(candidates: candidates), !best.isEmpty {
                 surfaces = best
             } else {
-                surfaces = Self.tokenizeHypothesis(update.rawText)
+                surfaces = Self.tokenizeHypothesis(update.rawText).filter { !FillerWords.isFiller($0) }
             }
             let preview = aligner.previewVolatile(surfaces: surfaces)
             let proposed = preview.currentWordID ?? aligner.currentWordID
@@ -564,15 +604,19 @@ public final class ReadingSession {
         )
     }
 
-    private func handle(chunk: AudioChunk) {
-        guard phase != .paused else { return }
+    private func handle(chunk: AudioChunk, heard: Bool) {
+        guard heard else { return }
         let handleStart = ProcessInfo.processInfo.systemUptime
         pcmStore.append(chunk)
-        engine?.append(chunk)
+        onRecordedChunk?(chunk)
 
         let rms = StallDetector.rms(chunk.samples)
         let speaking = rms >= 0.01
-        isHearingSpeech = speaking
+        // Observation fires on every set; only publish real changes so the
+        // Reading screen is not re-rendered for each mic buffer.
+        if isHearingSpeech != speaking {
+            isHearingSpeech = speaking
+        }
         speechEnergy = ListenDrive.normalized(rms: rms)
         refreshRegistrationHealth(speaking: speaking)
 
@@ -655,5 +699,17 @@ public final class ReadingSession {
         addMatchedSyllables(from: produced)
         refreshCommittedMatches()
         stickyHear(committedMatchedIDs)
+    }
+}
+
+/// Lets the off-main audio forwarder honour Pause without touching main-actor state.
+final class AudioSendGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var open = true
+
+    var isOpen: Bool { lock.withLock { open } }
+
+    func set(open value: Bool) {
+        lock.withLock { open = value }
     }
 }

@@ -9,6 +9,9 @@ enum SpeechMotion {
     static let settle = Animation.spring(response: 0.35, dampingFraction: 1.0)
     /// Slightly snappier press / highlight.
     static let press = Animation.spring(response: 0.22, dampingFraction: 1.0)
+    /// One surface or piece of copy replacing another. Measured off FocusFlight, whose
+    /// screen changes land in about a quarter second.
+    static let swap = Animation.spring(duration: 0.25, bounce: 0)
     /// Passage auto-scroll — reading-app ease, not a snap.
     static let scroll = Animation.easeInOut(duration: 0.45)
 }
@@ -33,8 +36,6 @@ enum SpeechCountdown {
     static let fogWashOpacity: Double = 0.18
     /// Heavier wash when Reduce Transparency disables blur.
     static let reducedTransparencyWash: Double = 0.52
-    static let digitSize: CGFloat = 92
-    static let instruction = "Take a deep breath and read at your own pace"
 }
 
 struct SpeechScreenBackground: View {
@@ -78,6 +79,81 @@ extension View {
     }
 }
 
+/// Feedback actions stay at the bottom of the screen when the notes are short.
+/// When the notes run past the screen, the actions follow them instead of covering them.
+struct FeedbackPageScroll<Content: View, Actions: View>: View {
+    @ViewBuilder var content: () -> Content
+    @ViewBuilder var actions: () -> Actions
+
+    var body: some View {
+        GeometryReader { geo in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    content()
+                    Spacer(minLength: SpeechSpacing.section)
+                    actions()
+                }
+                .padding(.horizontal, SpeechSpacing.page)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+                .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+    }
+}
+
+/// Keeps the edge swipe after the navigation bar is hidden.
+///
+/// Hiding the bar also hides the system back button, and the navigation
+/// controller then refuses the swipe. Home and the ceremony use a solid
+/// circle back control instead, so the swipe has to be turned back on by hand.
+struct SpeechEdgeSwipe: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller {
+        Controller()
+    }
+
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        controller.claim()
+    }
+
+    final class Controller: UIViewController, UIGestureRecognizerDelegate {
+        private weak var claimed: UIGestureRecognizer?
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.isUserInteractionEnabled = false
+            view.backgroundColor = .clear
+        }
+
+        override func viewIsAppearing(_ animated: Bool) {
+            super.viewIsAppearing(animated)
+            claim()
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            guard isMovingFromParent || isBeingDismissed else { return }
+            claimed?.delegate = nil
+            claimed = nil
+        }
+
+        func claim() {
+            guard let gesture = navigationController?.interactivePopGestureRecognizer else { return }
+            let canPop = (navigationController?.viewControllers.count ?? 0) > 1
+            if claimed !== gesture {
+                gesture.delegate = self
+                claimed = gesture
+            }
+            gesture.isEnabled = canPop
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            (navigationController?.viewControllers.count ?? 0) > 1
+        }
+    }
+}
+
 /// White pill used to start an exercise. Measured from the reference:
 /// 61pt tall, capsule ends, black SF Pro at 17pt medium.
 enum SpeechStartMetrics {
@@ -92,176 +168,125 @@ struct SpeechStartButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: SpeechStartMetrics.labelSize, weight: .medium))
-            .foregroundStyle(Color.black)
-            .frame(maxWidth: .infinity)
-            .frame(height: SpeechStartMetrics.height)
-            .background(Color.white, in: Capsule())
-            .padding(.horizontal, SpeechStartMetrics.extraInset)
-            .contentShape(Capsule())
-            .opacity(isEnabled ? (configuration.isPressed ? 0.92 : 1) : 0.45)
-            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
-            .animation(SpeechMotion.press, value: configuration.isPressed)
+            .modifier(SpeechWideCapsule(
+                isEnabled: isEnabled,
+                isPressed: configuration.isPressed,
+                fill: .white,
+                foreground: .black
+            ))
     }
 }
 
 struct SpeechPrimaryButtonStyle: ButtonStyle {
     var tint: Color = .accentColor
     var isDestructive: Bool = false
-    /// Tinted glass for the primary go action. Other primaries stay clear glass.
+    /// Solid accent capsule and a white label. Off for the plain white capsule.
     var showsTint: Bool = false
 
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
-        SpeechPillBody(
-            configuration: configuration,
-            font: .headline,
-            verticalPadding: 16,
-            foreground: showsTint ? AnyShapeStyle(.white) : AnyShapeStyle(isDestructive ? Color.red : Color.primary),
-            tint: showsTint ? (isDestructive ? .red : tint) : nil
-        )
+        configuration.label
+            .modifier(SpeechWideCapsule(
+                isEnabled: isEnabled,
+                isPressed: configuration.isPressed,
+                fill: enabledFill,
+                foreground: enabledForeground
+            ))
+    }
+
+    /// Destructive keeps the white capsule and a red label, including when
+    /// `showsTint` is also set. A tint without that flag is the accent fill.
+    private var enabledFill: Color {
+        if isDestructive || !showsTint { return .white }
+        return tint
+    }
+
+    private var enabledForeground: Color {
+        if isDestructive { return .red }
+        if showsTint { return .white }
+        return .black
     }
 }
 
 struct SpeechSecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        SpeechPillBody(
-            configuration: configuration,
-            font: .body.weight(.semibold),
-            verticalPadding: 14,
-            foreground: AnyShapeStyle(.primary),
-            tint: nil
-        )
-    }
-}
-
-/// Full-width glass pill shared by the primary and secondary styles.
-/// - The whole pill is the hit area (`contentShape`), not just the label glyphs.
-/// - Press feedback comes only from interactive glass, so there is one press effect.
-/// - Disabled reads as disabled: dimmed, and the glass stops reacting.
-private struct SpeechPillBody: View {
     @Environment(\.isEnabled) private var isEnabled
-    let configuration: ButtonStyleConfiguration
-    let font: Font
-    let verticalPadding: CGFloat
-    let foreground: AnyShapeStyle
-    let tint: Color?
 
-    private static var shape: Capsule { Capsule() }
-
-    var body: some View {
-        let base: Glass = if let tint { .regular.tint(tint) } else { .regular }
+    func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(font)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, verticalPadding)
-            .foregroundStyle(foreground)
-            .contentShape(Self.shape)
-            .glassEffect(isEnabled ? base.interactive() : base, in: Self.shape)
-            .opacity(isEnabled ? 1 : 0.45)
+            .modifier(SpeechWideCapsule(
+                isEnabled: isEnabled,
+                isPressed: configuration.isPressed,
+                fill: .white,
+                foreground: .black
+            ))
     }
 }
 
-enum SpeechFrame {
-    /// Suspends long enough for the run loop to commit the current SwiftUI frame, so state set
-    /// in a button action is on screen before follow-up work runs on the main actor.
-    static func yieldForRender() async {
-        try? await Task.sleep(for: .milliseconds(20))
-    }
-}
-
-/// Drops a second activation that lands within `interval` of the last accepted one.
-/// Used on toggles (Pause / Resume, Change topic) so a double tap does not undo itself.
-struct TapThrottle {
-    private var last: Date = .distantPast
-
-    mutating func allow(interval: TimeInterval = 0.35, now: Date = .now) -> Bool {
-        guard now.timeIntervalSince(last) >= interval else { return false }
-        last = now
-        return true
-    }
-}
-
-/// Equal pause / stop circle chrome for live session bars.
-struct SpeechGlassCircleLabel: ViewModifier {
-    var tint: Color?
+/// The wide capsule shared by start, primary, and secondary.
+private struct SpeechWideCapsule: ViewModifier {
+    var isEnabled: Bool
+    var isPressed: Bool
+    var fill: Color
+    var foreground: Color
 
     func body(content: Content) -> some View {
-        let glass: Glass = if let tint {
-            .regular.tint(tint).interactive()
-        } else {
-            .regular.interactive()
-        }
         content
+            .font(.system(size: SpeechStartMetrics.labelSize, weight: .medium))
+            // Disabled dims the fill rather than the whole button. Fading the button
+            // to 45% let whatever sat behind it show straight through the capsule.
+            .foregroundStyle(isEnabled ? foreground : Color(white: 0.26))
+            .frame(maxWidth: .infinity)
+            .frame(height: SpeechStartMetrics.height)
+            .background(isEnabled ? fill : Color(white: 0.58), in: Capsule())
+            .padding(.horizontal, SpeechStartMetrics.extraInset)
+            .contentShape(Capsule())
+            .opacity(isEnabled && isPressed ? 0.92 : 1)
+            .scaleEffect(isPressed && isEnabled ? 0.97 : 1)
+            .animation(SpeechMotion.press, value: isPressed)
+    }
+}
+
+/// Solid icon circle. White glyph, white fill at 12% opacity.
+/// Gallery chrome is 44pt. Ceremony, voice, and background are 48pt.
+/// Pause, stop, and done beside the orb stay 52pt. 44pt is the floor.
+struct SpeechIconCircleStyle: ButtonStyle {
+    static let gallery: CGFloat = 44
+    static let standard: CGFloat = 48
+    static let session: CGFloat = 52
+
+    var diameter: CGFloat = gallery
+    /// Stop and Done. Pause stays the quiet white disc.
+    var fill: Color = Color.white.opacity(0.12)
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    private var side: CGFloat { max(diameter, Self.gallery) }
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
             .font(.body.weight(.semibold))
-            .foregroundStyle(tint == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(.white))
-            .frame(width: 52, height: 52)
+            .foregroundStyle(Color.white)
+            .frame(width: side, height: side)
+            .background(fill, in: Circle())
             .contentShape(Circle())
-            .glassEffect(glass, in: .circle)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
+            .animation(SpeechMotion.press, value: configuration.isPressed)
     }
 }
 
-extension View {
-    func speechGlassCircle(tint: Color? = nil) -> some View {
-        modifier(SpeechGlassCircleLabel(tint: tint))
-    }
-}
-
-/// Sharp 3-2-1 over a fogged passage. The number is the only in-focus object.
-struct ReadingCountdownOverlay: View {
-    let remaining: Int?
-    var instruction: String = SpeechCountdown.instruction
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var showsInstruction: Bool {
-        remaining != nil && !instruction.isEmpty
-    }
-
-    private var accessibilityText: String {
-        if let remaining {
-            showsInstruction ? "\(remaining). \(instruction)" : "\(remaining)"
-        } else {
-            "Preparing"
-        }
-    }
+/// A navigation-bar icon. Same solid circle as the other icon buttons.
+struct SpeechBarButton: View {
+    var systemName: String
+    var label: String
+    var action: () -> Void
 
     var body: some View {
-        ZStack {
-            if let remaining {
-                Text("\(remaining)")
-                    .font(.system(size: SpeechCountdown.digitSize, weight: .semibold))
-                    .monospacedDigit()
-                    .contentTransition(reduceMotion ? .opacity : .numericText())
-                    .foregroundStyle(.primary)
-                    .animation(
-                        reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle,
-                        value: remaining
-                    )
-            } else {
-                ProgressView()
-                    .controlSize(.large)
-                    .tint(.primary)
-            }
-
-            if showsInstruction {
-                Text(instruction)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 260)
-                    .offset(y: SpeechCountdown.digitSize / 2 + 22)
-                    .transition(.opacity)
-            }
+        Button(action: action) {
+            Image(systemName: systemName)
         }
-        .animation(
-            reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle,
-            value: remaining == nil
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea()
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.updatesFrequently)
-        .accessibilityLabel(accessibilityText)
-        .allowsHitTesting(false)
+        .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.gallery))
+        .accessibilityLabel(label)
     }
 }
 
@@ -275,12 +300,14 @@ struct VoiceOrb: View {
     var inputVolume: Float = 0
     var outputVolume: Float = 0
     var animating: Bool = true
+    /// The connecting orb has already been up long enough to need a sentence.
+    var showsSlowLine: Bool = false
 
     /// 25% larger than the original 120pt homepage orb.
     static let box: CGFloat = 150
     /// orb-ui cloud theme draws the sphere at this fraction of `box`.
     private static let diameterRatio: CGFloat = 0.55
-    /// Clear space between each glass button and the drawn sphere.
+    /// Clear space between each circle button and the drawn sphere.
     private static let controlGap: CGFloat = 28
 
     /// HStack spacing that leaves `controlGap` between the buttons and the cloud.
@@ -312,7 +339,11 @@ struct VoiceOrb: View {
         if !animating { return "Paused." }
         switch phase {
         case .speaking: return "Speaking."
-        case .connecting: return "Connecting."
+        case .connecting:
+            if showsSlowLine {
+                return "Connecting. \(ConnectionWaitPolicy.slowLine)"
+            }
+            return "Connecting."
         case .listening: return level > 0.28 ? "Hearing you." : "Listening."
         }
     }
@@ -322,11 +353,21 @@ struct VoiceOrb: View {
 /// Reading, Conversation, and Monologue all mount this. The orb is one WebGL view.
 struct SessionOrbBar<Leading: View, Trailing: View>: View {
     var phase: VoiceOrb.Phase
+    /// When the connecting orb appeared. Nil once the model is up or the wait has ended.
+    var connectingStarted: Date? = nil
     var inputVolume: Float = 0
     var outputVolume: Float = 0
     var animating: Bool = true
     @ViewBuilder var leading: () -> Leading
     @ViewBuilder var trailing: () -> Trailing
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showsSlowLine = false
+
+    private var slowLineID: String {
+        guard phase == .connecting, let connectingStarted else { return "off" }
+        return String(connectingStarted.timeIntervalSinceReferenceDate)
+    }
 
     var body: some View {
         HStack(spacing: VoiceOrb.controlSpacing) {
@@ -335,11 +376,42 @@ struct SessionOrbBar<Leading: View, Trailing: View>: View {
                 phase: phase,
                 inputVolume: inputVolume,
                 outputVolume: outputVolume,
-                animating: animating
+                animating: animating,
+                showsSlowLine: showsSlowLine
             )
             trailing()
         }
         .frame(maxWidth: .infinity)
+        .overlay(alignment: .top) {
+            Text(ConnectionWaitPolicy.slowLine)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, SpeechSpacing.page)
+                .opacity(showsSlowLine ? 1 : 0)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
+                .alignmentGuide(.top) { dimensions in
+                    dimensions[.bottom] + 8
+                }
+                .transaction { $0.disablesAnimations = false }
+                .animation(reduceMotion ? .easeOut(duration: 0.2) : .easeOut(duration: 0.35), value: showsSlowLine)
+        }
+        .task(id: slowLineID) {
+            showsSlowLine = false
+            guard phase == .connecting, let connectingStarted else { return }
+            let elapsed = Date().timeIntervalSince(connectingStarted)
+            let wait = ConnectionWaitPolicy.slowLineDelay - elapsed
+            if wait > 0 {
+                try? await Task.sleep(for: .seconds(wait))
+            }
+            guard !Task.isCancelled else { return }
+            showsSlowLine = ConnectionWaitPolicy.showsSlowLine(
+                elapsed: Date().timeIntervalSince(connectingStarted)
+            )
+        }
     }
 }
 
@@ -398,8 +470,6 @@ enum VoiceOrbPreloader {
             // for the rest of the take, and a reload only updates the parked copy.
             guard webView === self.webView, generation == self.generation else { return }
             webView.navigationDelegate = nil
-            // Stop the page's animation loops while it sits off screen; the borrower un-parks on its first push.
-            webView.evaluateJavaScript("window.orbSetParked&&window.orbSetParked(true);")
             attachPark()
             if webView.superview !== parkView {
                 parkView.addSubview(webView)
@@ -525,21 +595,27 @@ private struct OrbWebView: UIViewRepresentable {
             reloadOrb(in: webView, force: true)
         }
 
-        /// Pushes the latest signal once the page is ready, in one script call.
-        /// Skips identical scripts; the same call reports a lost WebGL context, and the orb
-        /// reloads a few times for it, then stops so a dead canvas cannot reload forever.
+        /// Pushes the latest signal once the page is ready.
+        /// Skips identical scripts. Reloads a few times if WebGL reports a lost
+        /// context, then stops so a dead canvas cannot reload forever.
         func push(to webView: WKWebView) {
             guard pageReady, !isReloading else { return }
+            webView.evaluateJavaScript("!!window.orbContextLost") { [weak self] result, _ in
+                guard let self else { return }
+                let contextLost = result as? Bool == true
+                if contextLost, self.contextLossReloads < Self.maxContextLossReloads {
+                    self.reloadOrb(in: webView, force: false)
+                } else {
+                    self.applySignal(to: webView)
+                }
+            }
+        }
+
+        private func applySignal(to webView: WKWebView) {
             let script = makeScript()
             guard script != lastScript else { return }
             lastScript = script
-            let wrapped = "(function(){if(window.orbContextLost){return true;}window.orbSetParked&&window.orbSetParked(false);\(script)return false;})()"
-            webView.evaluateJavaScript(wrapped) { [weak self] result, _ in
-                guard let self else { return }
-                if result as? Bool == true, self.contextLossReloads < Self.maxContextLossReloads {
-                    self.reloadOrb(in: webView, force: false)
-                }
-            }
+            webView.evaluateJavaScript(script)
         }
 
         private func reloadOrb(in webView: WKWebView, force: Bool) {

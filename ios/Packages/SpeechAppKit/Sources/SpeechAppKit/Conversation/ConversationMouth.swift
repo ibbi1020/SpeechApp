@@ -28,23 +28,39 @@ public protocol ConversationMouth: AnyObject, Sendable {
     /// Warm audio session, peer connection, and ICE during the countdown. No-op by default.
     func prepare() async throws
     func connect(ephemeralKey: String) async throws
+    /// `timeout` is the time left on the connecting-orb clock. Zero fails at once.
+    func connect(ephemeralKey: String, timeout: TimeInterval) async throws
     func sendResponseCreate(instructions: String) async throws
     func updateTurnDetectionNull() async throws
     /// Cancel the in-flight partner response (client barge-in). No-op when idle.
     func cancelResponse() async throws
+    /// Pause stops the mic the model hears. Resume opens it on the same session.
+    func setInputPaused(_ paused: Bool)
     func close() async
     /// Linear mic level, 0…1, for the listen pill and barge-in sustain check. 0 when unavailable.
     func currentInputLevel() async -> Float
     /// Partner playback level, 0…1, for the speak orb. 0 when unavailable.
     func currentOutputLevel() async -> Float
+    /// Loop a chosen room bed, or stop it. Playback only — never the mic path.
+    func setAmbient(place: AmbientPlace, playing: Bool) async
+    /// Switch the partner voice. A sentence already speaking keeps its voice.
+    /// The pick is sent once that reply has finished playing.
+    func updateVoice(_ id: String) async
 }
 
 extension ConversationMouth {
     public var captionSyncLogURL: URL? { nil }
     public func prepare() async throws {}
+    public func connect(ephemeralKey: String, timeout: TimeInterval) async throws {
+        _ = timeout
+        try await connect(ephemeralKey: ephemeralKey)
+    }
     public func currentInputLevel() async -> Float { 0 }
     public func currentOutputLevel() async -> Float { 0 }
     public func cancelResponse() async throws {}
+    public func setInputPaused(_ paused: Bool) {}
+    public func setAmbient(place: AmbientPlace, playing: Bool) async {}
+    public func updateVoice(_ id: String) async {}
 }
 
 public enum MouthError: Error { case connectFailed }

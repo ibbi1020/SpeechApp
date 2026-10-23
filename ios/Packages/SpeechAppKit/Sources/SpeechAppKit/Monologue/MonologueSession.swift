@@ -37,26 +37,36 @@ public final class MonologueSession {
     }
 
     private var cursor: MonologuePromptCursor
+    private var rng: SplitMix64
     private let time: any ConversationTimeSource
     private var origin: TimeInterval?
     private var pausedAccumulated: TimeInterval = 0
     private var pausedAt: TimeInterval?
     private var liveRanges: [ConversationSpeechInterval] = []
     private var liveTranscript: String = ""
+    private var liveWords: [RecordedWord] = []
+    /// Maps Grok stream time → saved-file time. Driven by the app recorder.
+    public private(set) var recordingClock = RecordingClock()
+    /// Latest stream timestamp seen (words or explicit pause/resume).
+    private var lastStreamTime: TimeInterval = 0
 
     public init(
         prompts: [String],
         store: any MonologuePromptStore,
-        time: any ConversationTimeSource
+        time: any ConversationTimeSource,
+        rng: SplitMix64 = SplitMix64(seed: UInt64.random(in: 1...UInt64.max))
     ) {
-        self.cursor = MonologuePromptCursor(prompts: prompts, lastPrompt: store.lastPrompt)
+        var rng = rng
+        let cursor = MonologuePromptCursor(prompts: prompts, lastPrompt: store.lastPrompt, rng: &rng)
+        self.cursor = cursor
+        self.rng = rng
         self.store = store
         self.time = time
     }
 
     public func skipTopic() {
         guard phase == .planning || phase == .between else { return }
-        cursor.skip()
+        cursor.skip(using: &rng)
     }
 
     public func ready() {
@@ -64,22 +74,38 @@ public final class MonologueSession {
         store.lastPrompt = prompt
         liveRanges = []
         liveTranscript = ""
+        liveWords = []
         pausedAccumulated = 0
         pausedAt = nil
         origin = time.now
+        lastStreamTime = 0
+        recordingClock = RecordingClock()
+        // Each take opens a new Grok stream and a new file on the same first chunk,
+        // so stream time 0 is file time 0.
+        recordingClock.beginTake(atStreamTime: 0)
         phase = .taking
     }
 
-    public func pause() {
+    public func appendRecordingAudio(duration: TimeInterval) {
+        recordingClock.appendAudio(duration: duration)
+    }
+
+    public func pause(atStreamTime stream: TimeInterval? = nil) {
         guard phase == .taking else { return }
         pausedAt = time.now
+        let stamp = stream ?? lastStreamTime
+        lastStreamTime = stamp
+        recordingClock.pause(atStreamTime: stamp)
         phase = .paused
     }
 
-    public func resume() {
+    public func resume(atStreamTime stream: TimeInterval? = nil) {
         guard phase == .paused, let pausedAt else { return }
         pausedAccumulated += time.now - pausedAt
         self.pausedAt = nil
+        let stamp = stream ?? lastStreamTime
+        lastStreamTime = stamp
+        recordingClock.resume(atStreamTime: stamp)
         phase = .taking
     }
 
@@ -121,6 +147,28 @@ public final class MonologueSession {
         liveRanges = ranges
     }
 
+    /// Final spoken tokens with Grok stream times. Remapped onto the file timeline;
+    /// tokens that fall inside a pause are dropped. Replaces the live word list.
+    public func ingestWords(_ tokens: [SpokenToken]) {
+        guard phase == .taking else { return }
+        var mapped: [RecordedWord] = []
+        for token in tokens {
+            guard token.isFinal,
+                  let streamStart = token.startTime,
+                  let streamEnd = token.endTime
+            else { continue }
+            lastStreamTime = max(lastStreamTime, streamEnd)
+            if let word = recordingClock.recordedWord(
+                surface: token.surface,
+                streamStart: streamStart,
+                streamEnd: streamEnd
+            ) {
+                mapped.append(word)
+            }
+        }
+        liveWords = mapped
+    }
+
     private func rememberTranscript(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -147,11 +195,13 @@ public final class MonologueSession {
                 index: takeNumber,
                 wallSeconds: wall,
                 ranges: liveRanges,
-                transcript: liveTranscript
+                transcript: liveTranscript,
+                words: liveWords
             )
         )
         liveRanges = []
         liveTranscript = ""
+        liveWords = []
     }
 
     private func emitReport(reason: MonologueEndReason) {

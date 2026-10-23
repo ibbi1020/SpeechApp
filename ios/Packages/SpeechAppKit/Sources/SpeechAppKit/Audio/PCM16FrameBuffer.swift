@@ -1,20 +1,22 @@
 import Foundation
 
-/// Turns mic float chunks into 100 ms PCM16 little-endian frames.
+/// Turns mic float chunks into PCM16 (100 ms by default) little-endian frames.
 /// Default is 16 kHz (STT). Pass `rate: 24_000` for Grok speech-to-speech.
 public struct PCM16FrameBuffer: Sendable {
     public static let targetRate: Double = 16_000
     public static let samplesPerFrame = 1_600
     public static let bytesPerFrame = 3_200
-    private static let frameDurationSeconds = 0.1
+    public static let frameDurationSeconds = 0.1
 
     private let rate: Double
     private let frameSamples: Int
     private var pending: [Float] = []
 
-    public init(rate: Double = Self.targetRate) {
+    /// `frameSeconds` defaults to 100 ms. Live STT passes a shorter frame so
+    /// speech leaves the phone sooner.
+    public init(rate: Double = Self.targetRate, frameSeconds: Double = Self.frameDurationSeconds) {
         self.rate = rate
-        frameSamples = max(1, Int((rate * Self.frameDurationSeconds).rounded()))
+        frameSamples = max(1, Int((rate * frameSeconds).rounded()))
     }
 
     public mutating func append(samples: [Float], sampleRate: Double) -> [Data] {

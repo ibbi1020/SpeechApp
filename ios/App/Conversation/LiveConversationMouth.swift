@@ -5,7 +5,7 @@ import SpeechAppKit
 
 /// Grok speech-to-speech over WebSocket. Never starts Reading's `MicAudioSource`.
 final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Sendable {
-    static let pinnedModel = "grok-voice-think-fast-2.0"
+    static let pinnedModel = "grok-voice-3.0"
     private static let realtimeURL = URL(
         string: "wss://api.x.ai/v1/realtime?model=\(pinnedModel)"
     )!
@@ -16,6 +16,29 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     private let continuation: AsyncStream<MouthEvent>.Continuation
     private let lock = NSLock()
 
+    /// Listen-back: when the partner's voice actually starts and stops coming out of the
+    /// speaker. `finished` fires when the last queued buffer has played, not when Grok
+    /// finishes generating, which can be seconds earlier.
+    enum PartnerPlayback: Sendable {
+        case started
+        /// PCM queued to the speaker. Listen-back trims this on `.interrupted`.
+        case played(samples: [Float], sampleRate: Double)
+        /// Barge-in: drop partner audio that has not reached the speaker yet.
+        case interrupted
+        case finished(transcript: String)
+    }
+
+    /// Every microphone buffer, for the listen-back recorder. Gate it on the session phase.
+    let micChunks: AsyncStream<AudioChunk>
+    private let micContinuation: AsyncStream<AudioChunk>.Continuation
+    /// Called on the audio thread for each mic buffer. Listen-back writes the file here
+    /// so a busy main thread cannot drop the take.
+    private var micListener: (@Sendable (AudioChunk) -> Void)?
+    let partnerPlayback: AsyncStream<PartnerPlayback>
+    private let playbackContinuation: AsyncStream<PartnerPlayback>.Continuation
+    private var partnerPlaying = false
+    private var lastResponseTranscript = ""
+
     private var closed = false
     private var emittedFailed = false
     private var prepareTask: Task<Void, Error>?
@@ -24,6 +47,10 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var socketReady = false
     private var micEnabled = false
+    /// Pause. The mic is not sent. A reply already sounding stays queued and continues on resume.
+    private var userPaused = false
+    /// The partner node was paused mid-buffer, so resume can start it again.
+    private var heldPartnerAudio = false
     private var responseTranscript = ""
     private var captionLedger = CaptionAudioLedger()
     private var captionPlayhead = CaptionPlayhead()
@@ -41,18 +68,37 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
 
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
+    /// Room bed. Separate from `player` so a partner barge-in does not stop it.
+    private let bedPlayer = AVAudioPlayerNode()
     private var playbackFormat: AVAudioFormat?
+    /// Bed changes run here, off the main actor, and only the latest pick touches the node.
+    private let bedQueue = DispatchQueue(label: "speechapp.ambient-bed")
+    private var bedCoalescer = AmbientBedCoalescer()
+    private var bedBuffers: [AmbientPlace: AVAudioPCMBuffer] = [:]
     private var inputLevel: Float = 0
     private var outputLevel: Float = 0
+    /// `session.update` voice. Sirius unless the phone has saved another id.
+    private var voiceID: String
+    /// Holds a mid-sentence pick until this reply has finished playing.
+    private var voiceSwitch: VoiceSwitch
 
     var captionSyncLogURL: URL? {
         captionSync?.logFileURL
     }
 
-    override init() {
+    init(voiceID: String = PartnerVoice.defaultID) {
+        let canonical = PartnerVoice.canonical(voiceID)
+        self.voiceID = canonical
+        self.voiceSwitch = VoiceSwitch(applied: canonical)
         let pair = AsyncStream<MouthEvent>.makeStream(bufferingPolicy: .unbounded)
         events = pair.stream
         continuation = pair.continuation
+        let mic = AsyncStream<AudioChunk>.makeStream(bufferingPolicy: .bufferingNewest(64))
+        micChunks = mic.stream
+        micContinuation = mic.continuation
+        let playback = AsyncStream<PartnerPlayback>.makeStream(bufferingPolicy: .unbounded)
+        partnerPlayback = playback.stream
+        playbackContinuation = playback.continuation
         super.init()
     }
 
@@ -74,12 +120,20 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     }
 
     func connect(ephemeralKey: String) async throws {
+        try await connect(ephemeralKey: ephemeralKey, timeout: ConnectionWaitPolicy.hangLimit)
+    }
+
+    func connect(ephemeralKey: String, timeout: TimeInterval) async throws {
         try throwIfClosed()
+        guard timeout > 0 else {
+            teardown()
+            throw MouthError.connectFailed
+        }
         do {
             try await prepare()
             try throwIfClosed()
             try await openSocket(token: ephemeralKey)
-            try await waitUntilSocketReady()
+            try await waitUntilSocketReady(timeout: timeout)
             try throwIfClosed()
             setMicEnabled(true)
             startCaptionSyncLog()
@@ -115,6 +169,58 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         try sendEvent(["type": "response.cancel"])
     }
 
+    /// Stop the model from hearing the mic. The socket stays up so resume is the same talk.
+    ///
+    /// A reply already in the speaker is held, not cancelled. Cancelling marks the
+    /// audio still queued — and the words that go with it — as already heard, so
+    /// resume jumps to the end of the sentence.
+    func setInputPaused(_ paused: Bool) {
+        let holdPlayback = lock.withLock { () -> Bool in
+            userPaused = paused
+            micEnabled = !paused && !closed
+            if paused {
+                inputLevel = 0
+                frames = PCM16FrameBuffer(rate: Self.sampleRate)
+            }
+            let hold = paused && (partnerPlaying || player.isPlaying)
+            if hold {
+                heldPartnerAudio = true
+                captionPlayhead.pause(now: ProcessInfo.processInfo.systemUptime)
+            }
+            return hold
+        }
+        if paused {
+            try? sendEvent(["type": "input_audio_buffer.clear"])
+            if holdPlayback {
+                player.pause()
+            }
+            return
+        }
+        let resumePlayback = lock.withLock { () -> Bool in
+            let held = heldPartnerAudio
+            heldPartnerAudio = false
+            if held {
+                captionPlayhead.resume(now: ProcessInfo.processInfo.systemUptime)
+            }
+            return held
+        }
+        if resumePlayback, engine.isRunning {
+            player.play()
+        }
+    }
+
+    /// Stores the choice immediately. The server hears it only between replies,
+    /// so the sentence already coming out of the speaker stays on the old voice.
+    func updateVoice(_ id: String) async {
+        let immediate = lock.withLock { () -> String? in
+            voiceID = PartnerVoice.canonical(id)
+            return voiceSwitch.select(voiceID)
+        }
+        if let immediate {
+            sendVoiceUpdate(immediate)
+        }
+    }
+
     func close() async {
         teardown()
     }
@@ -146,6 +252,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         if engine.isRunning { return }
         if player.engine == nil {
             engine.attach(player)
+            engine.attach(bedPlayer)
             let format = AVAudioFormat(
                 commonFormat: .pcmFormatFloat32,
                 sampleRate: Self.sampleRate,
@@ -155,6 +262,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             guard let format else { throw MouthError.connectFailed }
             playbackFormat = format
             engine.connect(player, to: engine.mainMixerNode, format: format)
+            engine.connect(bedPlayer, to: engine.mainMixerNode, format: format)
         }
 
         let input = engine.inputNode
@@ -174,6 +282,72 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             player.play()
         }
         setMicEnabled(false)
+        let generation = lock.withLock { bedCoalescer.generation }
+        bedQueue.async { [weak self] in
+            self?.preloadBeds()
+            self?.applyLatestBed(expectedGeneration: generation)
+        }
+    }
+
+    func setAmbient(place: AmbientPlace, playing: Bool) async {
+        let generation = lock.withLock {
+            bedCoalescer.request(place: place, playing: playing)
+        }
+        bedQueue.async { [weak self] in
+            self?.applyLatestBed(expectedGeneration: generation)
+        }
+    }
+
+    /// Start or stop the bed node. Does not touch the mic tap or the partner player.
+    /// Runs on `bedQueue`. A superseded pick returns without calling stop.
+    private func applyLatestBed(expectedGeneration: Int) {
+        guard engine.isRunning, bedPlayer.engine != nil else { return }
+        let step = lock.withLock { bedCoalescer.step(for: expectedGeneration) }
+        switch step {
+        case .skip:
+            return
+        case .leave(let place) where bedPlayer.isPlaying:
+            bedPlayer.volume = AmbientBedPolicy.gain(place: place)
+        case .leave(let place), .restart(let place):
+            guard let buffer = bedBuffer(for: place) else {
+                bedPlayer.stop()
+                bedPlayer.volume = 0
+                lock.withLock { bedCoalescer.didStop() }
+                return
+            }
+            guard lock.withLock({ bedCoalescer.shouldApply(expectedGeneration) }) else { return }
+            bedPlayer.stop()
+            guard lock.withLock({ bedCoalescer.shouldApply(expectedGeneration) }) else { return }
+            bedPlayer.scheduleBuffer(buffer, at: nil, options: .loops)
+            bedPlayer.volume = AmbientBedPolicy.gain(place: place)
+            bedPlayer.play()
+            lock.withLock { bedCoalescer.didStart(place, generation: expectedGeneration) }
+        case .stop:
+            bedPlayer.stop()
+            bedPlayer.volume = 0
+            lock.withLock { bedCoalescer.didStop() }
+        }
+    }
+
+    private func preloadBeds() {
+        for place in AmbientPlace.allCases where place != .off {
+            _ = bedBuffer(for: place)
+        }
+    }
+
+    private func bedBuffer(for place: AmbientPlace) -> AVAudioPCMBuffer? {
+        if let cached = lock.withLock({ bedBuffers[place] }) { return cached }
+        guard let name = place.resourceName,
+              let url = Bundle.main.url(forResource: name, withExtension: "caf"),
+              let target = playbackFormat,
+              let buffer = AmbientFileBuffer.make(url: url, target: target),
+              AmbientLoopFormat.matches(buffer)
+        else {
+            Self.log.error("ambient bed missing or wrong format: \(place.rawValue, privacy: .public)")
+            return nil
+        }
+        lock.withLock { bedBuffers[place] = buffer }
+        return buffer
     }
 
     private func openSocket(token: String) async throws {
@@ -191,7 +365,8 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         receiveNext(task)
     }
 
-    private func waitUntilSocketReady() async throws {
+    private func waitUntilSocketReady(timeout: TimeInterval) async throws {
+        guard timeout > 0 else { throw MouthError.connectFailed }
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { [weak self] in
                 guard let self else { return }
@@ -208,7 +383,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
                 }
             }
             group.addTask {
-                try await Task.sleep(for: .seconds(12))
+                try await Task.sleep(for: .seconds(timeout))
                 throw MouthError.connectFailed
             }
             try await group.next()
@@ -306,18 +481,24 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
                 }
             }
         case "input_audio_buffer.speech_started":
+            if lock.withLock({ userPaused }) { return }
             handleSpeechStarted()
         case "input_audio_buffer.speech_stopped":
+            if lock.withLock({ userPaused }) { return }
             handleSpeechStopped()
         case "response.created":
             beginPartnerResponse()
             mutateBargeIn { $0.noteAgentAudio() }
             continuation.yield(.responseStarted)
         case "response.audio.delta", "response.output_audio.delta", "conversation.output_audio.delta":
+            // Keep queuing while paused. The node is held, so this does not sound
+            // until resume, and the caption stays on the word that was playing.
+            // Start the turn before the samples, so listen-back has a clock
+            // position before the first buffer lands.
+            notePartnerPlaybackStarted()
             if let delta = json["delta"] as? String {
                 playBase64PCM16(delta)
             }
-            notePartnerPlaybackStarted()
             mutateBargeIn { $0.noteAgentAudio() }
         case "response.audio_transcript.delta", "response.output_audio_transcript.delta":
             if let delta = json["delta"] as? String {
@@ -348,6 +529,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             stopBargeInPoll()
             let release = mutateBargeIn { $0.noteResponseDone() }
             let full = outputTranscript(from: json)
+            lock.withLock { lastResponseTranscript = full }
             continuation.yield(.responseDone(transcript: full))
             finishPartnerResponseAudio(seedTranscript: full)
             if release == .passThrough {
@@ -380,7 +562,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         try? sendEvent([
             "type": "session.update",
             "session": [
-                "voice": "eve",
+                "voice": lock.withLock { voiceID },
                 "tools": [],
                 "reasoning": ["effort": "none"],
                 "turn_detection": turnDetection,
@@ -392,15 +574,25 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         ])
     }
 
+    /// Listen-back sets this before the talk starts. Pass nil to stop.
+    func setMicListener(_ listener: (@Sendable (AudioChunk) -> Void)?) {
+        lock.withLock { micListener = listener }
+    }
+
     private func handleMicBuffer(_ buffer: AVAudioPCMBuffer) {
         let samples = FileReplayAudioSource.floatSamples(from: buffer)
         let rms = Self.rms(samples)
+        let rate = buffer.format.sampleRate
+        let chunk = AudioChunk(samples: samples, sampleRate: rate, hostTime: 0)
+        micContinuation.yield(chunk)
+        let listener = lock.withLock { micListener }
+        listener?(chunk)
         let enabled = lock.withLock { () -> Bool in
-            inputLevel = rms
-            return micEnabled && !closed
+            let on = micEnabled && !closed && !userPaused
+            inputLevel = on ? rms : 0
+            return on
         }
         guard enabled else { return }
-        let rate = buffer.format.sampleRate
         let chunks: [Data] = lock.withLock {
             frames.append(samples: samples, sampleRate: rate)
         }
@@ -439,14 +631,31 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             let level = sqrt(sum / Float(frameCount))
             lock.withLock { outputLevel = level }
         }
-        lock.withLock {
+        let playedSamples = Array(UnsafeBufferPointer(start: channel, count: frameCount))
+        let hold = lock.withLock { () -> Bool in
+            let now = ProcessInfo.processInfo.systemUptime
             captionLedger.enqueueAudio(frames: frameCount)
-            captionPlayhead.enqueue(frames: frameCount, now: ProcessInfo.processInfo.systemUptime)
+            captionPlayhead.enqueue(frames: frameCount, now: now)
+            // A buffer that arrives during pause must not start the caption clock.
+            if userPaused {
+                heldPartnerAudio = true
+                captionPlayhead.pause(now: now)
+            }
+            return userPaused
         }
         startCaptionPlayhead()
         logAudioDelta(deltaFrames: frameCount)
+        // Queue time, not the completion. Completions are easy to miss, and a
+        // barge-in trims whatever has not reached the speaker yet.
+        if !playedSamples.isEmpty {
+            playbackContinuation.yield(.played(samples: playedSamples, sampleRate: Self.sampleRate))
+        }
         player.scheduleBuffer(buffer) { [weak self] in
             self?.noteAudioBufferFinished(frames: frameCount)
+        }
+        // scheduleBuffer can start a node that was only paused. Hold it again.
+        if hold {
+            player.pause()
         }
     }
 
@@ -489,26 +698,33 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
 
     private func beginPartnerResponse() {
         clearCaptionSyncState()
+        lock.withLock { voiceSwitch.noteResponseStarted() }
         captionSync?.noteResponseCreated()
     }
 
     private func finishPartnerResponseAudio(seedTranscript: String) {
         responseTranscript = ""
-        let idle: Bool = lock.withLock {
+        let playedOut: Bool = lock.withLock {
             outputLevel = 0
             captionLedger.seedTranscriptIfEmpty(seedTranscript)
             drainingAfterDone = true
-            return captionLedger.queuedFrames == 0
+            let queued = captionLedger.queuedFrames
+            // Nothing was queued, or every queued buffer already finished
+            // before this event. Either way the speaker is done with this reply.
+            return queued == 0 || captionLedger.completedFrames >= queued
         }
-        logResponseDone(draining: !idle)
+        logResponseDone(draining: !playedOut)
+        lock.withLock { voiceSwitch.noteResponseFinished() }
         // Remaining buffers keep advancing the caption as they finish.
-        // If nothing is queued, show the seeded line once.
-        if idle {
+        // If the speaker is already done, show the seeded line once.
+        if playedOut {
             publishCaptionFromLedger(forceFull: true)
             clearCaptionSyncState()
+            notePartnerPlaybackFinished()
         } else {
             publishCaptionFromLedger(forceFull: false)
         }
+        releaseVoiceIfQuiet()
     }
 
     private func clearCaptionSyncState() {
@@ -560,11 +776,13 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             let clear = drainingAfterDone
                 && captionLedger.queuedFrames > 0
                 && captionLedger.completedFrames >= captionLedger.queuedFrames
-            return (clear, !clear && !captionPlayhead.isPlaying)
+            let held = userPaused || captionPlayhead.pausedAt != nil
+            return (clear, !clear && !captionPlayhead.isPlaying && !held)
         }
         if finish.clear {
             publishCaptionFromLedger(forceFull: true)
             clearCaptionSyncState()
+            notePartnerPlaybackFinished()
         } else if finish.stopClock {
             stopCaptionPlayhead()
         }
@@ -612,10 +830,45 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
                 revealedWords: snap.revealedWords
             )
         }
+        // Partner node only. The bed keeps looping through a barge-in.
+        // Tell listen-back before stop(), so the unheard tail is not saved.
+        playbackContinuation.yield(.interrupted)
         player.stop()
         if engine.isRunning { player.play() }
         clearCaptionSyncState()
-        lock.withLock { outputLevel = 0 }
+        lock.withLock {
+            outputLevel = 0
+            voiceSwitch.noteInterrupted()
+        }
+        notePartnerPlaybackFinished()
+    }
+
+    private func notePartnerPlaybackFinished() {
+        let transcript: String? = lock.withLock {
+            guard partnerPlaying else { return nil }
+            partnerPlaying = false
+            voiceSwitch.notePlaybackFinished()
+            return lastResponseTranscript
+        }
+        if let transcript {
+            playbackContinuation.yield(.finished(transcript: transcript))
+        }
+        releaseVoiceIfQuiet()
+    }
+
+    /// Sends a held voice pick once this reply is neither generating nor playing.
+    private func releaseVoiceIfQuiet() {
+        let voice = lock.withLock { voiceSwitch.flushIfIdle() }
+        if let voice {
+            sendVoiceUpdate(voice)
+        }
+    }
+
+    private func sendVoiceUpdate(_ id: String) {
+        try? sendEvent([
+            "type": "session.update",
+            "session": ["voice": id],
+        ])
     }
 
     private func startCaptionSyncLog() {
@@ -694,6 +947,16 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     }
 
     private func notePartnerPlaybackStarted() {
+        let firstForTurn: Bool = lock.withLock {
+            guard !partnerPlaying else { return false }
+            partnerPlaying = true
+            lastResponseTranscript = ""
+            return true
+        }
+        if firstForTurn {
+            lock.withLock { voiceSwitch.notePlaybackStarted() }
+            playbackContinuation.yield(.started)
+        }
         guard !emittedPlaybackStart else { return }
         emittedPlaybackStart = true
         continuation.yield(.audioDelta)
@@ -830,10 +1093,14 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         session?.invalidateAndCancel()
         engine.inputNode.removeTap(onBus: 0)
         player.stop()
+        bedPlayer.stop()
         engine.stop()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         continuation.yield(.disconnected)
         continuation.finish()
+        notePartnerPlaybackFinished()
+        micContinuation.finish()
+        playbackContinuation.finish()
     }
 
     private static func rms(_ samples: [Float]) -> Float {

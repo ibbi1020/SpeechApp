@@ -1,4 +1,5 @@
 import Foundation
+import SpeechAppKit
 
 struct MintResponse: Decodable {
     let clientSecret: String
@@ -6,11 +7,6 @@ struct MintResponse: Decodable {
     enum CodingKeys: String, CodingKey {
         case clientSecret = "client_secret"
         case startsRemaining = "starts_remaining"
-    }
-
-    init(clientSecret: String, startsRemaining: Int) {
-        self.clientSecret = clientSecret
-        self.startsRemaining = startsRemaining
     }
 
     init(from decoder: Decoder) throws {
@@ -26,125 +22,156 @@ struct MintResponse: Decodable {
     private struct SecretObject: Decodable { let value: String }
 }
 
-enum MintError: Error, Equatable { case budget, concurrent, rate, auth, unavailable }
+enum MintError: Error, Equatable {
+    case budget, concurrent, rate, auth, unavailable, possibleMinor
+}
+
+/// Screen copy for an error the app already throws. Mint stays specific; everything else is plain.
+enum ShownError {
+    static func text(for error: Error) -> String {
+        if let mint = error as? MintError {
+            return mint.errorDescription ?? UserFacingFailure.practiceDidNotStart
+        }
+        return UserFacingFailure.message(for: error)
+    }
+}
 
 extension MintError: LocalizedError {
     var errorDescription: String? {
         switch self {
-        case .budget: "This month’s conversations are used."
-        case .concurrent: "A conversation is already in progress."
+        case .budget: "This month’s conversations are used. Try again next month."
+        case .concurrent: "A conversation is already open. Finish it, then try again."
         case .rate: "Too many tries. Wait a few minutes."
-        case .auth: "Couldn’t sign in to Conversation."
-        case .unavailable: "Conversation isn’t available right now."
+        case .auth: "Sign-in didn’t work. Try again."
+        case .unavailable: "Conversation isn’t available right now. Try again."
+        case .possibleMinor: "This account needs a review before another conversation."
         }
     }
 }
 
-/// Conversation start gate, done on the device (no mint server, no network).
+/// Authenticated Conversation mint client. Server is source of truth for budget.
 ///
-/// Conversation talks to xAI's realtime voice API directly with the build's xAI key, so there is
-/// no short-lived secret to mint: an xAI ephemeral token would add a round trip (~200 ms) before
-/// every session for no gain, since the key already ships in the app. `mint()` only applies the
-/// budget rules the server kept (20 counted starts per calendar month, 1 live session, 3 starts
-/// per 10 minutes): the month count in UserDefaults, the rest in memory.
-///
-/// Wiring (unchanged):
+/// Wiring (Tasks 11–13 — do not consume a start locally here):
 /// - countdown 0 → `mint()` → `countdownReachedZero(ephemeralKey:)`
 /// - when `countsAsBudgetStart` becomes true → `started(sessionID:)`
 /// - map `MintError.budget` to disable Start
+/// - never consume a start locally on countdown
 /// - drop before report: `ended()` and do **not** call `started` (session never counted)
+/// - if `started` already ran, do not refund
 final class MintClient: Sendable {
-    static let monthlyStarts = 20
-    private static let budget = LocalBudget()
+    static let apiBaseKey = "CONVERSATION_API_BASE"
 
+    let base: URL
     let uuid: UUID
-    let apiKey: String
-
-    init(apiKey: String, uuid: UUID) {
-        self.apiKey = apiKey
+    init(base: URL, uuid: UUID) {
+        self.base = base
         self.uuid = uuid
     }
 
-    /// `nil` when this build has no xAI key.
-    static func makeIfConfigured(uuid: UUID) -> MintClient? {
-        guard let key = ProviderKeys.xai else { return nil }
-        return MintClient(apiKey: key, uuid: uuid)
+    /// `nil` when `CONVERSATION_API_BASE` is missing, empty, or not a host URL.
+    /// Empty plist value means skip POSTs — never fall back to a baked-in host.
+    static func makeIfConfigured(
+        uuid: UUID,
+        info: [String: Any]? = Bundle.main.infoDictionary
+    ) -> MintClient? {
+        guard let raw = info?[apiBaseKey] as? String else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = URL(string: trimmed), url.host != nil else {
+            return nil
+        }
+        return MintClient(base: url, uuid: uuid)
     }
 
-    func mint() async throws -> MintResponse {
-        try Self.budget.reserveMint(now: .now)
-        Self.budget.mintSucceeded()
-        return MintResponse(clientSecret: apiKey, startsRemaining: Self.budget.remaining(now: .now))
+    func budget() async throws -> ConversationBudgetSnapshot {
+        struct Body: Decodable {
+            let used: Int
+            let limit: Int
+            let month: String
+        }
+        let body: Body = try await send(
+            method: "GET",
+            path: "v1/conversation/budget",
+            json: nil,
+            decode: Body.self
+        )
+        return ConversationBudgetSnapshot(limit: body.limit, used: body.used, month: body.month)
+    }
+
+    func mint(timeout: TimeInterval) async throws -> MintResponse {
+        try await post("v1/conversation/mint", body: [:], decode: MintResponse.self, timeout: timeout)
     }
 
     func started(sessionID: UUID) async throws -> Int {
-        try Self.budget.countStart(sessionID: sessionID, now: .now)
+        struct StartedResponse: Decodable {
+            let startsRemaining: Int
+            enum CodingKeys: String, CodingKey { case startsRemaining = "starts_remaining" }
+        }
+        let r: StartedResponse = try await post(
+            "v1/conversation/started",
+            body: ["session_id": sessionID.uuidString],
+            decode: StartedResponse.self
+        )
+        return r.startsRemaining
     }
 
     func ended() async throws {
-        Self.budget.ended()
+        _ = try await post("v1/conversation/ended", body: [:], decode: OptionalEmpty.self)
     }
 
-    /// The mint server only counted these. Nothing to report without it.
-    func crisis() async {}
-    func possibleMinor() async {}
-}
-
-/// Local stand-in for the mint server's per-account budget.
-private final class LocalBudget: @unchecked Sendable {
-    private let lock = NSLock()
-    private let defaults = UserDefaults.standard
-    private let monthKey = "conversation.localBudget.month"
-    private let countKey = "conversation.localBudget.count"
-    private let rateWindow: TimeInterval = 10 * 60
-    private var concurrent = 0
-    private var mintTimes: [Date] = []
-    private var startedSessions: Set<UUID> = []
-
-    private func month(_ now: Date) -> String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        let parts = calendar.dateComponents([.year, .month], from: now)
-        return String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 0)
+    func crisis() async {
+        _ = try? await post("v1/conversation/crisis", body: [:], decode: OptionalEmpty.self)
     }
 
-    private func count(_ now: Date) -> Int {
-        defaults.string(forKey: monthKey) == month(now) ? defaults.integer(forKey: countKey) : 0
+    func possibleMinor() async {
+        _ = try? await post("v1/conversation/possible-minor", body: [:], decode: OptionalEmpty.self)
     }
 
-    func remaining(now: Date) -> Int {
-        lock.withLock { max(0, MintClient.monthlyStarts - count(now)) }
+    private struct OptionalEmpty: Decodable {}
+
+    private func post<T: Decodable>(
+        _ path: String,
+        body: [String: String],
+        decode: T.Type,
+        timeout: TimeInterval? = nil
+    ) async throws -> T {
+        try await send(method: "POST", path: path, json: body, decode: decode, timeout: timeout)
     }
 
-    func reserveMint(now: Date) throws {
-        try lock.withLock {
-            if concurrent >= 1 { throw MintError.concurrent }
-            mintTimes = mintTimes.filter { now.timeIntervalSince($0) < rateWindow }
-            if mintTimes.count >= 3 { throw MintError.rate }
-            if count(now) >= MintClient.monthlyStarts { throw MintError.budget }
-            mintTimes.append(now)
+    private func send<T: Decodable>(
+        method: String,
+        path: String,
+        json: [String: String]?,
+        decode _: T.Type,
+        timeout: TimeInterval? = nil
+    ) async throws -> T {
+        if let timeout, timeout <= 0 { throw URLError(.timedOut) }
+        var req = URLRequest(url: base.appending(path: path))
+        req.httpMethod = method
+        if let timeout { req.timeoutInterval = timeout }
+        req.setValue("Bearer \(uuid.uuidString)", forHTTPHeaderField: "Authorization")
+        if let json {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try JSONEncoder().encode(json)
         }
-    }
-
-    func mintSucceeded() {
-        lock.withLock { concurrent += 1 }
-    }
-
-    func ended() {
-        lock.withLock { concurrent = max(0, concurrent - 1) }
-    }
-
-    func countStart(sessionID: UUID, now: Date) throws -> Int {
-        try lock.withLock {
-            let current = count(now)
-            if !startedSessions.contains(sessionID) {
-                if current >= MintClient.monthlyStarts { throw MintError.budget }
-                startedSessions.insert(sessionID)
-                defaults.set(month(now), forKey: monthKey)
-                defaults.set(current + 1, forKey: countKey)
-                return MintClient.monthlyStarts - (current + 1)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 429, let err = try? JSONDecoder().decode(ErrorBody.self, from: data) {
+            switch err.error {
+            case "budget": throw MintError.budget
+            case "concurrent": throw MintError.concurrent
+            default: throw MintError.rate
             }
-            return MintClient.monthlyStarts - current
         }
+        if code == 403,
+           let err = try? JSONDecoder().decode(ErrorBody.self, from: data),
+           err.error == "possible_minor" {
+            throw MintError.possibleMinor
+        }
+        if code == 401 { throw MintError.auth }
+        guard (200...204).contains(code) else { throw MintError.unavailable }
+        if T.self == OptionalEmpty.self { return OptionalEmpty() as! T }
+        return try JSONDecoder().decode(T.self, from: data)
     }
+
+    private struct ErrorBody: Decodable { let error: String }
 }

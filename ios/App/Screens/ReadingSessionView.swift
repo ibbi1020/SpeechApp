@@ -1,26 +1,32 @@
 import AVFoundation
+import Combine
+import OSLog
 import SwiftUI
 import SpeechAppKit
 
 struct ReadingSessionView: View {
+    private static let log = Logger(subsystem: "com.speechapp", category: "ReadingSessionView")
+
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let passage: Passage
 
     @State private var session: ReadingSession?
     @State private var errorMessage: String?
-    @State private var countdownRemaining: Int?
     @State private var isPreparing = false
+    /// When the connecting orb appeared. The slow line uses this clock.
+    @State private var connectingStarted: Date?
     @State private var startTask: Task<Void, Never>?
     @State private var startPulse = false
-    @State private var pauseThrottle = TapThrottle()
-    @State private var isStopping = false
     @State private var displayIndex = 0
     @State private var caretGeneration = 0
     @State private var layoutReady = false
     @State private var wordTops: [String: CGFloat] = [:]
     @State private var lastScrolledLine: CGFloat?
+    @State private var takeRecorder: TakeRecorder?
+    @State private var feedbackTranscriber: FeedbackTranscriber?
 
     private var isLive: Bool {
         session?.phase == .running || session?.phase == .stalled
@@ -34,18 +40,9 @@ struct ReadingSessionView: View {
         session?.phase == .finishing
     }
 
-    /// Fog until listening starts (countdown or engine prep), and while the report is built.
-    /// The fog lifts the moment the session is live, so the live controls are never shown
-    /// while the page underneath still refuses touches.
+    /// Fog until the microphone is listening. No count.
     private var isFogged: Bool {
-        if isFinishing || isStopping { return true }
-        if isLive || isPaused { return false }
-        return countdownRemaining != nil || isPreparing
-    }
-
-    /// Live controls are visible and tappable only together.
-    private var controlsActive: Bool {
-        (isLive || isPaused) && !isFogged
+        isPreparing
     }
 
     private var fogBlurRadius: CGFloat {
@@ -74,31 +71,41 @@ struct ReadingSessionView: View {
                     Color.black.opacity(fogWashOpacity)
                         .allowsHitTesting(false)
                 }
+                .accessibilityHidden(isFogged)
+                .allowsHitTesting(!isFogged)
                 .safeAreaBar(edge: .bottom, spacing: 0) {
                     bottomChrome
                 }
-                .accessibilityHidden(isFogged)
-                .allowsHitTesting(!isFogged)
-
-            if isFogged {
-                ReadingCountdownOverlay(remaining: countdownRemaining)
-            }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
-        .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .speechBarChrome()
         .speechBottomBlur(bar: false)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                SpeechBarButton(systemName: "chevron.left", label: "Back") {
+                    dismiss()
+                }
+            }
+        }
+        .background(SpeechEdgeSwipe())
         .background {
             CaretClock(
                 wordCount: passage.words.count,
                 generation: caretGeneration,
                 isLive: isLive,
-                speaking: session?.isHearingSpeech == true,
+                session: session,
                 reduceMotion: reduceMotion,
-                anchor: session?.caretAnchor ?? CaretAnchor(index: 0, speechEnd: nil, hostTime: 0),
                 displayIndex: $displayIndex,
                 layoutReady: $layoutReady
             )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { note in
+            if SessionInterruption.shouldPause(note) {
+                session?.pause()
+            }
         }
         .onAppear {
             VoiceOrbPreloader.warmup()
@@ -118,9 +125,8 @@ struct ReadingSessionView: View {
             }
             startTask?.cancel()
             startTask = nil
-            countdownRemaining = nil
             isPreparing = false
-            isStopping = false
+            connectingStarted = nil
             if let session, session.phase != .idle, session.phase != .finished {
                 Task { _ = await session.stop() }
             }
@@ -162,27 +168,15 @@ struct ReadingSessionView: View {
     }
 
     private var passageBody: some View {
-        VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(passage.title)
-                        .speechType(.h2)
-                        .foregroundStyle(isFogged ? .tertiary : .primary)
-
-                    Text(passage.durationLabel)
-                        .font(.footnote)
-                        .foregroundStyle(isFogged ? .tertiary : .secondary)
-                }
-
-                ReadingFollowAlong(
-                    words: passage.words,
-                    currentWordID: displayWordID,
-                    dimmed: isFogged
-                )
-                .padding(.top, 28)
-        }
+        ReadingFollowAlong(
+            words: passage.words,
+            currentWordID: displayWordID,
+            dimmed: isFogged
+        )
+        .equatable()
         .padding(.horizontal, SpeechSpacing.reading)
-        .padding(.top, 20)
-        .padding(.bottom, 12)
+        .padding(.top, SpeechSpacing.section)
+        .padding(.bottom, SpeechSpacing.related)
     }
 
     private var bottomChrome: some View {
@@ -204,17 +198,13 @@ struct ReadingSessionView: View {
 
     @ViewBuilder
     private var actionRow: some View {
-        if controlsActive {
+        if isLive || isPaused || isFinishing || isPreparing {
             liveControlRow
-        } else if isLive || isPaused || isFinishing || isFogged {
-            // Hold the bar's height under the fog so nothing moves when it lifts, but render no
-            // controls: nothing visible, hittable, or reachable by VoiceOver until they work.
-            Color.clear
-                .frame(height: VoiceOrb.box)
-                .accessibilityHidden(true)
         } else {
             Button("Start") {
-                startTapped()
+                startPulse.toggle()
+                startTask?.cancel()
+                startTask = Task { await beginStart() }
             }
             .buttonStyle(SpeechStartButtonStyle())
             .sensoryFeedback(.impact(flexibility: .soft), trigger: startPulse)
@@ -223,12 +213,12 @@ struct ReadingSessionView: View {
 
     private var liveControlRow: some View {
         SessionOrbBar(
-            phase: .listening,
+            phase: isPreparing ? .connecting : .listening,
+            connectingStarted: isPreparing ? connectingStarted : nil,
             inputVolume: isLive ? (session?.speechEnergy ?? 0) : 0,
             animating: isLive
         ) {
             Button {
-                guard pauseThrottle.allow() else { return }
                 if isPaused {
                     session?.resume()
                 } else {
@@ -236,121 +226,150 @@ struct ReadingSessionView: View {
                 }
             } label: {
                 Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                    .speechGlassCircle()
             }
-            .buttonStyle(.plain)
-            .sensoryFeedback(.selection, trigger: isPaused)
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
+            .disabled(isPreparing || isFinishing)
+            .opacity(isPreparing ? 0 : 1)
+            .allowsHitTesting(!isPreparing)
+            .accessibilityHidden(isPreparing)
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
         } trailing: {
             Button {
-                // A second tap while the report is being built is ignored.
-                guard !isStopping else { return }
-                isStopping = true
                 Task { await stopSession() }
             } label: {
                 Image(systemName: "checkmark")
-                    .speechGlassCircle(tint: .accentColor)
             }
-            .buttonStyle(.plain)
-            .disabled(isFinishing)
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session, fill: .red))
+            .disabled(isPreparing || isFinishing)
+            .opacity(isPreparing ? 0 : 1)
+            .allowsHitTesting(!isPreparing)
+            .accessibilityHidden(isPreparing)
             .accessibilityLabel("Done")
         }
-    }
-
-    /// Fog and the first countdown digit go up on the tap itself; permission and engine
-    /// set-up happen behind it. A second tap while a start is in flight is ignored.
-    private func startTapped() {
-        guard startTask == nil else { return }
-        startPulse.toggle()
-        errorMessage = nil
-        #if os(iOS)
-        guard ProviderKeys.xai != nil else {
-            errorMessage = "Reading transcription isn’t set up in this build."
-            return
-        }
-        #endif
-        isPreparing = true
-        countdownRemaining = 3
-        startTask = Task {
-            await beginStart()
-            startTask = nil
-        }
+        .opacity(isFinishing ? 0.7 : 1)
     }
 
     private func beginStart() async {
+        errorMessage = nil
+
         #if os(iOS)
+        let granted = await requestMic()
+        guard granted else {
+            Self.log.error("microphone permission denied")
+            errorMessage = UserFacingFailure.microphoneOff
+            return
+        }
+        isPreparing = true
+        connectingStarted = Date()
+        VoiceOrbPreloader.warmup()
         defer {
             isPreparing = false
-            countdownRemaining = nil
-        }
-        // Let the fog frame commit before audio-session and engine set-up touch the main thread.
-        await SpeechFrame.yieldForRender()
-        let granted = await micGranted()
-        guard granted else {
-            errorMessage = "Microphone permission is required."
-            return
-        }
-        guard let xaiKey = ProviderKeys.xai else {
-            errorMessage = "Reading transcription isn’t set up in this build."
-            return
+            connectingStarted = nil
         }
 
-        VoiceOrbPreloader.warmup()
-
-        let engine = GrokTranscriptionEngine(xaiAPIKey: xaiKey)
-        model.speechEngineKind = .grokVoiceTranscribe
-        engine.setContextualPhrases(ReadingSession.contextualPhrases(for: passage, fromIndex: 0))
-        let prepareTask = Task {
-            try await engine.prepareIfNeeded(locale: Locale(identifier: "en-US"))
+        let apiKey = XAIDirectKey.load()
+        let phrases = ReadingSession.contextualPhrases(for: passage, fromIndex: 0)
+        let engine: any TranscriptionEngine
+        do {
+            engine = try await LiveSpeech.engine(apiKey: apiKey, phrases: phrases)
+        } catch is CancellationError {
+            return
+        } catch {
+            UserFacingFailure.log(error, context: "reading start")
+            errorMessage = UserFacingFailure.message(for: error)
+            return
         }
 
         do {
-            for n in [3, 2, 1] {
-                try Task.checkCancellation()
-                countdownRemaining = n
-                try await Task.sleep(for: .seconds(1))
-            }
-            countdownRemaining = nil
-            try await prepareTask.value
             try Task.checkCancellation()
             caretGeneration += 1
             displayIndex = 0
             lastScrolledLine = nil
             let source = MicAudioSource()
+            let recorder = TakeRecorder()
+            try? recorder.start()
+            takeRecorder = recorder
+            if engine.engineKind == .grokVoiceTranscribe, let apiKey {
+                let transcriber = FeedbackTranscriber(apiKey: apiKey)
+                await transcriber.start()
+                feedbackTranscriber = transcriber
+                session?.onRecordedChunk = { chunk in
+                    recorder.append(chunk)
+                    transcriber.append(chunk)
+                }
+            } else {
+                session?.onRecordedChunk = { chunk in
+                    recorder.append(chunk)
+                }
+            }
             try await session?.start(
                 audioSource: source,
                 engine: engine,
                 preference: .autoPreferSpeechTranscriber
             )
+            model.speechEngineKind = session?.engineKind ?? engine.engineKind
         } catch is CancellationError {
-            prepareTask.cancel()
+            await engine.stop()
         } catch {
-            prepareTask.cancel()
-            errorMessage = error.localizedDescription
+            await engine.stop()
+            UserFacingFailure.log(error, context: "reading start")
+            errorMessage = UserFacingFailure.message(for: error)
         }
         #else
-        errorMessage = "Live mic requires iOS."
+        Self.log.error("live mic is unavailable off iOS")
+        errorMessage = UserFacingFailure.needsIPhone
         #endif
     }
 
     private func stopSession() async {
         startTask?.cancel()
-        startTask = nil
-        guard let session else {
-            isStopping = false
-            return
-        }
+        guard let session else { return }
         let report = await session.stop()
-        model.finish(report: report)
+        session.onRecordedChunk = nil
+        let recordingID = await saveRecording(session: session, report: report)
+        model.finish(report: report, recordingID: recordingID)
+    }
+
+    /// Starts saving the take for listen-back and returns its id when there is audio.
+    private func saveRecording(session: ReadingSession, report: SessionReport) async -> UUID? {
+        guard let recorder = takeRecorder else { return nil }
+        takeRecorder = nil
+        guard let rawURL = recorder.stop() else { return nil }
+        let duration = recorder.writtenSeconds
+        guard duration > 0 else {
+            try? FileManager.default.removeItem(at: rawURL)
+            return nil
+        }
+        let id = UUID()
+        // Unhinted words show what was really said; the hinted live words are the fallback.
+        var words = await feedbackTranscriber?.finish() ?? []
+        feedbackTranscriber = nil
+        if words.isEmpty { words = session.spokenWords }
+        SingleTakeRecording.finalizeAndSave(
+            rawURL: rawURL,
+            content: .init(
+                id: id,
+                format: .reading,
+                topic: passage.title,
+                lines: [
+                    .init(label: "Words read", value: "\(report.matchCount) of \(report.scriptWordCount)"),
+                    .init(label: "Time", value: Self.timeLabel(report.durationSeconds)),
+                ],
+                words: words,
+                durationSeconds: duration,
+                markers: ReadingMarkers.build(passage: passage, words: words, durationSeconds: duration),
+                inLibrary: RecordingsService.keepRecordings
+            )
+        )
+        return id
+    }
+
+    private static func timeLabel(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     #if os(iOS)
-    /// Skips the permission round trip when access is already granted.
-    private func micGranted() async -> Bool {
-        if AVAudioApplication.shared.recordPermission == .granted { return true }
-        return await requestMic()
-    }
-
     private func requestMic() async -> Bool {
         await withCheckedContinuation { continuation in
             AVAudioApplication.requestRecordPermission { granted in
@@ -361,31 +380,43 @@ struct ReadingSessionView: View {
     #endif
 }
 
-/// Passage words with a single underline on the word being spoken.
-private struct ReadingFollowAlong: View {
+/// Passage words. Same face, size, and current-word mark as listen-back.
+private struct ReadingFollowAlong: View, Equatable {
     let words: [ScriptWord]
     let currentWordID: String?
     let dimmed: Bool
 
+    @ScaledMetric(relativeTo: SpeechReading.textStyle) private var size: CGFloat = SpeechReading.size
+
+    /// Lets `.equatable()` skip re-diffing every word when only the mic level
+    /// or another piece of chrome changed.
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.currentWordID == rhs.currentWordID
+            && lhs.dimmed == rhs.dimmed
+            && lhs.words.map(\.id) == rhs.words.map(\.id)
+    }
+
     var body: some View {
-        // Was 14. About 20% less gap between lines. The 22pt face is unchanged.
-        WordWrapLayout(spacing: 8, lineSpacing: 11) {
+        WordWrapLayout(
+            spacing: SpeechReading.scaledGap(SpeechReading.wordGap, size: size),
+            lineSpacing: SpeechReading.scaledGap(SpeechReading.lineGap, size: size)
+        ) {
             ForEach(words) { word in
-                let isCurrent = word.id == currentWordID
-                Text(word.surface)
-                    .font(.system(size: 22, weight: .regular, design: .serif))
-                    .foregroundStyle(dimmed ? .tertiary : .primary)
-                    .underline(isCurrent, color: dimmed ? Color.secondary : Color.primary)
-                    .id(word.id)
-                    .accessibilityAddTraits(isCurrent ? .isSelected : [])
-                    .background {
-                        GeometryReader { proxy in
-                            Color.clear.preference(
-                                key: WordLineTops.self,
-                                value: [word.id: proxy.frame(in: .named("reading-passage")).minY]
-                            )
-                        }
+                SpeechReadingWord(
+                    text: word.surface,
+                    isCurrent: word.id == currentWordID,
+                    dimmed: dimmed,
+                    size: size
+                )
+                .id(word.id)
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: WordLineTops.self,
+                            value: [word.id: proxy.frame(in: .named("reading-passage")).minY]
+                        )
                     }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -411,9 +442,10 @@ private struct CaretClock: UIViewControllerRepresentable {
     var wordCount: Int
     var generation: Int
     var isLive: Bool
-    var speaking: Bool
+    /// Read on each display-link tick instead of through `body`, so speech and
+    /// anchor changes do not re-render the whole passage.
+    var session: ReadingSession?
     var reduceMotion: Bool
-    var anchor: CaretAnchor
     @Binding var displayIndex: Int
     @Binding var layoutReady: Bool
 
@@ -425,9 +457,8 @@ private struct CaretClock: UIViewControllerRepresentable {
         controller.wordCount = wordCount
         controller.generation = generation
         controller.isLive = isLive
-        controller.speaking = speaking
+        controller.session = session
         controller.reduceMotion = reduceMotion
-        controller.anchor = anchor
         controller.onIndex = { index in
             if displayIndex != index {
                 displayIndex = index
@@ -446,9 +477,8 @@ private struct CaretClock: UIViewControllerRepresentable {
         var wordCount = 0
         var generation = 0
         var isLive = false
-        var speaking = false
+        weak var session: ReadingSession?
         var reduceMotion = false
-        var anchor = CaretAnchor(index: 0, speechEnd: nil, hostTime: 0)
         var onIndex: (Int) -> Void = { _ in }
         var onReady: () -> Void = {}
         private var link: CADisplayLink?
@@ -478,7 +508,7 @@ private struct CaretClock: UIViewControllerRepresentable {
             if isLive {
                 if link == nil {
                     let link = CADisplayLink(target: self, selector: #selector(tick))
-                    link.preferredFrameRateRange = CAFrameRateRange(minimum: 20, maximum: 30, preferred: 30)
+                    link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
                     link.add(to: .main, forMode: .common)
                     self.link = link
                 }
@@ -490,6 +520,8 @@ private struct CaretClock: UIViewControllerRepresentable {
 
         @objc private func tick() {
             guard isLive else { return }
+            let anchor = session?.caretAnchor ?? CaretAnchor(index: 0, speechEnd: nil, hostTime: 0)
+            let speaking = session?.isHearingSpeech == true
             if anchor.hostTime > 0 {
                 follow.noteAnchor(
                     index: anchor.index,
@@ -507,64 +539,3 @@ private struct CaretClock: UIViewControllerRepresentable {
     }
 }
 
-/// Left-to-right wrapping rows. Used so each passage word can take its own underline.
-private struct WordWrapLayout: Layout {
-    var spacing: CGFloat
-    var lineSpacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? 0
-        let rows = rows(in: width, subviews: subviews)
-        let height = rows.reduce(CGFloat(0)) { $0 + $1.height }
-            + lineSpacing * CGFloat(max(0, rows.count - 1))
-        return CGSize(width: width, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let rows = rows(in: bounds.width, subviews: subviews)
-        var y = bounds.minY
-        for row in rows {
-            var x = bounds.minX
-            for index in row.indexes {
-                let size = subviews[index].sizeThatFits(.unspecified)
-                subviews[index].place(
-                    at: CGPoint(x: x, y: y + (row.height - size.height) / 2),
-                    proposal: ProposedViewSize(size)
-                )
-                x += size.width + spacing
-            }
-            y += row.height + lineSpacing
-        }
-    }
-
-    private struct Row {
-        var indexes: [Int]
-        var height: CGFloat
-    }
-
-    private func rows(in width: CGFloat, subviews: Subviews) -> [Row] {
-        var rows: [Row] = []
-        var indexes: [Int] = []
-        var rowWidth: CGFloat = 0
-        var rowHeight: CGFloat = 0
-
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            let nextWidth = indexes.isEmpty ? size.width : rowWidth + spacing + size.width
-            if !indexes.isEmpty, width > 0, nextWidth > width {
-                rows.append(Row(indexes: indexes, height: rowHeight))
-                indexes = [index]
-                rowWidth = size.width
-                rowHeight = size.height
-            } else {
-                indexes.append(index)
-                rowWidth = nextWidth
-                rowHeight = max(rowHeight, size.height)
-            }
-        }
-        if !indexes.isEmpty {
-            rows.append(Row(indexes: indexes, height: rowHeight))
-        }
-        return rows
-    }
-}

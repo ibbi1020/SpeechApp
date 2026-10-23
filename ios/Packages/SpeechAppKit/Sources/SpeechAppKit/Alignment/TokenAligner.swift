@@ -545,11 +545,11 @@ public final class TokenAligner: @unchecked Sendable {
         "can", "could", "would", "should", "will", "just", "about", "into", "out", "up",
     ]
 
-    private static func isFunctionWord(_ normalized: String) -> Bool {
+    static func isFunctionWord(_ normalized: String) -> Bool {
         functionWords.contains(normalized)
     }
 
-    private static func levenshtein(_ a: String, _ b: String) -> Int {
+    static func levenshtein(_ a: String, _ b: String) -> Int {
         let aChars = Array(a)
         let bChars = Array(b)
         if aChars.isEmpty { return bChars.count }

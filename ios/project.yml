@@ -16,12 +16,24 @@ settings:
 packages:
   SpeechAppKit:
     path: Packages/SpeechAppKit
+  DSWaveformImage:
+    url: https://github.com/dmrschmidt/DSWaveformImage
+    from: 14.5.0
+  SwiftUI-Flow:
+    url: https://github.com/tevelee/SwiftUI-Flow
+    from: 3.0.0
 targets:
   SpeechApp:
     type: application
     platform: iOS
     sources:
       - path: App
+        excludes:
+          - "Resources/Ambient/**"
+          - "XAISecrets.plist"
+      - path: App/Resources/Ambient
+        buildPhase: resources
+      - path: Shared
       - path: ../font/InstrumentSerif-Regular.ttf
         buildPhase: resources
     settings:
@@ -34,35 +46,99 @@ targets:
         # Personal Team (free provisioning) — Ibraheem Farooq
         DEVELOPMENT_TEAM: 45SVH8S72R
         SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
-        # iPhone only. XcodeGen's iOS app preset is "1,2"; a universal build with portrait-only
-        # orientations is rejected on upload (ITMS-90474, iPad multitasking).
-        TARGETED_DEVICE_FAMILY: "1"
+    postBuildScripts:
+      - name: Copy XAI key
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ -f "$SRCROOT/App/XAISecrets.plist" ]; then
+            cp "$SRCROOT/App/XAISecrets.plist" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/XAISecrets.plist"
+          fi
     dependencies:
       - package: SpeechAppKit
+      - package: DSWaveformImage
+        product: DSWaveformImage
+      - package: DSWaveformImage
+        product: DSWaveformImageViews
+      - package: SwiftUI-Flow
+        product: Flow
+      - target: SpeechAppWidget
+        embed: true
     info:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Orator
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "4"
+        # Bonjour name of this Mac. Stays valid when the DHCP address changes.
+        # Phone and Mac have to be on the same Wi-Fi. Do not put a 192.168 address here.
+        # CI/TestFlight: no mint server. Empty = skip budget POSTs (see MintClient.makeIfConfigured).
+        CONVERSATION_API_BASE: ""
         # Standard HTTPS/WSS encryption only (exempt). Skips the TestFlight export-compliance prompt.
         ITSAppUsesNonExemptEncryption: false
+        # Kept from the WebRTC era (ITMS-90683). Harmless; the app never asks for the camera.
+        NSCameraUsageDescription: Orator does not use the camera. Conversations are audio only.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: Orator can connect to your Mac on the local network for practice limits. Speech is sent to xAI.
+        NSSupportsLiveActivities: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.speechapp.conversation
+            CFBundleURLSchemes:
+              - orator
         UIBackgroundModes:
           - audio
         UIAppFonts:
           - InstrumentSerif-Regular.ttf
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+          UIImageName: LaunchMark
+          UIImageRespectsSafeAreaInsets: false
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        # Kept from the WebRTC era (ITMS-90683). Harmless; the app never asks for the camera.
-        NSCameraUsageDescription: Orator does not use the camera. Conversations are audio only.
-        NSMicrophoneUsageDescription: Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Reading and topic-talk audio is sent to xAI for transcription. Conversation audio is streamed to xAI for the AI partner. We do not keep the recording.
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        "UISupportedInterfaceOrientations~ipad":
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSMicrophoneUsageDescription: Orator uses the microphone so you can read aloud, talk on a topic, or rehearse with an AI partner. Speech is sent to xAI for transcription and live conversation. Topic talks can be kept on this phone so you can listen back. You can delete them anytime.
         NSSpeechRecognitionUsageDescription: Orator uses on-device speech recognition to follow reading and to time topic talks. Recognition runs on your device.
+  SpeechAppWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widget
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.speechapp.prototype.format1.widget
+        PRODUCT_NAME: SpeechAppWidget
+        INFOPLIST_FILE: Widget/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 45SVH8S72R
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
+    dependencies:
+      - package: SpeechAppKit
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: Orator
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "4"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
 schemes:
   SpeechApp:
     build:
       targets:
         SpeechApp: all
+      preActions:
+        - name: Ensure conversation mint
+          script: /bin/bash "$SRCROOT/../server/ensure-mint.sh"
+          settingsTarget: SpeechApp
     run:
       config: Debug
     test:

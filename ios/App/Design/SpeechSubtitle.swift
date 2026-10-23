@@ -1,13 +1,13 @@
 import SwiftUI
 import UIKit
 
-/// Live caption above the speech orb. One line at a time: when the line is full,
-/// it fades out and the next words start on a fresh line.
+/// Live caption above the speech orb. One line at a time. When the line is full,
+/// it fades out and the next line appears. The fade is the only wait.
 struct SpeechSubtitle: View {
     let text: String
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .callout) private var fontSize: CGFloat = 16
+    @ScaledMetric(relativeTo: SpeechReading.textStyle) private var fontSize: CGFloat = SpeechReading.size
 
     @State private var tokens: [Token] = []
     @State private var availableWidth: CGFloat = 0
@@ -16,18 +16,22 @@ struct SpeechSubtitle: View {
     @State private var pageStart = 0
     @State private var isPaging = false
 
-    private static let wordGap: CGFloat = 5
+    private var wordGap: CGFloat {
+        SpeechReading.scaledGap(SpeechReading.wordGap, size: fontSize)
+    }
+    /// The line uses this share of the width the section offers. 0.85 is 15% narrower.
+    private static let widthFraction: CGFloat = 0.85
     private static let inkOpacity = 0.62
     private static let enterBlur: CGFloat = 14
     private static let enterDuration = 0.45
     private static let fadeDuration = 0.2
 
     private var subtitleFont: Font {
-        .system(size: fontSize, weight: .regular, design: .serif)
+        SpeechReading.font(size: fontSize)
     }
 
     private var lineHeight: CGFloat {
-        fontSize * 1.25
+        SpeechReading.uiFont(size: fontSize).lineHeight
     }
 
     private var spokenLine: String {
@@ -35,7 +39,13 @@ struct SpeechSubtitle: View {
     }
 
     var body: some View {
-        HStack(spacing: Self.wordGap) {
+        SubtitleColumn(fraction: Self.widthFraction) {
+            line
+        }
+    }
+
+    private var line: some View {
+        HStack(spacing: wordGap) {
             ForEach(tokens) { token in
                 Text(token.surface)
                     .font(subtitleFont)
@@ -89,8 +99,7 @@ struct SpeechSubtitle: View {
             sourceWords = next
             pageStart = 0
             isPaging = false
-            presentPage(animated: animated && !tokens.isEmpty, replace: !tokens.isEmpty)
-            scheduleFollowUpPageIfNeeded()
+            reveal(animated: animated && !tokens.isEmpty, replace: !tokens.isEmpty)
             return
         }
 
@@ -112,13 +121,12 @@ struct SpeechSubtitle: View {
                 appendWords(additions, onto: tokens, animated: animated && !showing.isEmpty)
             }
             if overflow {
-                holdThenTurnPage()
+                beginPageTurn(animated: true)
             }
             return
         }
 
-        presentPage(animated: animated, replace: true)
-        if overflow { holdThenTurnPage() }
+        reveal(animated: animated, replace: true)
     }
 
     private func appendWords(_ additions: [String], onto existing: [Token], animated: Bool) {
@@ -163,7 +171,7 @@ struct SpeechSubtitle: View {
         var page: [String] = []
         var used: CGFloat = 0
         for word in sourceWords.dropFirst(pageStart) {
-            let extra = page.isEmpty ? measure(word) : measure(word) + Self.wordGap
+            let extra = page.isEmpty ? measure(word) : measure(word) + wordGap
             if !page.isEmpty, used + extra > availableWidth {
                 break
             }
@@ -204,14 +212,11 @@ struct SpeechSubtitle: View {
         isPaging = true
         let gate = bumpGeneration()
 
-        let finish = {
+        let finish: @MainActor @Sendable () -> Void = {
             pageStart += leaving.count
             commit([], animated: false)
-            scheduleIfCurrent(gate: gate, after: 0.12) {
-                isPaging = false
-                presentPage(animated: animated, replace: false)
-                scheduleFollowUpPageIfNeeded()
-            }
+            isPaging = false
+            reveal(animated: animated, replace: false)
         }
 
         if !animated || reduceMotion {
@@ -223,20 +228,29 @@ struct SpeechSubtitle: View {
         scheduleIfCurrent(gate: gate, after: Self.enterDuration, finish)
     }
 
-    /// Let the finished line be readable, then fade it for the next line.
-    private func holdThenTurnPage() {
-        let gate = generation
-        scheduleIfCurrent(gate: gate, after: 0.35) {
-            beginPageTurn(animated: true)
-        }
-    }
-
-    private func scheduleFollowUpPageIfNeeded() {
+    /// Show the current page. When that page is already full, the next fade starts
+    /// once this line is visible. There is no hold before the fade and no blank gap after it.
+    private func reveal(animated: Bool, replace: Bool) {
         let page = fittedPage()
-        guard pageStart + page.count < sourceWords.count, !page.isEmpty else { return }
+        guard !page.isEmpty else {
+            commit([], animated: false)
+            return
+        }
+
+        let overflow = pageStart + page.count < sourceWords.count
+        if !overflow {
+            presentPage(animated: animated, replace: replace)
+            return
+        }
+
+        let turnAnimated = animated && !reduceMotion
+        presentPage(animated: turnAnimated, replace: false)
         let gate = generation
-        scheduleIfCurrent(gate: gate, after: 0.7) {
-            beginPageTurn(animated: true)
+        // The entrance fade is the wait. Starting the next turn in this same update
+        // would fade the line out before it had been drawn.
+        let delay: TimeInterval = turnAnimated ? Self.enterDuration : 0
+        scheduleIfCurrent(gate: gate, after: delay) {
+            beginPageTurn(animated: turnAnimated)
         }
     }
 
@@ -364,14 +378,12 @@ struct SpeechSubtitle: View {
     private func width(of surfaces: [String], leadingGap: Bool) -> CGFloat {
         guard !surfaces.isEmpty else { return 0 }
         let words = surfaces.reduce(CGFloat.zero) { $0 + measure($1) }
-        let gaps = Self.wordGap * CGFloat(surfaces.count - (leadingGap ? 0 : 1))
+        let gaps = wordGap * CGFloat(surfaces.count - (leadingGap ? 0 : 1))
         return words + max(0, gaps)
     }
 
     private func measure(_ string: String) -> CGFloat {
-        let base = UIFont.systemFont(ofSize: fontSize, weight: .regular)
-        let descriptor = base.fontDescriptor.withDesign(.serif) ?? base.fontDescriptor
-        let font = UIFont(descriptor: descriptor, size: fontSize)
+        let font = SpeechReading.uiFont(size: fontSize)
         return (string as NSString).size(withAttributes: [.font: font]).width
     }
 
@@ -384,6 +396,29 @@ struct SpeechSubtitle: View {
             .filter { !$0.isEmpty }
     }
 
+}
+
+/// Centers the subtitle in the width it is offered, and gives the line a fraction of that width.
+private struct SubtitleColumn: Layout {
+    var fraction: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = columnWidth(proposal.width)
+        let child = subviews[0].sizeThatFits(ProposedViewSize(width: width, height: proposal.height))
+        return CGSize(width: width ?? child.width, height: child.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews[0].place(
+            at: CGPoint(x: bounds.minX, y: bounds.minY),
+            proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
+        )
+    }
+
+    private func columnWidth(_ offered: CGFloat?) -> CGFloat? {
+        guard let offered else { return nil }
+        return offered * fraction
+    }
 }
 
 private struct Token: Identifiable, Equatable {

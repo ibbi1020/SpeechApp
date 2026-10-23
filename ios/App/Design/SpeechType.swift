@@ -3,6 +3,11 @@ import UIKit
 
 /// Text roles for the app.
 ///
+/// Headings and chrome are SF Pro. A prompt, a subtitle, a passage, or the person's
+/// words in a transcript use New York through `SpeechReading`. The partner's words use SF Pro.
+///
+/// Words you read aloud, live or on listen-back, share `SpeechReading`.
+///
 /// Headings use a perfect fourth (4/3): each step is one-third larger than the one below.
 /// Body stays at 16pt. Sizes are rounded to whole points.
 ///
@@ -14,9 +19,6 @@ import UIKit
 /// Steps below body are not the same ratio. Another step down would be 12pt, which is
 /// already as small as a label should go, so subtext is 14 and labels are 12.
 enum SpeechType {
-    /// PostScript name of `font/InstrumentSerif-Regular.ttf` (weight 400).
-    static let instrumentSerif = "InstrumentSerif-Regular"
-
     static let bodySize: CGFloat = 16
     /// Perfect fourth. Used for the four heading steps above body.
     static let headingRatio: CGFloat = 4.0 / 3.0
@@ -46,13 +48,13 @@ enum SpeechType {
     static func metrics(_ role: Role) -> Metrics {
         switch role {
         case .h1:
-            Metrics(size: stepped(4), trackingEm: -0.025, lineHeight: 1.1, relativeTo: .largeTitle, usesSerif: true, systemWeight: .regular)
+            Metrics(size: stepped(4), trackingEm: -0.025, lineHeight: 1.1, relativeTo: .largeTitle, usesSerif: false, systemWeight: .semibold)
         case .h2:
-            Metrics(size: stepped(3), trackingEm: -0.02, lineHeight: 1.12, relativeTo: .largeTitle, usesSerif: true, systemWeight: .regular)
+            Metrics(size: stepped(3), trackingEm: -0.02, lineHeight: 1.12, relativeTo: .largeTitle, usesSerif: false, systemWeight: .semibold)
         case .h3:
-            Metrics(size: stepped(2), trackingEm: -0.015, lineHeight: 1.15, relativeTo: .title, usesSerif: true, systemWeight: .regular)
+            Metrics(size: stepped(2), trackingEm: -0.015, lineHeight: 1.15, relativeTo: .title, usesSerif: false, systemWeight: .semibold)
         case .h4:
-            Metrics(size: stepped(1), trackingEm: -0.01, lineHeight: 1.2, relativeTo: .title3, usesSerif: true, systemWeight: .regular)
+            Metrics(size: stepped(1), trackingEm: -0.01, lineHeight: 1.2, relativeTo: .title3, usesSerif: false, systemWeight: .semibold)
         case .body:
             Metrics(size: bodySize, trackingEm: 0, lineHeight: 1.45, relativeTo: .body, usesSerif: false, systemWeight: .regular)
         case .subtext:
@@ -65,7 +67,7 @@ enum SpeechType {
     static func font(_ role: Role, size: CGFloat) -> Font {
         let metrics = metrics(role)
         if metrics.usesSerif {
-            return .custom(instrumentSerif, size: size)
+            return SpeechReading.font(size: size)
         }
         return .system(size: size, weight: metrics.systemWeight)
     }
@@ -84,8 +86,8 @@ enum SpeechType {
 
     private static func uiFont(_ role: Role, size: CGFloat) -> UIFont {
         let metrics = metrics(role)
-        if metrics.usesSerif, let font = UIFont(name: instrumentSerif, size: size) {
-            return font
+        if metrics.usesSerif {
+            return SpeechReading.uiFont(size: size)
         }
         return .systemFont(ofSize: size, weight: uiWeight(metrics.systemWeight))
     }
@@ -141,11 +143,20 @@ private struct SpeechPageTitle: ViewModifier {
     var title: String
     var large: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.dismiss) private var dismiss
 
     func body(content: Content) -> some View {
         content
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(large ? .large : .inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    SpeechBarButton(systemName: "chevron.left", label: "Back") {
+                        dismiss()
+                    }
+                }
+            }
             .background {
                 SpeechBarFonts(dynamicTypeSize: dynamicTypeSize)
             }
@@ -178,6 +189,11 @@ private struct SpeechBarFonts: UIViewControllerRepresentable {
             apply()
         }
 
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            apply()
+        }
+
         func apply() {
             guard let bar = navigationController?.navigationBar else { return }
             SpeechBarFont.apply(to: bar)
@@ -188,6 +204,9 @@ private struct SpeechBarFonts: UIViewControllerRepresentable {
 @MainActor
 private enum SpeechBarFont {
     static func apply(to bar: UINavigationBar) {
+        if bar.tintColor != .white {
+            bar.tintColor = .white
+        }
         let traits = bar.traitCollection
         assign(bar.standardAppearance, traits: traits) { bar.standardAppearance = $0 }
         if let edge = bar.scrollEdgeAppearance {
@@ -220,13 +239,36 @@ private enum SpeechBarFont {
         let largeKern = large.pointSize * SpeechType.metrics(.h1).trackingEm
         let inlineKern = inline.pointSize * SpeechType.metrics(.h4).trackingEm
         if hasFont(appearance.largeTitleTextAttributes, large, largeKern),
-           hasFont(appearance.titleTextAttributes, inline, inlineKern) {
+           hasFont(appearance.titleTextAttributes, inline, inlineKern),
+           hasWhiteButtons(appearance) {
             return nil
         }
         let copy = appearance.copy()
         copy.largeTitleTextAttributes = merged(copy.largeTitleTextAttributes, font: large, kern: largeKern)
         copy.titleTextAttributes = merged(copy.titleTextAttributes, font: inline, kern: inlineKern)
+        paintButtons(copy)
         return copy
+    }
+
+    /// Back and bar-button titles stay white. The chevron is drawn white so the
+    /// accent tint cannot turn it blue.
+    private static func paintButtons(_ appearance: UINavigationBarAppearance) {
+        let white: [NSAttributedString.Key: Any] = [.foregroundColor: UIColor.white]
+        let button = UIBarButtonItemAppearance(style: .plain)
+        button.normal.titleTextAttributes = white
+        button.highlighted.titleTextAttributes = white
+        appearance.buttonAppearance = button
+        appearance.backButtonAppearance = button
+        let symbol = UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)
+        if let image = UIImage(systemName: "chevron.backward", withConfiguration: symbol)?
+            .withTintColor(.white, renderingMode: .alwaysOriginal) {
+            appearance.setBackIndicatorImage(image, transitionMaskImage: image)
+        }
+    }
+
+    private static func hasWhiteButtons(_ appearance: UINavigationBarAppearance) -> Bool {
+        let color = appearance.buttonAppearance.normal.titleTextAttributes[.foregroundColor] as? UIColor
+        return color == .white
     }
 
     private static func hasFont(
@@ -265,5 +307,20 @@ extension View {
     /// Large titles use h1. Inline titles use h4.
     func speechPageTitle(_ title: String, large: Bool = false) -> some View {
         modifier(SpeechPageTitle(title: title, large: large))
+    }
+
+    /// Keeps the system back chevron white on screens that have no page title.
+    func speechBarChrome() -> some View {
+        modifier(SpeechBarChrome())
+    }
+}
+
+private struct SpeechBarChrome: ViewModifier {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    func body(content: Content) -> some View {
+        content.background {
+            SpeechBarFonts(dynamicTypeSize: dynamicTypeSize)
+        }
     }
 }

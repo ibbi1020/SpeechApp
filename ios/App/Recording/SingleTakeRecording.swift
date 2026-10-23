@@ -1,0 +1,83 @@
+import Foundation
+import OSLog
+import SpeechAppKit
+
+/// Saves a one-take recording (Reading, Conversation) after the report opens.
+/// Finalizing (denoise, AAC) runs in the background; the report polls the store.
+@MainActor
+enum SingleTakeRecording {
+    private static let log = Logger(subsystem: "com.speechapp", category: "SingleTakeRecording")
+
+    struct Content: Sendable {
+        let id: UUID
+        let format: RecordingManifest.Format
+        let topic: String
+        let lines: [MonologueReport.Line]
+        let words: [RecordedWord]
+        let durationSeconds: TimeInterval
+        let markers: [ReviewMarker]
+        var partnerTurns: [PartnerTurn]? = nil
+        var inLibrary: Bool = true
+    }
+
+    static func finalizeAndSave(
+        rawURL: URL,
+        content: Content,
+        partnerSpans: [PartnerAudioSpan] = [],
+        store: RecordingStore = RecordingsService.store
+    ) {
+        Task { @MainActor in
+            do {
+                let (finalURL, report) = try await TakeFinalizer.finalizeWithReport(
+                    rawCAF: rawURL,
+                    partnerSpans: partnerSpans
+                )
+                log.info(
+                    "\(content.format.rawValue, privacy: .public) take saved: denoise=\(report.usedDenoise) gain=\(report.gain) outputPeak=\(report.outputPeak) markers=\(content.markers.count)"
+                )
+                let fileName = "take-1.m4a"
+                _ = try store.storeAudio(regimenID: content.id, from: finalURL, fileName: fileName)
+                try? FileManager.default.removeItem(at: finalURL)
+                if TakeRetention.isDiscarded(content.id) {
+                    try? store.delete(id: content.id)
+                    return
+                }
+                try store.save(RecordingManifest(
+                    id: content.id,
+                    format: content.format,
+                    topic: content.topic,
+                    reportLines: content.lines,
+                    comparison: "",
+                    takes: [
+                        RecordingManifest.Take(
+                            index: 1,
+                            durationSeconds: content.durationSeconds,
+                            audioFileName: fileName,
+                            words: content.words,
+                            markers: content.markers,
+                            partnerTurns: content.partnerTurns
+                        ),
+                    ],
+                    inLibrary: TakeRetention.wantsLibrary(content.id) || content.inLibrary
+                ))
+            } catch {
+                log.error("save failed: \(error.localizedDescription, privacy: .public)")
+                try? FileManager.default.removeItem(at: rawURL)
+                if TakeRetention.isDiscarded(content.id) { return }
+                let outOfSpace = (error as? RecordingStoreError) == .diskFull
+                try? store.save(RecordingManifest(
+                    id: content.id,
+                    format: content.format,
+                    topic: content.topic,
+                    reportLines: content.lines,
+                    comparison: "",
+                    takes: [],
+                    saveError: outOfSpace
+                        ? UserFacingFailure.diskFull
+                        : UserFacingFailure.nothingToPlay,
+                    inLibrary: TakeRetention.wantsLibrary(content.id) || content.inLibrary
+                ))
+            }
+        }
+    }
+}

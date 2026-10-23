@@ -9,11 +9,12 @@ final class AppModel {
         case home
         case library
         case reading
-        case report(SessionReport)
+        case report(SessionReport, recordingID: UUID?)
         case conversation
-        case conversationReport(ConversationReport)
+        case conversationReport(ConversationReport, recordingID: UUID?)
         case monologue
-        case monologueReport(MonologueReport)
+        case monologueReport(MonologueReport, regimenID: UUID?, topic: String)
+        case recordings(filter: RecordingManifest.Format?)
         case crisis
     }
 
@@ -22,16 +23,21 @@ final class AppModel {
         case conversation, monologue
     }
 
+    /// Which pre-session surface the navigation stack is rooted on. Held separately
+    /// from `route` so popping a session returns to the screen it was started from.
+    enum EntrySurface: Equatable {
+        case home, ceremony
+    }
+
+    init() {
+        TakeRetention.discardTakesLeftFromLastLaunch()
+    }
+
     var hostedFormat: HostedFormat = .conversation
 
     var route: Route = .home
-    /// Filled off the main thread right after launch (JSON decode + file read), so the
-    /// first frame and the first taps never wait on disk.
-    var catalog = PassageCatalog(passages: [])
-    var ledger = StruggleLedger()
-    private(set) var isLoaded = false
-    private var ledgerChangedBeforeLoad = false
-    private var ledgerSave: Task<Void, Never>?
+    var catalog = PassageCatalog.loadBundled()
+    var ledger = StruggleLedgerStore.loadOrCreate()
     var currentPassage: Passage?
     var speechEngineKind: LiveTranscriptionEngine.EngineKind = .unknown
     var account = AccountStore()
@@ -41,20 +47,27 @@ final class AppModel {
         month: currentCalendarMonth()
     )
 
-    init() {
-        Task { await loadStores() }
-    }
+    /// Drives Home's two-word line. Set when a session actually starts, so
+    /// "Once more" only ever appears to someone who has practised.
+    var hasBegunBefore = UserDefaults.standard.bool(forKey: AppModel.hasBegunKey)
 
-    private func loadStores() async {
-        let loaded = await Task.detached(priority: .userInitiated) {
-            (PassageCatalog.loadBundled(), StruggleLedgerStore.loadOrCreate())
-        }.value
-        catalog = loaded.0
-        if !ledgerChangedBeforeLoad {
-            ledger = loaded.1
-        }
-        isLoaded = true
-    }
+    private static let hasBegunKey = "entry.hasBegun"
+
+    var entry: EntrySurface = .home
+
+    /// Where the user is inside the ceremony. Ignored while `entry` is `.home`.
+    var ceremonyStep: CeremonyStep = Ceremony.first
+
+    /// The exercise the user settled on. Nil until the exercise step proposes one.
+    var chosenKind: PracticeFormat.Kind?
+
+    /// Sessions in the last 7 days. Filled when the ceremony begins.
+    var weeklyCounts = WeeklyPracticeCounts()
+
+    var isInCeremony: Bool { entry == .ceremony }
+
+    /// Home opens the gallery full screen. The sheet clears this after it opens.
+    var presentGallery = false
 
     var featuredPassage: Passage? {
         NextPassagePicker.pick(catalog: catalog, ledger: ledger)
@@ -67,29 +80,27 @@ final class AppModel {
 
     func selectPassage(_ passage: Passage) {
         currentPassage = passage
+        noteBegun()
         route = .reading
     }
 
-    func finish(report: SessionReport) {
+    func finish(report: SessionReport, recordingID: UUID? = nil) {
         ledger.record(report: report)
-        if !isLoaded { ledgerChangedBeforeLoad = true }
-        route = .report(report)
-        // Write the ledger off the main thread, one save after another.
-        let snapshot = ledger
-        let previous = ledgerSave
-        ledgerSave = Task.detached(priority: .utility) {
-            await previous?.value
-            StruggleLedgerStore.save(snapshot)
-        }
+        StruggleLedgerStore.save(ledger)
+        route = .report(report, recordingID: recordingID)
     }
 
-    func finishConversation(report: ConversationReport, possibleMinorFlag: Bool = false) {
+    func finishConversation(
+        report: ConversationReport,
+        possibleMinorFlag: Bool = false,
+        recordingID: UUID? = nil
+    ) {
         notePossibleMinorIfNeeded(possibleMinorFlag)
         if report.kind == .crisis {
             route = .crisis
             return
         }
-        route = .conversationReport(report)
+        route = .conversationReport(report, recordingID: recordingID)
     }
 
     func presentCrisis(possibleMinorFlag: Bool = false) {
@@ -97,10 +108,17 @@ final class AppModel {
         route = .crisis
     }
 
+    /// A tap on the island foregrounds the app. It does not start a new conversation,
+    /// and it does not leave a report or the crisis screen.
+    func openFromLiveActivity(_ url: URL) {
+        guard ConversationLiveActivityLink.conversationID(from: url) != nil else { return }
+    }
+
     func readAgain() {
         if currentPassage == nil {
             currentPassage = NextPassagePicker.pick(catalog: catalog, ledger: ledger)
         }
+        noteBegun()
         route = .reading
     }
 
@@ -109,7 +127,75 @@ final class AppModel {
     }
 
     func goHome() {
+        entry = .home
         route = .home
+    }
+
+    func beginCeremony() {
+        ceremonyStep = Ceremony.first
+        chosenKind = nil
+        weeklyCounts = weeklyPracticeCounts()
+        entry = .ceremony
+        route = .home
+        Task { await refreshBudget() }
+    }
+
+    /// Asks the mint server how many conversations are left. A down server leaves the last snapshot.
+    func refreshBudget() async {
+        guard let client = MintClient.makeIfConfigured(uuid: account.accountUUID) else { return }
+        guard let snapshot = try? await client.budget() else { return }
+        budget = snapshot
+    }
+
+    func advanceCeremony() {
+        guard let next = Ceremony.next(after: ceremonyStep) else { return }
+        ceremonyStep = next
+    }
+
+    /// Back through the ceremony. The first step returns home.
+    func retreatCeremony() {
+        if let previous = Ceremony.previous(before: ceremonyStep) {
+            ceremonyStep = previous
+        } else {
+            goHome()
+        }
+    }
+
+    /// The hum step is the only place a ceremony opens an exercise.
+    func finishCeremony() {
+        let kind = chosenKind ?? .conversation
+        if kind == .conversation, budget.startEnabled == false { return }
+        start(kind)
+    }
+
+    /// Sessions in the last 7 days, for the exercise proposal.
+    func weeklyPracticeCounts(now: Date = .now) -> WeeklyPracticeCounts {
+        let manifests = (try? RecordingsService.store.list()) ?? []
+        let stamps = manifests.map { PracticeStamp(format: $0.format, createdAt: $0.createdAt) }
+        return ExerciseOfferMaker.counts(of: stamps, now: now)
+    }
+
+    /// Popping a pushed screen lands back on the root. The ceremony, if that's
+    /// where the session started, is still the root's state.
+    func dismissToEntry() {
+        route = .home
+        guard entry == .ceremony else { return }
+        ceremonyStep = Ceremony.first
+        chosenKind = nil
+    }
+
+    func start(_ kind: PracticeFormat.Kind) {
+        switch kind {
+        case .reading: chooseAnotherPassage()
+        case .monologue: requestStartMonologue()
+        case .conversation: requestStartConversation()
+        }
+    }
+
+    private func noteBegun() {
+        guard !hasBegunBefore else { return }
+        hasBegunBefore = true
+        UserDefaults.standard.set(true, forKey: Self.hasBegunKey)
     }
 
     func requestStartConversation() {
@@ -124,20 +210,33 @@ final class AppModel {
     }
 
     func startMonologue() {
+        noteBegun()
         route = .monologue
     }
 
-    func finishMonologue(report: MonologueReport, possibleMinorFlag: Bool = false) {
+    func finishMonologue(
+        report: MonologueReport,
+        possibleMinorFlag: Bool = false,
+        regimenID: UUID? = nil,
+        topic: String = ""
+    ) {
         notePossibleMinorIfNeeded(possibleMinorFlag)
         if report.kind == .crisis {
             route = .crisis
             return
         }
-        route = .monologueReport(report)
+        route = .monologueReport(report, regimenID: regimenID, topic: topic)
+    }
+
+    /// Leaves the exercise and opens the home gallery. Not the old recordings list.
+    func showGallery() {
+        goHome()
+        presentGallery = true
     }
 
     func startConversation() {
         guard budget.startEnabled else { return }
+        noteBegun()
         route = .conversation
     }
 

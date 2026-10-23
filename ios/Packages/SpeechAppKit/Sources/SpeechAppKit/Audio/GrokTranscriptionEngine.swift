@@ -6,30 +6,23 @@ public enum GrokTranscriptionError: Error, LocalizedError, Equatable {
     case timedOut
 
     public var errorDescription: String? {
-        switch self {
-        case .relayNotConfigured:
-            "Transcription isn’t configured in this build (missing xAI key)."
-        case .failed(let message):
-            message
-        case .timedOut:
-            "Grok transcription didn’t answer in time. Check your connection and try again."
-        }
+        UserFacingFailure.practiceDidNotStart
     }
 }
 
+/// Where the speech-to-text socket opens.
+public enum GrokEndpoint: Sendable {
+    /// Mint relay. The server adds the model and keeps the xAI key.
+    case relay(URL)
+    /// `wss://api.x.ai/v1/stt`. The bearer token is the xAI key.
+    case direct
+}
+
 /// Streaming Grok speech-to-text.
-///
-/// Two modes:
-/// - direct (`init(xaiAPIKey:)`): connects straight to `wss://api.x.ai/v1/stt` with the same
-///   query the old `server/stt-relay.mjs` built (model, 16 kHz PCM, interim results, smart turn).
-/// - relay (`init(relayBase:bearerToken:)`): connects to a relay's `/v1/stt`, which adds the key.
 public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Sendable {
     public private(set) var engineKind: LiveTranscriptionEngine.EngineKind = .grokVoiceTranscribe
 
-    public static let xaiSTTModel = "grok-voice-transcribe-2.0"
-    public static let xaiSTTEndpoint = URL(string: "wss://api.x.ai/v1/stt")!
-
-    private let relayBase: URL?
+    private let endpoint: GrokEndpoint
     private let bearerToken: String
     private let lock = NSLock()
     private var contextualPhrases: [String] = []
@@ -37,7 +30,9 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
     private var socket: URLSessionWebSocketTask?
     private var session: URLSession?
     private var stitcher = GrokTranscriptStitcher()
-    private var frames = PCM16FrameBuffer()
+    /// 40 ms frames: a 100 ms frame held each word back up to 100 ms before it was sent.
+    public static let liveFrameSeconds: Double = 0.04
+    private var frames = PCM16FrameBuffer(frameSeconds: GrokTranscriptionEngine.liveFrameSeconds)
     private var queuedFrames: [Data] = []
     private var ready = false
     private var connectStarted = false
@@ -46,45 +41,14 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var doneContinuation: CheckedContinuation<Void, Never>?
 
-    public init(relayBase: URL, bearerToken: String) {
-        self.relayBase = relayBase
+    public init(endpoint: GrokEndpoint, bearerToken: String) {
+        self.endpoint = endpoint
         self.bearerToken = bearerToken
     }
 
-    /// Talks to xAI directly. `xaiAPIKey` is sent as `Authorization: Bearer …`.
-    public init(xaiAPIKey: String) {
-        self.relayBase = nil
-        self.bearerToken = xaiAPIKey
-    }
-
-    /// Upstream xAI URL, mirroring `buildSttUpstreamURL` in `server/stt-relay.mjs`.
-    /// `keyterm` values are capped at 100 terms of 50 characters.
-    public static func xaiWebSocketURL(keyterms: [String]) -> URL? {
-        guard var parts = URLComponents(url: xaiSTTEndpoint, resolvingAgainstBaseURL: false) else {
-            return nil
-        }
-        var items = [
-            URLQueryItem(name: "model", value: xaiSTTModel),
-            URLQueryItem(name: "sample_rate", value: "16000"),
-            URLQueryItem(name: "encoding", value: "pcm"),
-            URLQueryItem(name: "interim_results", value: "true"),
-            URLQueryItem(name: "smart_turn", value: "0.7"),
-            URLQueryItem(name: "smart_turn_timeout", value: "3000"),
-        ]
-        items += cappedKeyterms(keyterms).map { URLQueryItem(name: "keyterm", value: $0) }
-        parts.queryItems = items
-        return parts.url
-    }
-
-    static func cappedKeyterms(_ keyterms: [String]) -> [String] {
-        Array(
-            keyterms.compactMap { phrase -> String? in
-                let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { return nil }
-                return String(trimmed.prefix(50))
-            }
-            .prefix(100)
-        )
+    /// Relay socket. Eval and the mint server use this. The app uses `.direct` until launch.
+    public convenience init(relayBase: URL, bearerToken: String) {
+        self.init(endpoint: .relay(relayBase), bearerToken: bearerToken)
     }
 
     public func setContextualPhrases(_ phrases: [String]) {
@@ -161,9 +125,35 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
             return nil
         }
         parts.path = "/v1/stt"
-        let terms = cappedKeyterms(keyterms)
-        parts.queryItems = terms.isEmpty ? nil : terms.map { URLQueryItem(name: "keyterm", value: $0) }
+        let terms = keytermItems(keyterms)
+        parts.queryItems = terms.isEmpty ? nil : terms
         return parts.url
+    }
+
+    /// Same query the mint relay adds before it opens xAI. The phone sends this itself until launch.
+    public static func directWebSocketURL(keyterms: [String]) -> URL? {
+        var parts = URLComponents()
+        parts.scheme = "wss"
+        parts.host = "api.x.ai"
+        parts.path = "/v1/stt"
+        parts.queryItems = [
+            URLQueryItem(name: "model", value: "grok-voice-transcribe-2.0"),
+            URLQueryItem(name: "sample_rate", value: "16000"),
+            URLQueryItem(name: "encoding", value: "pcm"),
+            URLQueryItem(name: "interim_results", value: "true"),
+            URLQueryItem(name: "smart_turn", value: "0.7"),
+            URLQueryItem(name: "smart_turn_timeout", value: "3000"),
+            URLQueryItem(name: "filler_words", value: "true"),
+        ] + keytermItems(keyterms)
+        return parts.url
+    }
+
+    private static func keytermItems(_ keyterms: [String]) -> [URLQueryItem] {
+        keyterms.prefix(100).compactMap { phrase in
+            let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            return URLQueryItem(name: "keyterm", value: String(trimmed.prefix(50)))
+        }
     }
 
     private func connectIfNeeded() async throws {
@@ -183,12 +173,14 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
 
     private func openAndWait() async throws {
         let phrases = lock.withLock { contextualPhrases }
-        let target: URL? = if let relayBase {
-            Self.webSocketURL(httpBase: relayBase, keyterms: phrases)
-        } else {
-            Self.xaiWebSocketURL(keyterms: phrases)
+        let url: URL?
+        switch endpoint {
+        case .relay(let base):
+            url = Self.webSocketURL(httpBase: base, keyterms: phrases)
+        case .direct:
+            url = Self.directWebSocketURL(keyterms: phrases)
         }
-        guard let url = target, !bearerToken.isEmpty else {
+        guard let url else {
             throw GrokTranscriptionError.relayNotConfigured
         }
         var request = URLRequest(url: url)
@@ -219,7 +211,7 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
                 }
             }
             group.addTask {
-                try await Task.sleep(for: .seconds(8))
+                try await Task.sleep(for: .seconds(ConnectionWaitPolicy.hangLimit))
                 throw GrokTranscriptionError.timedOut
             }
             try await group.next()
@@ -346,6 +338,7 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
     }
 
     private func fail(_ error: Error) {
+        UserFacingFailure.log(error, context: "transcription")
         let (readyWait, doneWait) = lock.withLock { () -> (CheckedContinuation<Void, Error>?, CheckedContinuation<Void, Never>?) in
             transcriptFinished = true
             stopped = true

@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ceremony background — the dithered horizon</title>
+<style>
+  :root {
+    --paper: #e8e1d4;
+    --card: #f3eee6;
+    --ink: #1a1713;
+    --muted: #6a645c;
+    --line: rgba(26, 23, 19, 0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  header { max-width: 1280px; margin: 0 auto; padding: 30px 24px 6px; }
+  h1 { font-size: 27px; font-weight: 650; letter-spacing: -0.03em; margin: 0 0 8px; }
+  .lede { font-size: 15px; line-height: 1.5; color: var(--muted); max-width: 78ch; margin: 0 0 4px; }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  .panel {
+    max-width: 1280px; margin: 16px auto 0; padding: 14px 24px;
+  }
+  .bar {
+    display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 12px 14px;
+  }
+  .group { display: flex; gap: 6px; align-items: center; }
+  .group > .glabel {
+    font-size: 11px; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--muted); margin-right: 4px;
+  }
+  button {
+    font: 600 13px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+    border: 0; border-radius: 10px; padding: 10px 13px; cursor: pointer;
+    background: #fff; color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  button:hover { background: #fffdf9; }
+  button.on { background: var(--ink); color: #fff; box-shadow: none; }
+  button.warn.on { background: #b91c1c; }
+  .meter { width: 120px; height: 7px; background: rgba(26,23,19,.12); border-radius: 99px; overflow: hidden; }
+  .meter > i { display: block; height: 100%; width: 0; background: #3b82f6; transition: width .06s linear; }
+  .hint { font-size: 12.5px; color: var(--muted); }
+
+  .stage { max-width: 420px; margin: 22px auto 60px; padding: 0 24px; }
+  .col > h2 {
+    font-size: 16.5px; font-weight: 650; margin: 0 0 3px; letter-spacing: -0.01em;
+  }
+  .col > h2 span {
+    display: inline-block; width: 20px; height: 20px; line-height: 20px;
+    text-align: center; border-radius: 6px; background: var(--ink); color: #fff;
+    font-size: 11px; font-weight: 700; margin-right: 7px; vertical-align: 2px;
+  }
+  .col > p { margin: 0 0 14px; color: var(--muted); font-size: 13.5px; line-height: 1.45; min-height: 3.9em; }
+
+  /* ---- phone ---- */
+  .phone {
+    width: 100%; max-width: 392px; aspect-ratio: 392 / 806; margin: 0 auto;
+    background: #0b0b0c; border-radius: 46px; padding: 11px;
+    box-shadow: 0 26px 60px rgba(26,23,19,.22), inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .screen {
+    position: relative; height: 100%; border-radius: 36px; overflow: hidden;
+    background: #000; color: #fff; cursor: grab;
+    touch-action: none;
+  }
+  .screen:active { cursor: grabbing; }
+  .screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .ui {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    padding: 54px 22px 26px; z-index: 2;
+  }
+  .statusbar {
+    position: absolute; top: 15px; left: 24px; right: 24px; z-index: 3;
+    display: flex; justify-content: space-between;
+    font-size: 12px; font-weight: 600; opacity: .85; letter-spacing: -0.01em;
+  }
+  .top { display: flex; align-items: flex-start; gap: 14px; }
+  .heading {
+    font-size: 34px; font-weight: 640; letter-spacing: -0.025em; line-height: 1.07;
+    flex: 1; margin: 0;
+    will-change: filter, opacity;
+  }
+  .circlebtn {
+    flex: 0 0 auto; width: 42px; height: 42px; border-radius: 50%;
+    background: rgba(255,255,255,.14);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    display: grid; place-items: center; font-size: 15px;
+  }
+  .sub {
+    font-size: 14.5px; line-height: 1.38; opacity: .62; margin: 13px 0 0; max-width: 24ch;
+    will-change: filter, opacity;
+  }
+  .spacer { flex: 1; }
+
+  .rail { display: flex; gap: 8px; margin: 0 0 18px; }
+  .rail > div {
+    flex: 1; height: 58px; border-radius: 16px; display: grid; place-items: center;
+    font-size: 13px; font-weight: 620; letter-spacing: -0.01em;
+    /* Glass, not a tint. Over the dithered field a 7% white wash lets the dots
+       read straight through the label; the blur gives the pill a seat. */
+    background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14);
+    backdrop-filter: blur(16px) saturate(1.1); -webkit-backdrop-filter: blur(16px) saturate(1.1);
+    color: rgba(255,255,255,.72); cursor: pointer; text-align: center; padding: 0 6px;
+    transition: background .22s ease, color .22s ease, box-shadow .22s ease;
+  }
+  .rail > div.sel { background: #fff; color: #000; box-shadow: none; }
+
+  .cta {
+    height: 56px; border-radius: 999px; background: #fff; color: #000;
+    display: grid; place-items: center; font-size: 16px; font-weight: 560;
+    letter-spacing: -0.01em;
+  }
+  .cta > span { will-change: filter, opacity; }
+
+  .tone {
+    display: flex; align-items: center; gap: 10px; margin: 26px 0 0;
+  }
+  .tone .track { position: relative; flex: 1; height: 2px; background: rgba(255,255,255,.18); }
+  .tone .track > i { position: absolute; left: 0; top: 0; height: 100%; background: #fff; width: 0; }
+  .tone .track > b { position: absolute; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: #fff; left: 0; }
+
+  .note {
+    max-width: 1280px; margin: 0 auto 70px; padding: 0 24px;
+    font-size: 13.5px; color: var(--muted); line-height: 1.55;
+  }
+  .note code {
+    font: 500 12.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: rgba(26,23,19,.07); padding: 2px 5px; border-radius: 5px;
+  }
+  .note h3 { font-size: 14px; color: var(--ink); margin: 20px 0 6px; }
+  .note ul { margin: 6px 0; padding-left: 20px; }
+  .note li { margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Ceremony background — the dithered horizon</h1>
+  <p class="lede">
+    One object, anchored off the bottom edge, <b>dead still unless the user is doing something</b>.
+    Measured off <code>inspo/ScreenRecording…MP4</code>: FocusFlight's background sits at a
+    frame-to-frame delta of <b>0.000</b> when idle, jumps to 10–17 during a gesture, and returns to
+    0.000 the instant the finger lifts.
+  </p>
+  <p class="lede">
+    It is <b>one field with one driver</b>. The dither is a filter on it, not a second background,
+    and every step leaves it on. <b>Breathe</b> adds a dotted rim so the circle has an edge to
+    follow. That change happens <b>under the blur dissolve</b>, so the rim never pops in.
+  </p>
+  <p class="lede">
+    <b>Drag up and down on the phone</b> to drive the field by hand — that is the 1:1 gesture
+    coupling. Then turn on <b>Ambient drift</b> to feel what FocusFlight deliberately refuses.
+  </p>
+</header>
+
+<div class="panel">
+  <div class="bar">
+    <div class="group">
+      <span class="glabel">Step</span>
+      <button data-step="home" class="on">Home</button>
+      <button data-step="exercise">Exercise</button>
+      <button data-step="breathe">Breathe</button>
+      <button data-step="hum">Hum</button>
+    </div>
+    <div class="group">
+      <span class="glabel">Drive</span>
+      <button id="mic" class="warn">Use mic</button>
+      <button id="fake">Fake voice</button>
+      <div class="meter"><i id="lvl"></i></div>
+    </div>
+    <div class="group">
+      <span class="glabel">Compare</span>
+      <button id="drift">Ambient drift</button>
+      <button id="tod">Evening</button>
+    </div>
+    <span class="hint" id="hint">Home is still by design. Nothing moves until you do.</span>
+  </div>
+</div>
+
+<div class="stage" id="stage"></div>
+
+<div class="note">
+  <h3>The field, per step</h3>
+  <ul>
+    <li><b>Home, exercise, hum — dithered, no rim.</b> The horizon quantised through an ordered 8×8 Bayer
+      matrix at a <code>w/64</code> dot pitch. Revives the parked dot-dither identity without the
+      orator figure that was the actual problem, and kills gradient banding on OLED black.</li>
+    <li><b>Breathe — dithered, with a rim.</b> Same geometry, same driver, same dots, plus a band of
+      dots at the edge of the field. Without it the dots read as a glow, not a circle.</li>
+    <li><b>The handoff</b> into and out of breathe is the shipped blur dissolve — 28pt radius,
+      280ms, 45% out then 55% in, with the rim swapped unanimated at the midpoint. Same move as
+      the text.</li>
+  </ul>
+
+  <h3>Behaviour in both renders</h3>
+  <ul>
+    <li><b>Still at rest.</b> No ambient loop. A background that always moves cannot respond.</li>
+    <li><b>Brightness rises with commitment.</b> Measured arc in the reference: 33.5 at home →
+      80.8 once committed → 107.4 in the session, with deliberate dark dips at the in-between beats.</li>
+    <li><b>Never a figure, a stage, or an audience.</b> The constraint from
+      <code>docs/scoping-entry-ritual.md</code> that ruled out the orator plates.</li>
+    <li><b>Text changes dissolve through blur</b> at 0.4 × type size over 280ms, as shipped on this branch.</li>
+  </ul>
+</div>
+
+<script>
+"use strict";
+
+/* ----------------------------------------------------------------------------
+   Ceremony model. Real copy, lifted from SpeechAppKit.
+---------------------------------------------------------------------------- */
+
+const FORMATS = [
+  { title: "Reading",      line: "Read a passage aloud. Hear every sound." },
+  { title: "Monologue",    line: "One topic, three takes, less time each." },
+  { title: "Conversation", line: "Fifteen minutes with a partner. No script." },
+];
+
+// BreathPacing: settle 3, inhale 4, exhale 6.
+const BREATH = { settle: 3, inhale: 4, exhale: 6 };
+
+// Brightness arc, normalised from the measured means (33.5 / 80.8 / 107.4 of 255).
+// `dither` picks the render: 1 is the dot field, 0 is the smooth band of light.
+// `rim` adds a dotted edge to the field. Breathe needs it: without an edge the
+// dots read as a glow, and the step asks the user to follow a circle.
+const STEPS = {
+  home:     { gain: 0.30, dither: 1, rim: 0, cta: "Begin",    sub: null },
+  exercise: { gain: 0.52, dither: 1, rim: 0, cta: "This one", sub: null },
+  breathe:  { gain: 0.64, dither: 1, rim: 1, cta: "Done",     sub: "Follow the circle. It grows as you breathe in." },
+  hum:      { gain: 0.88, dither: 1, rim: 0, cta: "Ready",    sub: "Take a breath first." },
+};
+
+const state = {
+  step: "home",
+  format: 0,
+  level: 0,          // 0..1, what drives the field
+  drift: false,
+  evening: true,
+  mic: false,
+  fake: false,
+  dragging: false,
+  t0: performance.now(),
+  stepAt: performance.now(),
+};
+
+/* ----------------------------------------------------------------------------
+   Blur dissolve — the shipped move. 45% out, 55% in, 0.4 x type size.
+---------------------------------------------------------------------------- */
+
+const DISSOLVE = 280;
+function dissolveText(el, next) {
+  if (!el || el.dataset.shown === next) return;
+  el.dataset.shown = next;
+  const size = parseFloat(getComputedStyle(el).fontSize) || 16;
+  const r = Math.max(6, size * 0.4);
+  const out = DISSOLVE * 0.45, inn = DISSOLVE * 0.55;
+
+  el.style.transition = `filter ${out}ms cubic-bezier(.4,0,1,1), opacity ${out}ms cubic-bezier(.4,0,1,1)`;
+  el.style.filter = `blur(${r}px)`;
+  el.style.opacity = "0";
+
+  clearTimeout(el._dz);
+  el._dz = setTimeout(() => {
+    el.textContent = next;
+    el.style.transition = "none";
+    // Force a reflow so the unanimated swap is never seen sharp in the old place.
+    void el.offsetWidth;
+    el.style.transition = `filter ${inn}ms cubic-bezier(0,0,.2,1), opacity ${inn}ms cubic-bezier(0,0,.2,1)`;
+    el.style.filter = "blur(0px)";
+    el.style.opacity = "";
+  }, out);
+}
+
+/* The field's current render mix. Snapped under the blur, never tweened in
+   the open, so the two renders are never visible on top of each other. */
+const render = { dither: STEPS.home.dither, rim: STEPS.home.rim };
+
+function dissolveField(next) {
+  const el = phones[0].canvas;
+  // A brightness-only change needs no veil.
+  if (render.dither === next.dither && render.rim === next.rim) return;
+  const out = DISSOLVE * 0.45, inn = DISSOLVE * 0.55;
+
+  el.style.transition = `filter ${out}ms cubic-bezier(.4,0,1,1), opacity ${out}ms cubic-bezier(.4,0,1,1)`;
+  el.style.filter = "blur(28px)";       // BlurMotion.backdropRadius: a big soft object
+  el.style.opacity = "0";
+
+  clearTimeout(el._dz);
+  el._dz = setTimeout(() => {
+    render.dither = next.dither;
+    render.rim = next.rim;
+    el.style.transition = "none";
+    void el.offsetWidth;
+    el.style.transition = `filter ${inn}ms cubic-bezier(0,0,.2,1), opacity ${inn}ms cubic-bezier(0,0,.2,1)`;
+    el.style.filter = "blur(0px)";
+    el.style.opacity = "";
+  }, out);
+}
+
+/* ----------------------------------------------------------------------------
+   Field renderers. Each gets (ctx, w, h, level, gain, warmth, time).
+---------------------------------------------------------------------------- */
+
+function palette(warmth) {
+  // Evening leans amber, morning leans cool. Mirrors the reference's night map.
+  return warmth
+    ? { r: 255, g: 196, b: 128 }
+    : { r: 178, g: 206, b: 255 };
+}
+
+/* Shared geometry and brightness, so A and B cannot drift apart.
+   The step gain sets a floor; the driver modulates on top of it. Multiplying
+   the two instead leaves home (gain 0.30, level 0) at 0.09 alpha — invisible. */
+function field(w, h, level, gain) {
+  const rest = 0.46, span = 0.40;
+  return {
+    cx: w / 2,
+    // Well below the bottom edge, so the screen shows the falloff and not the
+    // saturated core. Keeps the dense end off the buttons.
+    cy: h * 1.10,
+    radius: h * (rest + span * level) * 0.78,
+    intensity: (0.34 + 0.66 * gain) * (0.62 + 0.38 * level),
+  };
+}
+
+/** The smooth horizon: one soft glow centred below the bottom edge. */
+function drawSmooth(ctx, w, h, level, gain, warm, weight) {
+  const c = palette(warm);
+  const { cx, cy, radius, intensity } = field(w, h, level, gain);
+
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  const peak = 0.52 * intensity * weight;
+  g.addColorStop(0.00, `rgba(${c.r},${c.g},${c.b},${peak})`);
+  g.addColorStop(0.35, `rgba(${c.r * 0.72 | 0},${c.g * 0.6 | 0},${c.b * 0.72 | 0},${peak * 0.42})`);
+  g.addColorStop(0.72, `rgba(${c.r * 0.3 | 0},${c.g * 0.3 | 0},${c.b * 0.45 | 0},${peak * 0.13})`);
+  g.addColorStop(1.00, "rgba(0,0,0,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+
+  // A single thin arc where the light has an edge, so it reads as a horizon
+  // rather than a vignette. One line only; two starts to look like a logo.
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius * 0.995, Math.PI, 2 * Math.PI);
+  ctx.strokeStyle = `rgba(255,255,255,${(0.1 + 0.16 * level) * weight})`;
+  // 150% thicker than the w*0.0026 line: the arc is the thing the breath asks you to follow.
+  ctx.lineWidth = Math.max(1, w * 0.0065);
+  ctx.stroke();
+}
+
+/* Ordered 8x8 Bayer matrix, normalised 0..1. */
+const BAYER = (() => {
+  const m = [
+    [0, 32, 8, 40, 2, 34, 10, 42], [48, 16, 56, 24, 50, 18, 58, 26],
+    [12, 44, 4, 36, 14, 46, 6, 38], [60, 28, 52, 20, 62, 30, 54, 22],
+    [3, 35, 11, 43, 1, 33, 9, 41], [51, 19, 59, 27, 49, 17, 57, 25],
+    [15, 47, 7, 39, 13, 45, 5, 37], [63, 31, 55, 23, 61, 29, 53, 21],
+  ];
+  return m.map(row => row.map(v => (v + 0.5) / 64));
+})();
+
+/** The same horizon, quantised to two tones through the Bayer matrix. */
+function drawDots(ctx, w, h, level, gain, warm, weight, rim) {
+  const cell = Math.max(2, Math.round(w / 64));   // dot pitch. Was w/112; fewer columns, larger dots.
+  const cols = Math.ceil(w / cell), rows = Math.ceil(h / cell);
+  const c = palette(warm);
+
+  ctx.save();
+  ctx.globalAlpha = weight;
+  ctx.fillStyle = `rgb(${c.r},${c.g},${c.b})`;
+
+  const { cx, cy, radius, intensity } = field(w, h, level, gain);
+  const peak = 1.05 * intensity;
+  // The rim band, in units of the radius. Wide enough to hold two or three
+  // rows of dots, so the Bayer threshold has room to draw a ring and not a
+  // broken dashed line.
+  const band = (3 * cell) / radius;
+  const rimPeak = rim * (0.55 + 0.35 * level);
+
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      const x = i * cell + cell / 2, y = j * cell + cell / 2;
+      const d = Math.hypot(x - cx, y - cy) / radius;
+      if (d > 1.15 + band) continue;
+      // Inverse square from the centre, so the crown thins instead of holding a flat band.
+      let v = d < 1.15 ? peak / (1 + d * d * 7) : 0;
+      if (rimPeak > 0) v += rimPeak * Math.max(0, 1 - Math.abs(d - 1) / band);
+      if (v > BAYER[j & 7][i & 7] * 0.85 + 0.07) {
+        // A little larger in the cell than before, so the gaps read as less scatter.
+        const s = cell * (0.62 + 0.38 * Math.min(1, v));
+        ctx.beginPath();
+        ctx.arc(x, y, s / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
+}
+
+/* One field, two renders. `dither` is a filter on the field, not a different
+   background. Every step leaves it on; the smooth render stays for comparison.
+   Any switch happens under the blur dissolve, so the crossfade is never seen. */
+function drawField(ctx, w, h, level, gain, warm, dither, rim) {
+  ctx.clearRect(0, 0, w, h);
+  if (dither < 1) drawSmooth(ctx, w, h, level, gain, warm, 1 - dither);
+  if (dither > 0) drawDots(ctx, w, h, level, gain, warm, dither, rim);
+}
+
+/* ----------------------------------------------------------------------------
+   Build the phone.
+---------------------------------------------------------------------------- */
+
+const stage = document.getElementById("stage");
+const phones = [(() => {
+  const col = document.createElement("div");
+  col.className = "col";
+  col.innerHTML = `
+    <div class="phone"><div class="screen">
+      <canvas></canvas>
+      <div class="statusbar"><span>9:41</span><span>􀙇 􀛨</span></div>
+      <div class="ui">
+        <div class="top">
+          <h3 class="heading"></h3>
+          <div class="circlebtn">◍</div>
+        </div>
+        <p class="sub"></p>
+        <div class="tone" hidden><div class="track"><i></i><b></b></div></div>
+        <div class="spacer"></div>
+        <div class="rail" hidden>
+          ${FORMATS.map((f, i) => `<div data-i="${i}">${f.title}</div>`).join("")}
+        </div>
+        <div class="cta"><span></span></div>
+      </div>
+    </div></div>`;
+  stage.appendChild(col);
+
+  const screen = col.querySelector(".screen");
+  const canvas = col.querySelector("canvas");
+  const o = {
+    screen, canvas, ctx: canvas.getContext("2d"),
+    heading: col.querySelector(".heading"),
+    sub: col.querySelector(".sub"),
+    cta: col.querySelector(".cta span"),
+    rail: col.querySelector(".rail"),
+    tone: col.querySelector(".tone"),
+    toneFill: col.querySelector(".tone .track > i"),
+    toneDot: col.querySelector(".tone .track > b"),
+    w: 0, h: 0,
+  };
+
+  // Selection rail — the select-text transition.
+  o.rail.addEventListener("click", e => {
+    const t = e.target.closest("[data-i]");
+    if (!t) return;
+    state.format = +t.dataset.i;
+    syncAll();
+  });
+
+  // Drag the field by hand. 1:1 with the finger, and it stops dead on release.
+  let startY = 0, startLevel = 0;
+  screen.addEventListener("pointerdown", e => {
+    if (e.target.closest("[data-i]")) return;
+    state.dragging = true;
+    startY = e.clientY;
+    startLevel = state.level;
+    screen.setPointerCapture(e.pointerId);
+    hint("Dragging — the field tracks your finger, nothing more.");
+  });
+  screen.addEventListener("pointermove", e => {
+    if (!state.dragging) return;
+    const dy = (startY - e.clientY) / (screen.clientHeight * 0.55);
+    state.level = Math.max(0, Math.min(1, startLevel + dy));
+  });
+  const release = () => {
+    if (!state.dragging) return;
+    state.dragging = false;
+    hint("Finger up — and it stops dead. No settle, no drift.");
+  };
+  screen.addEventListener("pointerup", release);
+  screen.addEventListener("pointercancel", release);
+
+  return o;
+})()];
+
+function resize() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  for (const p of phones) {
+    const r = p.canvas.getBoundingClientRect();
+    // A canvas that is not laid out measures 0, which would blank the field
+    // permanently. Keep the last good size instead.
+    if (r.width < 1 || r.height < 1) continue;
+    p.w = Math.round(r.width * dpr);
+    p.h = Math.round(r.height * dpr);
+    p.canvas.width = p.w;
+    p.canvas.height = p.h;
+  }
+}
+window.addEventListener("resize", resize);
+
+/* ----------------------------------------------------------------------------
+   Copy per step.
+---------------------------------------------------------------------------- */
+
+function headingFor() {
+  switch (state.step) {
+    case "home":     return "Find your voice";
+    case "exercise": return FORMATS[state.format].line;
+    case "breathe":  return breathPhaseLabel();
+    case "hum":      return "Match the note with a hum.";
+  }
+}
+
+function breathPhaseLabel() {
+  const el = (performance.now() - state.stepAt) / 1000;
+  if (el < BREATH.settle) return "Get ready";
+  const c = (el - BREATH.settle) % (BREATH.inhale + BREATH.exhale);
+  return c < BREATH.inhale ? "Breathe in" : "Breathe out";
+}
+
+function syncAll() {
+  const cfg = STEPS[state.step];
+  for (const p of phones) {
+    dissolveText(p.heading, headingFor());
+    const sub = cfg.sub;
+    p.sub.hidden = !sub;
+    if (sub) dissolveText(p.sub, sub);
+    dissolveText(p.cta, cfg.cta);
+    p.rail.hidden = state.step !== "exercise";
+    p.tone.hidden = state.step !== "hum";
+    p.rail.querySelectorAll("[data-i]").forEach(d =>
+      d.classList.toggle("sel", +d.dataset.i === state.format));
+  }
+}
+
+function hint(s) { document.getElementById("hint").textContent = s; }
+
+/* ----------------------------------------------------------------------------
+   Drivers: paced breath, mic, or a fake voice.
+---------------------------------------------------------------------------- */
+
+let analyser = null, micData = null;
+async function toggleMic(btn) {
+  if (state.mic) {
+    state.mic = false; btn.classList.remove("on"); btn.textContent = "Use mic";
+    return;
+  }
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ac.createMediaStreamSource(s);
+    analyser = ac.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.72;
+    src.connect(analyser);
+    micData = new Uint8Array(analyser.fftSize);
+    state.mic = true; state.fake = false;
+    document.getElementById("fake").classList.remove("on");
+    btn.classList.add("on"); btn.textContent = "Mic on";
+    hint("Mic live. Hum and watch the field — this is the Hum step's real driver.");
+  } catch (e) {
+    hint("Mic blocked by the browser. Use “Fake voice” instead.");
+  }
+}
+
+function micLevel() {
+  if (!analyser) return 0;
+  analyser.getByteTimeDomainData(micData);
+  let sum = 0;
+  for (let i = 0; i < micData.length; i++) {
+    const v = (micData[i] - 128) / 128;
+    sum += v * v;
+  }
+  const rms = Math.sqrt(sum / micData.length);
+  return Math.max(0, Math.min(1, (rms - 0.008) * 11));
+}
+
+function driverLevel(now) {
+  if (state.dragging) return state.level;
+
+  if (state.step === "breathe") {
+    const el = (now - state.stepAt) / 1000;
+    if (el < BREATH.settle) return 0;
+    const c = (el - BREATH.settle) % (BREATH.inhale + BREATH.exhale);
+    // Eased, not linear: the swell has to feel like a breath, not a ramp.
+    const f = c < BREATH.inhale
+      ? c / BREATH.inhale
+      : 1 - (c - BREATH.inhale) / BREATH.exhale;
+    return 0.5 - 0.5 * Math.cos(Math.PI * f);
+  }
+
+  if (state.step === "hum") {
+    if (state.mic) return micLevel();
+    if (state.fake) {
+      const t = now / 1000;
+      // A held note with human wobble, not a sine.
+      const env = Math.min(1, Math.max(0, Math.sin(t * 0.55) * 1.4));
+      return env * (0.72 + 0.14 * Math.sin(t * 7.3) + 0.08 * Math.sin(t * 2.1));
+    }
+    return 0;
+  }
+
+  if (state.step === "exercise") return 0.20 + state.format * 0.08;
+  return 0; // home: still.
+}
+
+/* ----------------------------------------------------------------------------
+   Loop.
+---------------------------------------------------------------------------- */
+
+let lastHeading = "";
+function frame(now) {
+  const target = driverLevel(now);
+  // Light smoothing so mic noise does not jitter the field. Drag is already 1:1.
+  state.level = state.dragging ? target : state.level + (target - state.level) * 0.18;
+
+  const gain = STEPS[state.step].gain;
+  // Ambient drift is the thing the reference refuses. Off by default.
+  const drift = state.drift ? 0.055 * (1 + Math.sin(now / 2600)) : 0;
+  const lvl = Math.max(0, Math.min(1, state.level + drift));
+
+  for (const p of phones) {
+    drawField(p.ctx, p.w, p.h, lvl, gain, state.evening, render.dither, render.rim);
+    if (state.step === "hum") {
+      const pr = Math.min(1, ((now - state.stepAt) / 1000) / 10);
+      p.toneFill.style.width = (pr * 100) + "%";
+      p.toneDot.style.left = `calc(${pr * 100}% - 4px)`;
+    }
+  }
+
+  document.getElementById("lvl").style.width = (lvl * 100) + "%";
+
+  if (state.step === "breathe") {
+    const h = breathPhaseLabel();
+    if (h !== lastHeading) { lastHeading = h; syncAll(); }
+  } else {
+    lastHeading = "";
+  }
+
+  requestAnimationFrame(frame);
+}
+
+/* ----------------------------------------------------------------------------
+   Controls.
+---------------------------------------------------------------------------- */
+
+document.querySelectorAll("[data-step]").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll("[data-step]").forEach(x => x.classList.remove("on"));
+    b.classList.add("on");
+    state.step = b.dataset.step;
+    state.stepAt = performance.now();
+    dissolveField(STEPS[state.step]);
+    syncAll();
+    hint({
+      home: "Home is still by design. Nothing moves until you do.",
+      exercise: "Picking an exercise dissolves the copy and shifts the field a little.",
+      breathe: "Dithered, with a dotted rim so the circle has an edge to follow.",
+      hum: "Rim off. Turn on the mic or the fake voice; your voice is the only thing moving it.",
+    }[state.step]);
+  });
+});
+
+document.getElementById("mic").addEventListener("click", e => toggleMic(e.currentTarget));
+document.getElementById("fake").addEventListener("click", e => {
+  state.fake = !state.fake;
+  e.currentTarget.classList.toggle("on", state.fake);
+  if (state.fake) hint("Fake voice on. Switch to the Hum step to see it drive the field.");
+});
+document.getElementById("drift").addEventListener("click", e => {
+  state.drift = !state.drift;
+  e.currentTarget.classList.toggle("on", state.drift);
+  hint(state.drift
+    ? "Ambient drift on — it now moves without you. Note how much less the real input reads."
+    : "Drift off. Back to still, and the response means something again.");
+});
+document.getElementById("tod").addEventListener("click", e => {
+  state.evening = !state.evening;
+  e.currentTarget.textContent = state.evening ? "Evening" : "Morning";
+  hint(state.evening ? "Evening palette — amber, like the reference's night map." : "Morning palette — cool.");
+});
+
+resize();
+syncAll();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

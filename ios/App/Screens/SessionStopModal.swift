@@ -2,9 +2,12 @@ import SwiftUI
 import UIKit
 
 /// Centered stop card used by Conversation and Monologue. Same chrome; each format supplies its own copy.
+///
+/// The card does not darken behind itself. Separation is the host's job, through
+/// `blurBackdrop`, so the session content is blurred and dimmed as one layer
+/// instead of being covered by a flat sheet of black. This view keeps a clear
+/// layer only to swallow taps meant for the content underneath.
 struct SessionStopModal: View {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
     var title: String
     var confirmTitle: String
     var dismissTitle: String
@@ -13,7 +16,8 @@ struct SessionStopModal: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(reduceTransparency ? 0.72 : 0.4)
+            Color.clear
+                .contentShape(Rectangle())
                 .ignoresSafeArea()
                 .accessibilityHidden(true)
 

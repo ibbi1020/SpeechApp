@@ -1,9 +1,12 @@
 import AVFoundation
+import OSLog
 import SwiftUI
 import UIKit
 import SpeechAppKit
 
 struct MonologueSessionView: View {
+    private static let log = Logger(subsystem: "com.speechapp", category: "MonologueRecording")
+
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -14,8 +17,9 @@ struct MonologueSessionView: View {
     @State private var listenError: String?
     @State private var showLeaveConfirm = false
     @State private var didRouteFinish = false
-    @State private var countdownRemaining: Int?
     @State private var isPreparing = false
+    /// When the connecting orb appeared. The slow line uses this clock.
+    @State private var connectingStarted: Date?
     @State private var startTask: Task<Void, Never>?
 
     // Live capture — held so the pump Tasks and engine/source can be cancelled/stopped.
@@ -25,11 +29,6 @@ struct MonologueSessionView: View {
     @State private var audioTask: Task<Void, Never>?
     @State private var speechEnergy: Float = 0
     @State private var isStartingListen = false
-    /// Background engine / mic shutdown after Done or Leave. The next take waits on it.
-    @State private var pendingStop: Task<Void, Never>?
-    @State private var isEnding = false
-    @State private var pauseThrottle = TapThrottle()
-    @State private var topicThrottle = TapThrottle()
     @State private var notes: [SpokenNote] = []
     @State private var noteDraft = ""
     @State private var isAddingNote = false
@@ -41,10 +40,18 @@ struct MonologueSessionView: View {
     // update's rawText replaces this rather than being appended.
     @State private var hypothesis: String = ""
     @State private var committedRanges: [ConversationSpeechInterval] = []
+    @State private var committedSpokenTokens: [SpokenToken] = []
+    @State private var lastStreamTime: TimeInterval = 0
+    @State private var takeRecorder = TakeRecorder()
+    @State private var regimenID = UUID()
+    @State private var finishedTakes: [MonologueRecordingPipeline.FinishedTake] = []
+    @State private var finalizeTask: Task<Void, Never>?
+    @State private var isFinalizingAudio = false
+    @State private var saveErrorMessage: String?
 
-    /// Fog the notes page for the 3-2-1 after I’m ready. The take clock stays stopped until it ends.
+    /// Fog the notes page while the microphone starts. The take clock stays stopped until it ends.
     private var isFogged: Bool {
-        countdownRemaining != nil || isPreparing
+        isPreparing
     }
 
     private var fogBlurRadius: CGFloat {
@@ -62,56 +69,57 @@ struct MonologueSessionView: View {
         ZStack {
             SpeechScreenBackground()
             content
+                // The stop card does not sit on a flat scrim: the talk behind it
+                // blurs and dims as one layer, so the card is the only thing in focus.
+                .blurBackdrop(showLeaveConfirm)
 
             // Fog and the leave modal animate on their own. A spring on the
             // whole screen also springs the orb bar, and a WebGL view laid out
             // at zero height stays blank for the rest of the take.
             ZStack {
-                if isFogged {
-                    ReadingCountdownOverlay(remaining: countdownRemaining, instruction: "")
-                }
-
                 if showLeaveConfirm {
                     SessionStopModal(
                         title: "Leave this talk?",
                         confirmTitle: "Leave",
                         dismissTitle: "Keep going",
                         onConfirm: {
-                            guard !isEnding else { return }
-                            isEnding = true
                             showLeaveConfirm = false
-                            // Route first; the engine and mic wind down behind the next screen.
-                            detachListen()
-                            session?.confirmLeave()
-                            routeIfFinished()
-                            isEnding = false
+                            Task {
+                                if let session {
+                                    await finishCurrentTake(session, leaving: true)
+                                } else {
+                                    await stopListen()
+                                    routeIfFinished()
+                                }
+                            }
                         },
                         onDismiss: { showLeaveConfirm = false }
                     )
-                    .transition(.opacity)
+                    .transition(SpeechBlur.dissolve)
                 }
             }
             .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
             .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showLeaveConfirm)
             .allowsHitTesting(isFogged || showLeaveConfirm)
         }
-        .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .speechBarChrome()
         .speechBottomBlur(bar: false)
         .navigationBarBackButtonHidden(true)
-        // Back stays in the bar, unchanged, while the leave card is up (like Reading): removing
-        // the only bar item collapses the bar and shifts the page up. The card guards it instead.
+        .toolbar(showLeaveConfirm ? .hidden : .automatic, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                Button {
-                    guard !showLeaveConfirm, !isEnding else { return }
+                SpeechBarButton(systemName: "chevron.left", label: "Back") {
                     handleBack()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
                 }
-                .accessibilityLabel("Back")
+            }
+            if session?.phase == .planning || session?.phase == .between {
+                ToolbarItem(placement: .topBarTrailing) {
+                    SpeechBarButton(systemName: "waveform", label: "Gallery") {
+                        model.showGallery()
+                    }
+                }
             }
         }
         .background {
@@ -125,25 +133,44 @@ struct MonologueSessionView: View {
             Task {
                 let wasTaking = session?.phase == .taking
                 await session?.tick()
-                if wasTaking, session?.phase != .taking {
-                    detachListen()
+                if wasTaking, let session, session.phase != .taking {
+                    // Ceiling hit — same as Done for this take.
+                    if session.phase == .between || session.phase == .report {
+                        await captureTakeAudio(session)
+                        if session.phase == .report || session.phase == .crisis {
+                            await persistRegimenIfNeeded(session)
+                            await stopListen()
+                            routeIfFinished()
+                        } else {
+                            await stopListen()
+                            // Between takes: listening restarts on next I’m ready.
+                        }
+                    } else if session.phase == .crisis {
+                        await handleCrisis(session)
+                    }
                 }
-                routeIfFinished()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { note in
             handleRouteChange(note)
         }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { note in
+            if SessionInterruption.shouldPause(note) {
+                session?.pause(atStreamTime: lastStreamTime)
+                takeRecorder.setWriting(false)
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
-                session?.pause()
+                session?.pause(atStreamTime: lastStreamTime)
+                takeRecorder.setWriting(false)
             }
         }
         .onDisappear {
             startTask?.cancel()
             startTask = nil
             // Swipe-back still pops the screen even with the back button hidden.
-            detachListen()
+            Task { await stopListen() }
         }
     }
 
@@ -169,13 +196,15 @@ struct MonologueSessionView: View {
                 Color.black.opacity(fogWashOpacity)
                     .allowsHitTesting(false)
             }
+            .accessibilityHidden(isFogged || showLeaveConfirm)
+            .allowsHitTesting(!isFogged && !showLeaveConfirm)
             .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: session.phase)
             .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
             .safeAreaBar(edge: .bottom, spacing: 0) {
                 sessionChrome(session, live: live)
+                    .accessibilityHidden(showLeaveConfirm)
+                    .allowsHitTesting(!showLeaveConfirm)
             }
-            .accessibilityHidden(isFogged || showLeaveConfirm)
-            .allowsHitTesting(!isFogged && !showLeaveConfirm)
     }
 
     @ViewBuilder
@@ -192,18 +221,16 @@ struct MonologueSessionView: View {
 
     @ViewBuilder
     private func sessionChrome(_ session: MonologueSession, live: Bool) -> some View {
-        // Mount the orb only once the take is up. The 3-2-1 still shows the
-        // planning page; swapping that page out from under a live WebGL view
-        // is what blanks the orb. Format 2 inserts the orb once, after the countdown.
-        if live {
-            liveChrome(session, live: true)
+        // The connecting orb is the same bar the take uses, so it is already
+        // up while the model connects. Mounting it only as the phase changes
+        // blanks the WebGL view.
+        if live || isPreparing {
+            liveChrome(session, live: live)
         } else if session.phase == .planning || session.phase == .between {
             planningChrome(session)
-                .blur(radius: fogBlurRadius)
-                .overlay {
-                    Color.black.opacity(fogWashOpacity)
-                        .allowsHitTesting(false)
-                }
+                .opacity(isFogged ? 0 : 1)
+                .accessibilityHidden(isFogged)
+                .allowsHitTesting(!isFogged)
         }
     }
 
@@ -217,24 +244,19 @@ struct MonologueSessionView: View {
                     stageDuration(minutes)
 
                     Text(session.prompt)
-                        .font(.system(size: 22, weight: .regular, design: .serif))
-                        .lineSpacing(8)
+                        .speechReading()
                         .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
 
                     if session.phase == .planning {
-                        Button {
-                            guard topicThrottle.allow() else { return }
+                        Button("Change topic") {
                             session.skipTopic()
-                        } label: {
-                            Text("Change topic")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .frame(minHeight: 44, alignment: .leading)
                     }
                 }
 
@@ -247,7 +269,7 @@ struct MonologueSessionView: View {
                 }
             }
             .padding(.horizontal, SpeechSpacing.page)
-            .padding(.top, 28)
+            .padding(.top, SpeechSpacing.section)
             .padding(.bottom, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -257,10 +279,9 @@ struct MonologueSessionView: View {
     private func stageDuration(_ minutes: Int) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text("\(minutes)")
-                .font(.custom(SpeechType.instrumentSerif, size: stageDurationSize))
-                .tracking(stageDurationSize * SpeechType.metrics(.h1).trackingEm)
+                .font(.system(size: stageDurationSize, weight: .semibold))
                 .monospacedDigit()
-                .contentTransition(reduceMotion ? .opacity : .numericText(countsDown: true))
+                .digitRoll(minutes, countsDown: true, reduceMotion: reduceMotion)
             Text(minutes == 1 ? "minute" : "minutes")
                 .speechType(.h3)
                 .foregroundStyle(.secondary)
@@ -269,7 +290,6 @@ struct MonologueSessionView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(minutes) \(minutes == 1 ? "minute" : "minutes")")
         .accessibilityAddTraits(.isHeader)
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: minutes)
     }
 
     private func notesEditor(_ session: MonologueSession) -> some View {
@@ -289,7 +309,6 @@ struct MonologueSessionView: View {
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Remove note")
@@ -311,7 +330,6 @@ struct MonologueSessionView: View {
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .frame(minHeight: 44)
-                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -357,7 +375,9 @@ struct MonologueSessionView: View {
                 .buttonStyle(SpeechPrimaryButtonStyle(showsTint: true))
             } else {
                 Button("I’m ready") {
-                    readyTapped(session)
+                    dismissKeyboardImmediately()
+                    startTask?.cancel()
+                    startTask = Task { await beginListen(session) }
                 }
                 .buttonStyle(SpeechStartButtonStyle())
                 .disabled(isStartingListen)
@@ -373,13 +393,10 @@ struct MonologueSessionView: View {
     private func liveCanvas(_ session: MonologueSession) -> some View {
         ZStack {
             Text(session.prompt)
-                .font(.system(.subheadline, design: .serif))
+                .speechReading()
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .padding(.top, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             VStack(spacing: 20) {
                 MonologueCountdown(
@@ -407,7 +424,7 @@ struct MonologueSessionView: View {
             orbBar(session: session, live: live)
         }
         .padding(.horizontal, SpeechSpacing.page)
-        .padding(.top, 8)
+        .padding(.top, 12)
         .padding(.bottom, 16)
     }
 
@@ -415,41 +432,42 @@ struct MonologueSessionView: View {
     private func orbBar(session: MonologueSession, live: Bool) -> some View {
         SessionOrbBar(
             phase: .monologue(isPreparing: !live, phase: session.phase),
+            connectingStarted: isPreparing ? connectingStarted : nil,
             inputVolume: session.phase == .taking ? speechEnergy : 0,
             animating: session.phase != .paused
         ) {
             Button {
-                guard pauseThrottle.allow() else { return }
                 if session.phase == .paused {
-                    session.resume()
+                    session.resume(atStreamTime: lastStreamTime)
+                    takeRecorder.setWriting(true)
                 } else {
-                    session.pause()
+                    session.pause(atStreamTime: lastStreamTime)
+                    takeRecorder.setWriting(false)
                 }
             } label: {
                 Image(systemName: session.phase == .paused ? "play.fill" : "pause.fill")
-                    .speechGlassCircle()
             }
-            .buttonStyle(.plain)
-            .sensoryFeedback(.selection, trigger: session.phase == .paused)
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
+            .disabled(!live)
+            .opacity(live ? 1 : 0)
+            .allowsHitTesting(live)
+            .accessibilityHidden(!live)
             .accessibilityLabel(session.phase == .paused ? "Resume" : "Pause")
         } trailing: {
             Button {
-                guard !isEnding else { return }
-                isEnding = true
-                // Stop feeding the take, move on, and let the engine and mic close in the background.
-                detachListen()
-                session.done()
-                routeIfFinished()
-                isEnding = false
+                Task {
+                    await finishCurrentTake(session)
+                }
             } label: {
                 Image(systemName: "checkmark")
-                    .speechGlassCircle(tint: .accentColor)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session, fill: .red))
+            .disabled(!live)
+            .opacity(live ? 1 : 0)
+            .allowsHitTesting(live)
+            .accessibilityHidden(!live)
             .accessibilityLabel("Done")
         }
-        .accessibilityHidden(showLeaveConfirm)
-        .allowsHitTesting(!showLeaveConfirm)
         .fixedSize(horizontal: false, vertical: true)
         .transaction { $0.disablesAnimations = true }
     }
@@ -464,9 +482,7 @@ struct MonologueSessionView: View {
                 .foregroundStyle(.secondary)
 
             Button("Back to home") {
-                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle) {
-                    model.goHome()
-                }
+                model.goHome()
             }
             .buttonStyle(SpeechSecondaryButtonStyle())
         }
@@ -512,36 +528,12 @@ struct MonologueSessionView: View {
 
     // MARK: - Live capture
 
-    /// Fog and the first digit go up on the tap; the previous take's shutdown, permission and
-    /// engine set-up run behind it. A second tap while a start is in flight is ignored.
-    private func readyTapped(_ session: MonologueSession) {
-        dismissKeyboardImmediately()
-        guard startTask == nil, !isStartingListen else { return }
-        listenError = nil
-        #if os(iOS)
-        guard ProviderKeys.xai != nil else {
-            listenError = "Topic-talk transcription isn’t set up in this build."
-            return
-        }
-        #endif
-        isStartingListen = true
-        isPreparing = true
-        countdownRemaining = 3
-        startTask = Task {
-            await beginListen(session)
-            startTask = nil
-        }
-    }
-
-    /// A 3-2-1 plays after the Grok relay is ready, then `session.ready()` starts the take clock.
+    /// The microphone starts after Grok is ready, or after the phone backup is ready. `session.ready()` starts the take clock.
     private func beginListen(_ session: MonologueSession) async {
-        defer {
-            isStartingListen = false
-            isPreparing = false
-            countdownRemaining = nil
-        }
-        // Let the fog frame commit before audio-session and engine set-up touch the main thread.
-        await SpeechFrame.yieldForRender()
+        dismissKeyboardImmediately()
+        guard !isStartingListen else { return }
+        isStartingListen = true
+        defer { isStartingListen = false }
 
         listenError = nil
         // New take — reset accumulation so take-1 speech never leaks into take 2/3.
@@ -551,48 +543,52 @@ struct MonologueSessionView: View {
         await stopListen()
 
         #if os(iOS)
-        let granted = await micGranted()
+        let granted = await requestMic()
         guard granted else {
-            listenError = "Microphone permission is required."
+            Self.log.error("microphone permission denied")
+            listenError = UserFacingFailure.microphoneOff
             return
         }
-        guard let xaiKey = ProviderKeys.xai else {
-            listenError = "Topic-talk transcription isn’t set up in this build."
-            return
-        }
-
+        isPreparing = true
+        connectingStarted = Date()
         VoiceOrbPreloader.warmup()
-
-        let engine = GrokTranscriptionEngine(xaiAPIKey: xaiKey)
-        engine.setContextualPhrases(Self.keyterms(prompt: session.prompt, reuseLine: session.reuseLine))
-        // Subscribe before prepare. A later read of `updates` would replace the stream and drop words.
-        let updates = engine.updates
-        let prepareTask = Task {
-            try await engine.prepareIfNeeded(locale: Locale(identifier: "en-US"))
+        defer {
+            isPreparing = false
+            connectingStarted = nil
         }
+
+        let engine: any TranscriptionEngine
+        do {
+            engine = try await LiveSpeech.engine(
+                apiKey: XAIDirectKey.load(),
+                phrases: Self.keyterms(prompt: session.prompt, reuseLine: session.reuseLine)
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            UserFacingFailure.log(error, context: "monologue start")
+            listenError = UserFacingFailure.message(for: error)
+            return
+        }
+        // One read. A later read of `updates` would replace the stream and drop words.
+        let updates = engine.updates
 
         var startedSource: MicAudioSource?
         do {
-            for n in [3, 2, 1] {
-                try Task.checkCancellation()
-                countdownRemaining = n
-                try await Task.sleep(for: .seconds(1))
-            }
-            countdownRemaining = nil
-            try await prepareTask.value
             try Task.checkCancellation()
             try await engine.start(locale: Locale(identifier: "en-US"), preference: .autoPreferSpeechTranscriber)
             let source = MicAudioSource()
             try await source.start()
             startedSource = source
         } catch is CancellationError {
-            prepareTask.cancel()
             await startedSource?.stop()
+            await engine.stop()
             return
         } catch {
-            prepareTask.cancel()
             await startedSource?.stop()
-            listenError = error.localizedDescription
+            await engine.stop()
+            UserFacingFailure.log(error, context: "monologue start")
+            listenError = UserFacingFailure.message(for: error)
             return
         }
 
@@ -611,6 +607,7 @@ struct MonologueSessionView: View {
 
                 let timedTokens: [(isFinal: Bool, interval: ConversationSpeechInterval)] = update.tokens.compactMap { token in
                     guard let start = token.startTime, let end = token.endTime else { return nil }
+                    lastStreamTime = max(lastStreamTime, end)
                     return (isFinal: token.isFinal, interval: ConversationSpeechInterval(start: start, end: end))
                 }
                 let finals = timedTokens.filter(\.isFinal).map(\.interval)
@@ -623,10 +620,14 @@ struct MonologueSessionView: View {
                     .map(\.interval)
                 session.ingestRanges(committedRanges + volatileTail)
 
+                let finalSpoken = update.tokens.filter { $0.isFinal && $0.startTime != nil && $0.endTime != nil }
+                if !finalSpoken.isEmpty {
+                    committedSpokenTokens.append(contentsOf: finalSpoken)
+                    session.ingestWords(committedSpokenTokens)
+                }
+
                 if session.phase == .crisis {
-                    // Don't wait for the next timer tick — stop and route now.
-                    detachListen()
-                    routeIfFinished()
+                    await handleCrisis(session)
                     break
                 }
             }
@@ -634,18 +635,34 @@ struct MonologueSessionView: View {
 
         audioTask = Task {
             for await chunk in source.chunks {
+                // Only feed Grok and the file while the take clock is running so
+                // stream time and the saved file stay aligned across pauses.
+                guard session.phase == .taking else {
+                    speechEnergy = 0
+                    continue
+                }
                 engine.append(chunk)
+                takeRecorder.append(chunk)
+                let duration = Double(chunk.samples.count) / max(chunk.sampleRate, 1)
+                session.appendRecordingAudio(duration: duration)
                 speechEnergy = ListenDrive.normalized(rms: StallDetector.rms(chunk.samples))
             }
         }
 
+        hypothesis = ""
+        committedRanges = []
+        committedSpokenTokens = []
+        lastStreamTime = 0
+        try? takeRecorder.start()
+        takeRecorder.setWriting(true)
         session.ready()
         #else
-        listenError = "Live mic requires iOS."
+        Self.log.error("live mic is unavailable off iOS")
+        listenError = UserFacingFailure.needsIPhone
         #endif
     }
 
-    /// Topic words to bias Grok toward. Each term is capped at 50 characters by the relay.
+    /// Topic words to bias Grok toward. Each term is capped at 50 characters.
     private static func keyterms(prompt: String, reuseLine: String) -> [String] {
         [prompt, reuseLine]
             .flatMap { $0.split(whereSeparator: \.isWhitespace).map(String.init) }
@@ -653,40 +670,22 @@ struct MonologueSessionView: View {
     }
 
     /// Cancels the pump Tasks and stops engine/source. Never stopped on user Pause —
-    /// resume continues the same engine.
+    /// resume continues the same engine. Does not finalize the take recorder —
+    /// call `captureTakeAudio` for that.
     private func stopListen() async {
-        detachListen()
-        await pendingStop?.value
-    }
-
-    /// Cuts the take off right away (no more words or levels reach the session), then closes
-    /// the engine and mic in the background so Done / Leave can move on this frame.
-    private func detachListen() {
+        takeRecorder.setWriting(false)
         audioTask?.cancel()
         audioTask = nil
         transcriptTask?.cancel()
         transcriptTask = nil
-        let engine = liveEngine
-        let source = liveSource
+        await liveEngine?.stop()
+        await liveSource?.stop()
         liveEngine = nil
         liveSource = nil
         speechEnergy = 0
-        guard engine != nil || source != nil else { return }
-        let previous = pendingStop
-        pendingStop = Task {
-            await previous?.value
-            await engine?.stop()
-            await source?.stop()
-        }
     }
 
     #if os(iOS)
-    /// Skips the permission round trip when access is already granted.
-    private func micGranted() async -> Bool {
-        if AVAudioApplication.shared.recordPermission == .granted { return true }
-        return await requestMic()
-    }
-
     private func requestMic() async -> Bool {
         await withCheckedContinuation { continuation in
             AVAudioApplication.requestRecordPermission { granted in
@@ -708,7 +707,8 @@ struct MonologueSessionView: View {
                 time: SystemTimeSource()
             )
         } catch {
-            errorMessage = "Topics didn’t load."
+            UserFacingFailure.log(error, context: "monologue topics")
+            errorMessage = UserFacingFailure.topicsDidNotLoad
         }
     }
 
@@ -722,7 +722,8 @@ struct MonologueSessionView: View {
             return
         }
         if ConversationRoutePause.shouldPause(reason: raw) {
-            session?.pause()
+            session?.pause(atStreamTime: lastStreamTime)
+            takeRecorder.setWriting(false)
         }
     }
 
@@ -744,10 +745,116 @@ struct MonologueSessionView: View {
         guard !didRouteFinish, let session else { return }
         if session.phase == .report || session.phase == .crisis, let report = session.report {
             didRouteFinish = true
+            let kept = RecordingsService.keepRecordings
+            let id: UUID? = if report.kind == .crisis {
+                nil
+            } else if kept || !finishedTakes.isEmpty {
+                regimenID
+            } else {
+                nil
+            }
             model.finishMonologue(
                 report: report,
-                possibleMinorFlag: session.possibleMinorFlag
+                possibleMinorFlag: session.possibleMinorFlag,
+                regimenID: id,
+                topic: session.prompt
             )
+        }
+    }
+
+    /// Done / leave: stop mic, snapshot the take, finalize audio, then route.
+    private func finishCurrentTake(_ session: MonologueSession, leaving: Bool = false) async {
+        await stopListen()
+        if leaving {
+            session.confirmLeave()
+        } else {
+            session.done()
+        }
+        if session.phase == .crisis {
+            await handleCrisis(session)
+            return
+        }
+        await captureTakeAudio(session)
+        if session.phase == .report || leaving {
+            await persistRegimenIfNeeded(session)
+        }
+        routeIfFinished()
+    }
+
+    private func handleCrisis(_ session: MonologueSession) async {
+        _ = takeRecorder.stop()
+        try? RecordingsService.store.delete(id: regimenID)
+        finishedTakes = []
+        await stopListen()
+        routeIfFinished()
+    }
+
+    /// Finalize the just-finished take's audio into `finishedTakes`.
+    private func captureTakeAudio(_ session: MonologueSession) async {
+        guard let take = session.takes.last, !take.words.isEmpty else {
+            _ = takeRecorder.stop()
+            return
+        }
+        if finishedTakes.contains(where: { $0.index == take.index }) {
+            _ = takeRecorder.stop()
+            return
+        }
+        guard let rawURL = takeRecorder.stop() else { return }
+        isFinalizingAudio = true
+        defer { isFinalizingAudio = false }
+        do {
+            let (finalURL, report) = try await TakeFinalizer.finalizeWithReport(rawCAF: rawURL)
+            Self.log.info(
+                "take \(take.index) saved: inputPeak=\(report.inputPeak) denoise=\(report.usedDenoise) delay=\(report.denoiseDelaySeconds) gain=\(report.gain) outputPeak=\(report.outputPeak)"
+            )
+            finishedTakes.append(
+                MonologueRecordingPipeline.FinishedTake(
+                    index: take.index,
+                    durationSeconds: take.wallSeconds,
+                    words: take.words,
+                    audioURL: finalURL
+                )
+            )
+        } catch TakeFinalizerError.empty {
+            try? FileManager.default.removeItem(at: rawURL)
+        } catch {
+            UserFacingFailure.log(error, context: "monologue save")
+            saveErrorMessage = (error as? RecordingStoreError) == .diskFull
+                ? UserFacingFailure.diskFull
+                : UserFacingFailure.nothingToPlay
+            try? FileManager.default.removeItem(at: rawURL)
+        }
+    }
+
+    private func persistRegimenIfNeeded(_ session: MonologueSession) async {
+        guard let report = session.report, report.kind != .crisis else { return }
+        let kept = RecordingsService.keepRecordings
+        do {
+            if !finishedTakes.isEmpty {
+                // Keep the takes that did save. One failed take must not wipe the others.
+                _ = try MonologueRecordingPipeline.save(
+                    regimenID: regimenID,
+                    topic: session.prompt,
+                    report: report,
+                    finishedTakes: finishedTakes,
+                    inLibrary: kept
+                )
+            } else if kept, let saveErrorMessage {
+                try MonologueRecordingPipeline.saveFailurePlaceholder(
+                    regimenID: regimenID,
+                    topic: session.prompt,
+                    report: report,
+                    saveError: saveErrorMessage
+                )
+            }
+        } catch RecordingStoreError.diskFull where kept {
+            try? MonologueRecordingPipeline.saveDiskFullPlaceholder(
+                regimenID: regimenID,
+                topic: session.prompt,
+                report: report
+            )
+        } catch {
+            // Report still shows; player will be empty.
         }
     }
 
@@ -795,11 +902,7 @@ private struct MonologueCountdown: View, Equatable {
                 .font(.system(size: size, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(.primary)
-                .contentTransition(reduceMotion ? .opacity : .numericText(countsDown: true))
-                .animation(
-                    reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle,
-                    value: label
-                )
+                .digitRoll(label, countsDown: true, reduceMotion: reduceMotion)
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
                 .dynamicTypeSize(...DynamicTypeSize.xxxLarge)

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Exercise wheel — prototype</title>
+<style>
+  :root { --ink: #1a1713; --muted: #6a645c; --paper: #e8e1d4; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    background: var(--paper); color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  header { max-width: 720px; margin: 0 auto; padding: 28px 24px 0; }
+  h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.03em; margin: 0 0 8px; }
+  .lede { margin: 0; max-width: 64ch; color: var(--muted); font-size: 15px; line-height: 1.45; }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  .stage-wrap { max-width: 420px; margin: 22px auto 12px; padding: 0 24px; }
+  .phone {
+    width: 100%; max-width: 392px; aspect-ratio: 392 / 806; margin: 0 auto;
+    background: #0b0b0c; border-radius: 46px; padding: 11px;
+    box-shadow: 0 26px 60px rgba(26,23,19,.22), inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .screen {
+    position: relative; height: 100%; border-radius: 36px; overflow: hidden;
+    background: #000; color: #fff;
+  }
+  .statusbar {
+    position: absolute; top: 14px; left: 28px; right: 28px; z-index: 6;
+    display: flex; justify-content: space-between;
+    font-size: 12px; font-weight: 600; letter-spacing: -0.01em; opacity: .9;
+    pointer-events: none;
+  }
+
+  /* Same cylinder as Skecher's WheelCarousel: 280×380 cards, radius 560,
+     perspective 5000. Scaled to the phone with the component's mobile scale. */
+  .well {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    perspective: 5000px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .well:active { cursor: grabbing; }
+  .well.off { pointer-events: none; }
+  .ring {
+    position: relative;
+    width: 280px; height: 380px;
+    transform-style: preserve-3d;
+    flex: none;
+  }
+  .card {
+    position: absolute; inset: 0;
+    border: 0; padding: 0; margin: 0;
+    border-radius: 16px; overflow: hidden;
+    background: #111; color: #fff;
+    transform-style: preserve-3d;
+    cursor: pointer;
+  }
+  .card img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    pointer-events: none;
+  }
+  .card .tag {
+    position: absolute; left: 14px; right: 14px; bottom: 14px;
+    font-size: 15px; font-weight: 600; letter-spacing: -0.02em;
+    text-align: left; text-shadow: 0 1px 8px rgba(0,0,0,.6);
+    pointer-events: none;
+  }
+
+  .shot {
+    position: absolute; z-index: 3; overflow: hidden;
+    background: #000;
+  }
+  .shot.gone { display: none; }
+  .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .shot .veil {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 46%;
+    background: linear-gradient(to top, rgba(0,0,0,.78), rgba(0,0,0,0));
+    opacity: 0;
+  }
+  .shot.open .veil { opacity: 1; transition: opacity 280ms ease 180ms; }
+  .copy {
+    position: absolute; left: 24px; right: 24px; bottom: 108px; z-index: 4;
+    opacity: 0; filter: blur(10px); pointer-events: none;
+  }
+  .shot.open ~ .copy, .copy.show {
+    opacity: 1; filter: blur(0);
+    transition: opacity 280ms ease 160ms, filter 280ms ease 160ms;
+  }
+  .kicker {
+    margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: rgba(255,255,255,.78);
+  }
+  .line {
+    margin: 10px 0 0; max-width: 16ch;
+    font-size: 34px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05;
+  }
+
+  .chrome {
+    position: absolute; inset: 0; z-index: 5;
+    display: flex; flex-direction: column;
+    padding: 54px 24px 20px;
+    pointer-events: none;
+  }
+  .back, .go { pointer-events: auto; }
+  .back {
+    width: 48px; height: 48px; border-radius: 50%; border: 0; padding: 0;
+    color: #fff; cursor: pointer;
+    background: rgba(255,255,255,.18);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.2);
+  }
+  .back svg { display: block; margin: 0 auto; }
+  .chrome .grow { flex: 1; }
+  .go {
+    height: 61px; border: 0; border-radius: 999px; cursor: pointer;
+    font: 500 17px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #fff; color: #000;
+  }
+  .go[hidden] { display: none; }
+  .go:disabled { background: rgba(255,255,255,.58); color: rgba(0,0,0,.26); cursor: default; }
+  .go:not(:disabled):active { transform: scale(.97); }
+
+  .readout {
+    max-width: 420px; margin: 0 auto 48px; padding: 0 24px;
+    color: var(--muted); font-size: 13px; line-height: 1.4;
+  }
+  .readout b { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Exercise wheel</h1>
+  <p class="lede">The cylinder, the blur, and the drag are the <a href="https://skecher-ui.com/docs/3d-wheel-carousel">Skecher 3D wheel</a>. Tap the card in front. Its picture grows to the screen, and <b>This one</b> sits at the bottom.</p>
+</header>
+
+<div class="stage-wrap">
+  <div class="phone">
+    <div class="screen" id="screen">
+      <div class="statusbar"><span>9:41</span><span>Prototype</span></div>
+      <div class="well" id="well">
+        <div class="ring" id="ring"></div>
+      </div>
+      <div class="shot gone" id="shot">
+        <img id="shot-img" alt="" />
+        <div class="veil"></div>
+      </div>
+      <div class="copy" id="copy">
+        <p class="kicker" id="kicker"></p>
+        <p class="line" id="line"></p>
+      </div>
+      <div class="chrome">
+        <button class="back" id="back" type="button" aria-label="Back">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M11.2 3.6 6 9l5.2 5.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="grow"></div>
+        <button class="go" id="go" type="button" hidden>This one</button>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="readout" id="readout"></p>
+
+<script>
+  // Ported from skecher-ui/r/3d-wheel-carousel.json (WheelCarousel).
+  const CARD_W = 280;
+  const CARD_H = 380;
+  const RADIUS = 560;
+  const MAX_BLUR = 12;
+  const MAX_MOTION_BLUR = 40;
+  const DRAG = 0.35;
+  const AUTO = 10;
+
+  const exercises = [
+    { name: "Reading", line: "Read a passage aloud. Hear every sound." },
+    { name: "Monologue", line: "One topic, three takes, less time each." },
+    { name: "Conversation", line: "Fifteen minutes with a partner. No script." }
+  ];
+  const items = [1, 2, 3, 4, 5, 6, 7, 8].map((n, i) => ({
+    src: "https://skecher-ui.com/images/WheelScrollCarousel/image" + n + ".png",
+    exercise: exercises[i % exercises.length]
+  }));
+  const COUNT = items.length;
+  const STEP = 360 / COUNT;
+
+  const screen = document.getElementById("screen");
+  const well = document.getElementById("well");
+  const ring = document.getElementById("ring");
+  const shot = document.getElementById("shot");
+  const shotImg = document.getElementById("shot-img");
+  const copy = document.getElementById("copy");
+  const kicker = document.getElementById("kicker");
+  const line = document.getElementById("line");
+  const go = document.getElementById("go");
+  const back = document.getElementById("back");
+  const readout = document.getElementById("readout");
+
+  const cards = items.map((item, i) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "card";
+    card.dataset.i = String(i);
+    card.setAttribute("aria-label", item.exercise.name);
+    card.style.transform = "rotateY(" + (i * STEP) + "deg) translateZ(" + RADIUS + "px)";
+    card.innerHTML = '<img alt="" src="' + item.src + '"><span class="tag">' + item.exercise.name + "</span>";
+    ring.appendChild(card);
+    return card;
+  });
+
+  let rot = 0;
+  let display = 0;
+  let vel = 0;
+  let phase = "wheel";
+  let chosen = 0;
+  let drag = null;
+  let last = performance.now();
+
+  function wrap(value, length) {
+    return ((value % length) + length) % length;
+  }
+  function norm(a) {
+    let x = a % 360;
+    if (x > 180) x -= 360;
+    if (x < -180) x += 360;
+    return x;
+  }
+  function frontIndex(angle) {
+    return wrap(Math.round(-angle / STEP), COUNT);
+  }
+  function stepDistance(index, front) {
+    const direct = Math.abs(index - front);
+    return Math.min(direct, COUNT - direct);
+  }
+  function depthBlur(distance) {
+    if (distance <= 1) return 0;
+    const furthest = Math.max(Math.floor(COUNT / 2), 1);
+    const available = Math.max(furthest - 1, 1);
+    return ((distance - 1) / available) * MAX_BLUR;
+  }
+
+  function paint(motionBlur) {
+    ring.style.transform = "rotateY(" + display + "deg)";
+    const front = frontIndex(display);
+    cards.forEach((card, i) => {
+      const blur = depthBlur(stepDistance(i, front)) + motionBlur;
+      card.style.filter = blur > 0.2 ? "blur(" + blur.toFixed(2) + "px)" : "none";
+    });
+    const name = items[front].exercise.name;
+    let where = "Wheel. " + name + " is in front.";
+    if (phase === "open") where = items[chosen].exercise.name + " fills the screen.";
+    if (phase === "onward") where = "Confirmed " + items[chosen].exercise.name + ". Next is the breath.";
+    readout.innerHTML = "<b>" + where + "</b>";
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.032, (now - last) / 1000);
+    last = now;
+    if (phase === "wheel" && !drag) rot -= AUTO * dt;
+    const acc = (-200 * (display - rot) - 90 * vel);
+    vel += acc * dt;
+    display += vel * dt;
+    let motionBlur = 0;
+    if (drag) motionBlur = Math.min(Math.abs(vel) / 70, MAX_MOTION_BLUR);
+    paint(motionBlur);
+    requestAnimationFrame(frame);
+  }
+
+  function placeShot(rect) {
+    const host = screen.getBoundingClientRect();
+    shot.style.transition = "none";
+    shot.style.left = (rect.left - host.left) + "px";
+    shot.style.top = (rect.top - host.top) + "px";
+    shot.style.width = rect.width + "px";
+    shot.style.height = rect.height + "px";
+    shot.style.borderRadius = "16px";
+  }
+
+  function expand(index) {
+    chosen = index;
+    phase = "open";
+    well.classList.add("off");
+    const item = items[index];
+    shotImg.src = item.src;
+    shotImg.alt = item.exercise.name;
+    kicker.textContent = item.exercise.name;
+    line.textContent = item.exercise.line;
+    copy.classList.remove("show");
+    shot.classList.remove("gone", "open");
+    placeShot(cards[index].getBoundingClientRect());
+    go.hidden = false;
+    go.disabled = true;
+    go.textContent = "This one";
+    requestAnimationFrame(() => {
+      shot.style.transition = "left 480ms cubic-bezier(0.23, 1, 0.32, 1), top 480ms cubic-bezier(0.23, 1, 0.32, 1), width 480ms cubic-bezier(0.23, 1, 0.32, 1), height 480ms cubic-bezier(0.23, 1, 0.32, 1), border-radius 480ms cubic-bezier(0.23, 1, 0.32, 1)";
+      shot.style.left = "0";
+      shot.style.top = "0";
+      shot.style.width = "100%";
+      shot.style.height = "100%";
+      shot.style.borderRadius = "0";
+      shot.classList.add("open");
+      copy.classList.add("show");
+    });
+    window.setTimeout(() => {
+      if (phase === "open") go.disabled = false;
+    }, 480);
+  }
+
+  function aim(index) {
+    const base = -index * STEP;
+    const turns = Math.round((rot - base) / 360);
+    rot = base + turns * 360;
+  }
+
+  function choose(index) {
+    if (phase !== "wheel") return;
+    aim(index);
+    const already = Math.abs(norm(display - rot)) < 8 && frontIndex(display) === index;
+    if (already) { expand(index); return; }
+    phase = "spinning";
+    const started = performance.now();
+    const wait = () => {
+      if (phase !== "spinning") return;
+      if (Math.abs(norm(display - rot)) < 6 || performance.now() - started > 700) expand(index);
+      else requestAnimationFrame(wait);
+    };
+    requestAnimationFrame(wait);
+  }
+
+  function collapse() {
+    if (phase !== "open") return;
+    phase = "closing";
+    go.disabled = true;
+    copy.classList.remove("show");
+    shot.classList.remove("open");
+    const rect = cards[chosen].getBoundingClientRect();
+    const host = screen.getBoundingClientRect();
+    shot.style.transition = "left 360ms cubic-bezier(0.23, 1, 0.32, 1), top 360ms cubic-bezier(0.23, 1, 0.32, 1), width 360ms cubic-bezier(0.23, 1, 0.32, 1), height 360ms cubic-bezier(0.23, 1, 0.32, 1), border-radius 360ms cubic-bezier(0.23, 1, 0.32, 1)";
+    shot.style.left = (rect.left - host.left) + "px";
+    shot.style.top = (rect.top - host.top) + "px";
+    shot.style.width = rect.width + "px";
+    shot.style.height = rect.height + "px";
+    shot.style.borderRadius = "16px";
+    window.setTimeout(() => {
+      shot.classList.add("gone");
+      well.classList.remove("off");
+      go.hidden = true;
+      phase = "wheel";
+    }, 360);
+  }
+
+  function confirm() {
+    if (phase !== "open" || go.disabled) return;
+    phase = "onward";
+    line.textContent = "Follow the circle. It grows as you breathe in.";
+    go.disabled = true;
+    go.textContent = "Done";
+  }
+
+  well.addEventListener("pointerdown", (event) => {
+    if (phase !== "wheel") return;
+    drag = { x: event.clientX, rot: rot, moved: false, id: event.pointerId };
+    well.setPointerCapture(event.pointerId);
+  });
+  well.addEventListener("pointermove", (event) => {
+    if (!drag || drag.id !== event.pointerId) return;
+    const dx = event.clientX - drag.x;
+    if (Math.abs(dx) > 6) drag.moved = true;
+    rot = drag.rot + dx * DRAG;
+  });
+  well.addEventListener("pointerup", (event) => {
+    if (!drag || drag.id !== event.pointerId) return;
+    const moved = drag.moved;
+    drag = null;
+    if (moved) return;
+    const card = event.target.closest(".card");
+    if (card) choose(Number(card.dataset.i));
+  });
+  well.addEventListener("pointercancel", () => { drag = null; });
+
+  go.addEventListener("click", confirm);
+  back.addEventListener("click", () => {
+    if (phase === "open") collapse();
+    else if (phase === "onward") {
+      shot.classList.add("gone");
+      well.classList.remove("off");
+      go.hidden = true;
+      copy.classList.remove("show");
+      phase = "wheel";
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (phase !== "wheel") return;
+    if (event.key === "ArrowRight") rot -= STEP;
+    else if (event.key === "ArrowLeft") rot += STEP;
+  });
+
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>

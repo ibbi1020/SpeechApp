@@ -48,6 +48,7 @@ jobs:
       IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
       IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
       IOS_APPSTORE_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_APPSTORE_PROVISIONING_PROFILE_BASE64 }}
+      IOS_WIDGET_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_PROVISIONING_PROFILE_BASE64 }}
       TESTFLIGHT_CHANGELOG: ${{ github.event.inputs.changelog || '' }}
       SKIP_UPLOAD: ${{ github.event.inputs.skip_upload || contains(github.event.head_commit.message, '[skip upload]') }}
 
@@ -83,7 +84,10 @@ jobs:
         working-directory: ios
         env:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-        run: python3 scripts/generate_provider_secrets.py xai
+        run: |
+          python3 scripts/generate_provider_secrets.py xai
+          # Prints only the last 4 characters of the key, never the key itself.
+          printf '%s' "$XAI_API_KEY" | python3 -c 'import sys; k=sys.stdin.read().strip(); print("XAI key length", len(k), "ends", k[-4:])'
 
       - name: Generate Xcode project
         working-directory: ios

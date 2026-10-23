@@ -37,6 +37,17 @@ export async function handleRequest(req, res, now = Date.now(), openaiFetch = fe
   }
   const st = account(uuid);
   const month = monthKey(now);
+  if (url.pathname === "/v1/conversation/budget" && req.method === "GET") {
+    const count = st.month === month ? st.count : 0;
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      used: count,
+      limit: 20,
+      starts_remaining: 20 - count,
+      month,
+    }));
+    return;
+  }
   if (url.pathname === "/v1/conversation/possible-minor" && req.method === "POST") {
     st.possibleMinor = new Date(now).toISOString().slice(0, 10);
     res.writeHead(204);
@@ -68,6 +79,11 @@ export async function handleRequest(req, res, now = Date.now(), openaiFetch = fe
     return;
   }
   if (url.pathname === "/v1/conversation/mint" && req.method === "POST") {
+    if (st.possibleMinor) {
+      res.writeHead(403);
+      res.end(JSON.stringify({ error: "possible_minor" }));
+      return;
+    }
     if ((st.concurrent ?? 0) >= 1) {
       res.writeHead(429);
       res.end(JSON.stringify({ error: "concurrent" }));
@@ -89,32 +105,16 @@ export async function handleRequest(req, res, now = Date.now(), openaiFetch = fe
     let r;
     let json;
     try {
-      r = await openaiFetch("https://api.openai.com/v1/realtime/client_secrets", {
+      // xAI client secrets do not take a session or a model. The phone pins
+      // grok-voice-3.0 on the websocket. This call only mints a short-lived token.
+      r = await openaiFetch("https://api.x.ai/v1/realtime/client_secrets", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          Authorization: `Bearer ${process.env.XAI_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          session: {
-            type: "realtime",
-            model: "gpt-realtime-2.1-mini",
-            tools: [],
-            tracing: null,
-            audio: {
-              input: {
-                transcription: null,
-                turn_detection: {
-                  type: "semantic_vad",
-                  eagerness: "low",
-                  create_response: false,
-                  interrupt_response: false,
-                },
-                noise_reduction: { type: "near_field" },
-              },
-            },
-          },
-          expires_after: { anchor: "created_at", seconds: 120 },
+          expires_after: { seconds: 120 },
         }),
       });
       json = await r.json();

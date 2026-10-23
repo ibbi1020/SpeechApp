@@ -1,0 +1,481 @@
+{
+  "" : {
+    "const-values" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit-primary.swiftconstvalues",
+    "dependencies" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit-primary.d",
+    "diagnostics" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit-primary.dia",
+    "emit-module-dependencies" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit-primary-emit-module.dia",
+    "pch" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpeechAppKit-primary.swiftdeps"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Alignment/TokenAligner.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/TokenAligner.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/TokenAligner.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/TokenAligner.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Audio/AudioSource.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/AudioSource.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/AudioSource.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/AudioSource.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Audio/GrokTranscriptStitcher.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/GrokTranscriptStitcher.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/GrokTranscriptStitcher.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/GrokTranscriptStitcher.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Audio/GrokTranscriptionEngine.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/GrokTranscriptionEngine.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/GrokTranscriptionEngine.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/GrokTranscriptionEngine.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Audio/ListenDrive.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ListenDrive.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ListenDrive.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ListenDrive.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Audio/LiveTranscriptionEngine.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/LiveTranscriptionEngine.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/LiveTranscriptionEngine.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/LiveTranscriptionEngine.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Audio/PCM16FrameBuffer.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PCM16FrameBuffer.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PCM16FrameBuffer.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PCM16FrameBuffer.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Audio/PCMStore.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PCMStore.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PCMStore.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PCMStore.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Audio/TranscriptionEngine.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/TranscriptionEngine.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/TranscriptionEngine.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/TranscriptionEngine.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/AmbientBed.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/AmbientBed.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/AmbientBed.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/AmbientBed.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/BargeInGate.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/BargeInGate.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/BargeInGate.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/BargeInGate.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/CaptionPlaybackSync.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CaptionPlaybackSync.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CaptionPlaybackSync.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CaptionPlaybackSync.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/CaptionSyncDiagnostics.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CaptionSyncDiagnostics.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CaptionSyncDiagnostics.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CaptionSyncDiagnostics.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationAudioLevels.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationAudioLevels.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationAudioLevels.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationAudioLevels.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationBudget.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationBudget.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationBudget.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationBudget.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationCue.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationCue.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationCue.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationCue.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationFloor.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationFloor.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationFloor.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationFloor.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationLiveActivityPolicy.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationLiveActivityPolicy.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationLiveActivityPolicy.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationLiveActivityPolicy.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationLiveNudge.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationLiveNudge.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationLiveNudge.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationLiveNudge.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationMarkers.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationMarkers.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationMarkers.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationMarkers.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationMouth.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationMouth.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationMouth.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationMouth.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationPace.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationPace.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationPace.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationPace.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationPauseTime.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationPauseTime.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationPauseTime.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationPauseTime.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationPhase.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationPhase.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationPhase.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationPhase.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationReport.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationReport.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationReport.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationReport.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationRoutePause.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationRoutePause.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationRoutePause.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationRoutePause.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationSession.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationSession.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationSession.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationSession.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationSpeechMetrics.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationSpeechMetrics.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationSpeechMetrics.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationSpeechMetrics.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ConversationTimeSource.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationTimeSource.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationTimeSource.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConversationTimeSource.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/CrisisGate.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CrisisGate.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CrisisGate.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CrisisGate.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/FakeConversationMouth.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FakeConversationMouth.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FakeConversationMouth.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FakeConversationMouth.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/LanguageSpanDetector.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/LanguageSpanDetector.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/LanguageSpanDetector.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/LanguageSpanDetector.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/ListenBackMix.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ListenBackMix.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ListenBackMix.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ListenBackMix.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/OpenPromptBank.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/OpenPromptBank.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/OpenPromptBank.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/OpenPromptBank.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/OrbVisualPhase.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/OrbVisualPhase.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/OrbVisualPhase.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/OrbVisualPhase.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/PartnerVoice.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PartnerVoice.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PartnerVoice.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PartnerVoice.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/PartnerWordTiming.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PartnerWordTiming.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PartnerWordTiming.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PartnerWordTiming.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/StanceDeck.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/StanceDeck.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/StanceDeck.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/StanceDeck.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Conversation/VoiceSwitch.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/VoiceSwitch.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/VoiceSwitch.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/VoiceSwitch.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Design/BlurMotion.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/BlurMotion.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/BlurMotion.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/BlurMotion.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Design/DitherHorizon.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/DitherHorizon.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/DitherHorizon.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/DitherHorizon.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Design/ExerciseOrbField.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ExerciseOrbField.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ExerciseOrbField.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ExerciseOrbField.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Design/ExercisePlate.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ExercisePlate.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ExercisePlate.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ExercisePlate.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Design/HumLevel.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/HumLevel.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/HumLevel.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/HumLevel.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Design/MagneticCluster.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MagneticCluster.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MagneticCluster.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MagneticCluster.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Design/MagneticSpring.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MagneticSpring.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MagneticSpring.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MagneticSpring.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Entry/CeremonyStep.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CeremonyStep.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CeremonyStep.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CeremonyStep.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Entry/EntryGreeting.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/EntryGreeting.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/EntryGreeting.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/EntryGreeting.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Entry/PracticeFormat.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PracticeFormat.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PracticeFormat.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PracticeFormat.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/GOP/GOPScorer.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/GOPScorer.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/GOPScorer.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/GOPScorer.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Ledger/StruggleLedger.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/StruggleLedger.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/StruggleLedger.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/StruggleLedger.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/MonologueOverlap.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologueOverlap.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologueOverlap.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologueOverlap.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/MonologuePhase.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePhase.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePhase.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePhase.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/MonologuePhonation.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePhonation.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePhonation.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePhonation.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/MonologuePromptBank.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePromptBank.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePromptBank.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePromptBank.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/MonologuePromptCursor.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePromptCursor.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePromptCursor.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePromptCursor.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/MonologuePromptStore.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePromptStore.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePromptStore.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologuePromptStore.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/MonologueReport.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologueReport.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologueReport.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologueReport.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/MonologueSession.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologueSession.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologueSession.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologueSession.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/MonologueTake.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologueTake.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologueTake.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/MonologueTake.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Recording/LoudnessNormalizer.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/LoudnessNormalizer.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/LoudnessNormalizer.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/LoudnessNormalizer.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Recording/TakeFinalizer.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/TakeFinalizer.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/TakeFinalizer.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/TakeFinalizer.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Recording/TakeRecorder.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/TakeRecorder.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/TakeRecorder.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/TakeRecorder.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/DelayEstimator.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/DelayEstimator.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/DelayEstimator.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/DelayEstimator.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/Eval/FeedbackEvaluator.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackEvaluator.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackEvaluator.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackEvaluator.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/Eval/FeedbackExercise.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackExercise.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackExercise.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackExercise.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/Eval/FeedbackLabel.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackLabel.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackLabel.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackLabel.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/Eval/FeedbackReport.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackReport.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackReport.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackReport.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/Eval/FeedbackRuleCase.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackRuleCase.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackRuleCase.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackRuleCase.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/Eval/FeedbackScript.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackScript.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackScript.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FeedbackScript.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/FillerWords.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FillerWords.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FillerWords.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/FillerWords.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/PartnerTurn.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PartnerTurn.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PartnerTurn.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PartnerTurn.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/PauseSpot.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PauseSpot.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PauseSpot.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PauseSpot.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/RecordedWord.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RecordedWord.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RecordedWord.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RecordedWord.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/RecordingClock.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RecordingClock.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RecordingClock.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RecordingClock.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/RecordingManifest.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RecordingManifest.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RecordingManifest.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RecordingManifest.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/RecordingStore.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RecordingStore.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RecordingStore.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RecordingStore.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/RestartDetector.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RestartDetector.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RestartDetector.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/RestartDetector.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Monologue/Review/ReviewMarkers.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ReviewMarkers.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ReviewMarkers.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ReviewMarkers.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Passages/Passage.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/Passage.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/Passage.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/Passage.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Passages/PassageCatalog.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PassageCatalog.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PassageCatalog.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PassageCatalog.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Passages/PassageLength.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PassageLength.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PassageLength.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PassageLength.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Passages/PassageSpan.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PassageSpan.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PassageSpan.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PassageSpan.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Passages/PhoneLexicon.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PhoneLexicon.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PhoneLexicon.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/PhoneLexicon.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Reading/ReadingMarkers.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ReadingMarkers.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ReadingMarkers.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ReadingMarkers.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Session/CaretFollow.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CaretFollow.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CaretFollow.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/CaretFollow.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Session/ReadingSession.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ReadingSession.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ReadingSession.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ReadingSession.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Session/SessionDiagnostics.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SessionDiagnostics.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SessionDiagnostics.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SessionDiagnostics.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Session/SessionReport.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SessionReport.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SessionReport.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SessionReport.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Session/SpanWalk.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpanWalk.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpanWalk.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/SpanWalk.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Stall/StallDetector.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/StallDetector.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/StallDetector.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/StallDetector.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Support/ConnectionWaitPolicy.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConnectionWaitPolicy.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConnectionWaitPolicy.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/ConnectionWaitPolicy.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/Sources/SpeechAppKit/Support/UserFacingFailure.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/UserFacingFailure.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/UserFacingFailure.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/UserFacingFailure.o"
+  },
+  "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/DerivedSources/resource_bundle_accessor.swift" : {
+    "index-unit-output-path" : "/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/resource_bundle_accessor.o",
+    "llvm-bc" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/resource_bundle_accessor.bc",
+    "object" : "/Users/ibraheenfarooq/Projects/SpeechApp/ios/Packages/SpeechAppKit/build/SpeechAppKit.build/Release-iphoneos/SpeechAppKit-t.build/Objects-normal/arm64/resource_bundle_accessor.o"
+  }
+}

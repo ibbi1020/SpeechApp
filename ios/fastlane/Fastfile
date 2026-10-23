@@ -23,6 +23,9 @@ DEFAULT_TEAM_ID = "Q2Z32YFFGP"
 DEFAULT_APP_IDENTIFIER = "com.speechapp.orator"
 DEFAULT_PROFILE_NAME = "Orator App Store CI"
 APP_TARGET = "SpeechApp"
+WIDGET_TARGET = "SpeechAppWidget"
+WIDGET_PROFILE_NAME = "Orator Widget App Store CI"
+def widget_identifier = "#{app_identifier}.widget"
 SCHEME = "SpeechApp"
 XCODEPROJ = "SpeechApp.xcodeproj"
 INFO_PLIST = "App/Info.plist"
@@ -85,6 +88,13 @@ def install_appstore_provisioning_profile!
   File.binwrite(profile_path, Base64.decode64(profile_b64))
   install_provisioning_profile(path: profile_path)
   UI.success("Installed provisioning profile #{profile_specifier}")
+
+  widget_b64 = ENV["IOS_WIDGET_PROVISIONING_PROFILE_BASE64"]
+  UI.user_error!("Missing IOS_WIDGET_PROVISIONING_PROFILE_BASE64 (App Store profile for #{widget_identifier})") if widget_b64.to_s.strip.empty?
+  widget_path = File.join(Dir.tmpdir, "orator_widget_appstore.mobileprovision")
+  File.binwrite(widget_path, Base64.decode64(widget_b64))
+  install_provisioning_profile(path: widget_path)
+  UI.success("Installed provisioning profile #{WIDGET_PROFILE_NAME}")
 end
 
 def configure_release_signing!
@@ -98,6 +108,16 @@ def configure_release_signing!
     profile_name: profile_specifier,
     bundle_identifier: app_identifier
   )
+  update_code_signing_settings(
+    use_automatic_signing: false,
+    path: XCODEPROJ,
+    targets: [WIDGET_TARGET],
+    build_configurations: ["Release"],
+    team_id: team_id,
+    code_sign_identity: "Apple Distribution",
+    profile_name: WIDGET_PROFILE_NAME,
+    bundle_identifier: widget_identifier
+  )
 end
 
 def archive!(build_number)
@@ -105,6 +125,7 @@ def archive!(build_number)
 
   # Info.plist hard-codes CFBundleVersion (XcodeGen writes it from project.yml).
   set_info_plist_value(path: INFO_PLIST, key: "CFBundleVersion", value: build_number)
+  set_info_plist_value(path: "Widget/Info.plist", key: "CFBundleVersion", value: build_number)
 
   import_distribution_certificate!
   install_appstore_provisioning_profile!
@@ -120,7 +141,10 @@ def archive!(build_number)
       method: "app-store",
       signingStyle: "manual",
       teamID: team_id,
-      provisioningProfiles: { app_identifier => profile_specifier }
+      provisioningProfiles: {
+        app_identifier => profile_specifier,
+        widget_identifier => WIDGET_PROFILE_NAME
+      }
     },
     xcargs: "DEVELOPMENT_TEAM=#{Shellwords.escape(team_id)}",
     output_directory: "build",

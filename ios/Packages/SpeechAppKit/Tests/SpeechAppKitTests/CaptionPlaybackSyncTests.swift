@@ -177,4 +177,32 @@ struct CaptionPlayheadTests {
         #expect(head.heardFrames(now: 1, sampleRate: 24_000) == 24_000)
         #expect(head.heardFrames(now: 1.25, sampleRate: 24_000) == 30_000)
     }
+
+    @Test("pause holds the playhead and resume continues from that sample")
+    func pauseHoldsPlace() {
+        var head = CaptionPlayhead()
+        head.enqueue(frames: 24_000, now: 0)
+        #expect(head.heardFrames(now: 0.5, sampleRate: 24_000) == 12_000)
+        head.pause(now: 0.5)
+        #expect(head.isPlaying == false)
+        #expect(head.heardFrames(now: 10, sampleRate: 24_000) == 12_000)
+        head.resume(now: 10.5)
+        #expect(head.isPlaying)
+        #expect(head.heardFrames(now: 10.5, sampleRate: 24_000) == 12_000)
+        #expect(head.heardFrames(now: 11.0, sampleRate: 24_000) == 24_000)
+    }
+
+    @Test("a buffer ending during pause does not start the next one")
+    func completeWhilePausedParksNextBuffer() {
+        var head = CaptionPlayhead()
+        head.enqueue(frames: 24_000, now: 0)
+        head.enqueue(frames: 24_000, now: 0)
+        head.pause(now: 0.5)
+        #expect(head.completeCurrent(now: 2) == 24_000)
+        #expect(head.isPlaying == false)
+        #expect(head.heardFrames(now: 9, sampleRate: 24_000) == 24_000)
+        head.resume(now: 10)
+        #expect(head.heardFrames(now: 10, sampleRate: 24_000) == 24_000)
+        #expect(head.heardFrames(now: 10.5, sampleRate: 24_000) == 36_000)
+    }
 }

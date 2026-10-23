@@ -1,0 +1,4 @@
+module SpeechAppKit {
+header "SpeechAppKit-Swift.h"
+export *
+}

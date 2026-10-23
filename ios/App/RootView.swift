@@ -5,8 +5,15 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        SplashContainer {
+            navigation
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private var navigation: some View {
         NavigationStack {
-            HomeView()
+            EntryFlowView()
                 .navigationDestination(isPresented: libraryPresented) {
                     PassageLibraryView()
                         .navigationDestination(isPresented: sessionPresented) {
@@ -19,9 +26,25 @@ struct RootView: View {
                 .navigationDestination(isPresented: monologuePresented) {
                     monologueDestination
                 }
+                .navigationDestination(isPresented: recordingsPresented) {
+                    if case .recordings(let filter) = model.route {
+                        RecordingsLibraryView(filter: filter)
+                    } else {
+                        RecordingsLibraryView(filter: nil)
+                    }
+                }
         }
         .tint(.accentColor)
-        .preferredColorScheme(.dark)
+    }
+
+    private var recordingsPresented: Binding<Bool> {
+        Binding(
+            get: {
+                if case .recordings = model.route { return true }
+                return false
+            },
+            set: { if !$0, case .recordings = model.route { model.dismissToEntry() } }
+        )
     }
 
     private var libraryPresented: Binding<Bool> {
@@ -36,7 +59,7 @@ struct RootView: View {
                 if !presented {
                     switch model.route {
                     case .library, .reading, .report:
-                        model.goHome()
+                        model.dismissToEntry()
                     default:
                         break
                     }
@@ -69,14 +92,14 @@ struct RootView: View {
     private var conversationPresented: Binding<Bool> {
         Binding(
             get: { isOnConversationStack },
-            set: { if !$0, isOnConversationStack { model.goHome() } }
+            set: { if !$0, isOnConversationStack { model.dismissToEntry() } }
         )
     }
 
     private var monologuePresented: Binding<Bool> {
         Binding(
             get: { isOnMonologueStack },
-            set: { if !$0, isOnMonologueStack { model.goHome() } }
+            set: { if !$0, isOnMonologueStack { model.dismissToEntry() } }
         )
     }
 
@@ -107,8 +130,8 @@ struct RootView: View {
         switch model.route {
         case .crisis where model.hostedFormat == .monologue:
             CrisisReferralView()
-        case .monologueReport(let report):
-            MonologueReportView(report: report)
+        case .monologueReport(let report, let regimenID, let topic):
+            MonologueReportView(report: report, regimenID: regimenID, topic: topic)
         default:
             MonologueSessionView()
         }
@@ -117,8 +140,8 @@ struct RootView: View {
     @ViewBuilder
     private var conversationDestination: some View {
         switch model.route {
-        case .conversationReport(let report):
-            ConversationReportView(report: report)
+        case .conversationReport(let report, let recordingID):
+            ConversationReportView(report: report, recordingID: recordingID)
         case .crisis where model.hostedFormat == .conversation:
             CrisisReferralView()
         default:
@@ -129,8 +152,8 @@ struct RootView: View {
     @ViewBuilder
     private var sessionDestination: some View {
         switch model.route {
-        case .report(let report):
-            SessionReportView(report: report)
+        case .report(let report, let recordingID):
+            SessionReportView(report: report, recordingID: recordingID)
         default:
             if let passage = model.currentPassage {
                 ReadingSessionView(passage: passage)
@@ -138,7 +161,7 @@ struct RootView: View {
                 ContentUnavailableView(
                     "No passages",
                     systemImage: "text.book.closed",
-                    description: Text("The catalog didn’t load.")
+                    description: Text("Passages didn’t load. Go back and try again.")
                 )
             }
         }

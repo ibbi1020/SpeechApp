@@ -106,6 +106,21 @@ struct ConversationSessionTests {
         #expect(session.phase == .talking)
     }
 
+    @Test("pause closes the mic, and a turn while paused does not get a reply")
+    @MainActor
+    func pauseClosesMic() async throws {
+        let (session, mouth, _) = makeSession()
+        try await reachTalking(session)
+        let repliesBeforePause = mouth.responseCreates.count
+        session.pause()
+        #expect(mouth.inputPaused)
+        session.ingestUserText("still talking")
+        await session.handle(.speechStopped)
+        #expect(mouth.responseCreates.count == repliesBeforePause)
+        session.resume()
+        #expect(mouth.inputPaused == false)
+    }
+
     @Test("pause TTL 10 min hangs up with no close")
     @MainActor
     func pauseTTL() async throws {
@@ -144,16 +159,78 @@ struct ConversationSessionTests {
         #expect(mouth.responseCreates.count == 1)
     }
 
-    @Test("v1 never sends codeSwitch cue")
+    @Test("codeSwitch cue stays off when the live nudge flag is false")
     @MainActor
-    func noCodeSwitch() async throws {
+    func noCodeSwitchWhenFlagOff() async throws {
         let (session, mouth, _) = makeSession()
+        session.spokenCodeSwitchEnabled = false
         try await reachTalking(session)
         session.queueIfAllowed(.codeSwitch)
         session.ingestUserText("hello")
         await session.handle(.speechStopped)
-        #expect(mouth.responseCreates.allSatisfy { !$0.lowercased().contains("english") })
-        #expect(mouth.responseCreates.count == 2) // open + continue, never a code-switch aside
+        #expect(mouth.responseCreates.allSatisfy { !$0.lowercased().contains("messy") })
+        #expect(mouth.responseCreates.count == 2) // open + continue
+    }
+
+    @Test("second other-language turn queues a codeSwitch aside when the flag is on")
+    @MainActor
+    func codeSwitchAfterSecondSlip() async throws {
+        let (session, mouth, time) = makeSession()
+        session.spokenCodeSwitchEnabled = true
+        try await reachTalking(session)
+        // First slip: count only.
+        await session.handle(.speechStarted)
+        session.noteOtherLanguageSpan(end: 3)
+        session.ingestUserText("hola")
+        await session.handle(.speechStopped)
+        #expect(mouth.responseCreates.count == 2) // open + continue
+        #expect(mouth.responseCreates.last?.lowercased().contains("messy") != true)
+
+        // Partner finishes so the next user turn can reply.
+        await session.handle(.responseDone(transcript: "Nice."))
+        time.advance(1)
+        await session.handle(.speechStarted)
+        // Second slip: queue the aside for this stop.
+        session.noteOtherLanguageSpan(end: 8)
+        session.ingestUserText("prefiero casa")
+        await session.handle(.speechStopped)
+        #expect(mouth.responseCreates.count == 3)
+        #expect(mouth.responseCreates.last?.lowercased().contains("messy") == true)
+        #expect(mouth.responseCreates.last?.lowercased().contains("english") == true)
+    }
+
+    @Test("late STT after continue still queues codeSwitch for the next user turn")
+    @MainActor
+    func codeSwitchWhenSlipsArriveAfterContinue() async throws {
+        let (session, mouth, time) = makeSession()
+        session.spokenCodeSwitchEnabled = true
+        try await reachTalking(session)
+
+        // Turn 1: continue goes out before STT finals land.
+        await session.handle(.speechStarted)
+        session.ingestUserText("hola")
+        await session.handle(.speechStopped)
+        #expect(mouth.responseCreates.count == 2)
+        await session.handle(.responseDone(transcript: "Nice."))
+        session.noteOtherLanguageSpan(end: 3)
+
+        // Turn 2: same — STT after partner replies hits the threshold.
+        time.advance(1)
+        await session.handle(.speechStarted)
+        session.ingestUserText("prefiero casa")
+        await session.handle(.speechStopped)
+        #expect(mouth.responseCreates.count == 3)
+        #expect(mouth.responseCreates.last?.lowercased().contains("messy") != true)
+        await session.handle(.responseDone(transcript: "Okay."))
+        session.noteOtherLanguageSpan(end: 8)
+
+        // Turn 3: pending aside folds into this reply.
+        time.advance(1)
+        await session.handle(.speechStarted)
+        session.ingestUserText("I work at home")
+        await session.handle(.speechStopped)
+        #expect(mouth.responseCreates.count == 4)
+        #expect(mouth.responseCreates.last?.lowercased().contains("messy") == true)
     }
 
     @Test("a turn longer than 8s still gets a reply when speech stops")
@@ -461,12 +538,17 @@ struct ConversationSessionTests {
         }
     }
 
-    @Test("stageLine is the open question until the partner speaks")
+    @Test("subtitle stays empty until the partner speaks")
     @MainActor
-    func stageLineStartsAsOpenQuestion() async throws {
+    func subtitleStaysEmptyUntilPartnerSpeaks() async throws {
         let (session, _, _) = makeSession()
-        #expect(session.stageLine == "What did you have for breakfast?")
+        #expect(session.subtitleLine.isEmpty)
+        #expect(session.stageLine.isEmpty)
         try await reachTalking(session)
+        #expect(session.subtitleLine.isEmpty)
+        #expect(session.stageLine.isEmpty)
+        await session.handle(.partnerCaption("What did you have for breakfast?"))
+        #expect(session.subtitleLine == "What did you have for breakfast?")
         #expect(session.stageLine == "What did you have for breakfast?")
     }
 

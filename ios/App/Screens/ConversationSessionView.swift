@@ -8,9 +8,9 @@ struct ConversationSessionView: View {
     private static let log = Logger(subsystem: "com.speechapp", category: "ConversationSessionView")
 
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @State private var session: ConversationSession?
     @State private var fakeMouth: FakeConversationMouth?
@@ -21,10 +21,7 @@ struct ConversationSessionView: View {
     @State private var didPostEnded = false
     @State private var errorMessage: String?
     @State private var canRetry = true
-    @State private var countdownRemaining: Int?
     @State private var showStopConfirm = false
-    @State private var isStopping = false
-    @State private var pauseThrottle = TapThrottle()
     @State private var didRouteFinish = false
     @State private var eventPump: Task<Void, Never>?
     @State private var debugLoop: Task<Void, Never>?
@@ -36,6 +33,15 @@ struct ConversationSessionView: View {
     @State private var speechEnergy: Float = 0
     @State private var partnerEnergy: Float = 0
     @State private var levelTask: Task<Void, Never>?
+    @State private var listenBack: ConversationListenBack?
+    @State private var ambientPlace = AmbientPreference().place
+    @State private var voiceID = VoicePreference().voiceID
+    @State private var showVoicePicker = false
+    @State private var islandStartedAt: Date?
+    /// When the connecting orb appeared. The slow line and the hang share this clock.
+    @State private var connectingStarted: Date?
+    @State private var islandPauseBegan: Date?
+    @State private var islandPausedAccumulated: TimeInterval = 0
 
     private var phase: ConversationPhase {
         session?.phase ?? .idle
@@ -43,10 +49,6 @@ struct ConversationSessionView: View {
 
     private var isPaused: Bool {
         phase == .paused
-    }
-
-    private var isFogged: Bool {
-        countdownRemaining != nil
     }
 
     private var showsFailure: Bool {
@@ -70,21 +72,10 @@ struct ConversationSessionView: View {
     private var orbPhase: VoiceOrb.Phase {
         .conversation(
             phase: phase,
-            isCountdown: isFogged,
+            isCountdown: false,
             floor: floor.owner,
             agentSpeaking: agentSpeaking
         )
-    }
-
-    private var fogBlurRadius: CGFloat {
-        isFogged && !reduceTransparency ? SpeechCountdown.fogBlurRadius : 0
-    }
-
-    private var fogWashOpacity: Double {
-        guard isFogged else { return 0 }
-        return reduceTransparency
-            ? SpeechCountdown.reducedTransparencyWash
-            : SpeechCountdown.fogWashOpacity
     }
 
     var body: some View {
@@ -95,23 +86,14 @@ struct ConversationSessionView: View {
                 failureView
             } else {
                 liveCanvas
-                    .blur(radius: fogBlurRadius)
-                    .overlay {
-                        Color.black.opacity(fogWashOpacity)
-                            .allowsHitTesting(false)
-                    }
                     .safeAreaBar(edge: .bottom, spacing: 0) {
                         bottomChrome
                     }
-                    .accessibilityHidden(isFogged || showStopConfirm)
-                    .allowsHitTesting(!isFogged && !showStopConfirm)
-            }
-
-            if isFogged {
-                ReadingCountdownOverlay(
-                    remaining: countdownRemaining,
-                    instruction: "Take a deep breath. Talk when you're ready."
-                )
+                    .accessibilityHidden(showStopConfirm)
+                    .allowsHitTesting(!showStopConfirm)
+                    // The stop card does not sit on a flat scrim: the conversation
+                    // behind it blurs and dims as one layer.
+                    .blurBackdrop(showStopConfirm)
             }
 
             if showStopConfirm {
@@ -120,32 +102,47 @@ struct ConversationSessionView: View {
                     confirmTitle: "Stop",
                     dismissTitle: "Keep talking",
                     onConfirm: {
-                        guard !isStopping else { return }
-                        isStopping = true
                         showStopConfirm = false
                         Task { await confirmStop() }
                     },
                     onDismiss: { showStopConfirm = false }
                 )
-                .transition(.opacity)
+                .transition(SpeechBlur.dissolve)
             }
         }
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: isFogged)
+        .overlay(alignment: .topTrailing) {
+            if showsControls && !showStopConfirm {
+                VStack(alignment: .trailing, spacing: 12) {
+                    ambientMenu
+                    voiceButton
+                    AIPartnerBadge()
+                }
+                .padding(.trailing, 16)
+                .padding(.top, 12)
+            }
+        }
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: phase)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
-        .sensoryFeedback(.impact(flexibility: .solid, intensity: 0.65), trigger: countdownRemaining)
-        .speechPageTitle("Conversation")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .speechBarChrome()
         .speechBottomBlur(bar: false)
         .navigationSubtitle("\(model.budget.label) used this month")
-        .navigationBarTitleDisplayMode(.inline)
-        // Keep the bar during the stop modal (hiding it shifts the page); only the back button goes.
-        .toolbar(showsFailure ? .hidden : .automatic, for: .navigationBar)
-        .navigationBarBackButtonHidden(showStopConfirm || isStopping)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                SpeechBarButton(systemName: "chevron.left", label: "Back") {
+                    dismiss()
+                }
+            }
+        }
+        .toolbar(showStopConfirm || showsFailure ? .hidden : .automatic, for: .navigationBar)
         .background {
             NavigationPopLock(isLocked: showStopConfirm)
         }
         .task {
             VoiceOrbPreloader.warmup()
+            installIslandStop()
             await beginSession()
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
@@ -154,13 +151,46 @@ struct ConversationSessionView: View {
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { note in
             handleRouteChange(note)
         }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { note in
+            if SessionInterruption.shouldPause(note) {
+                session?.pause()
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             handleScenePhase(phase)
         }
-        .onChange(of: phase) { _, _ in
+        .onChange(of: phase) { old, new in
+            listenBack?.setCapturing(new == .talking || new == .wrapping)
+            noteIslandClock(from: old, to: new)
             routeIfFinished()
+            syncAmbient()
+            Task { await syncIsland() }
+        }
+        .onChange(of: session?.countsAsBudgetStart) { _, started in
+            if started == true, islandStartedAt == nil {
+                islandStartedAt = Date()
+            }
+            Task { await syncIsland() }
+        }
+        .onChange(of: session?.stageLine) { _, _ in
+            Task { await syncIsland() }
+        }
+        .onChange(of: floor) { _, _ in
+            Task { await syncIsland() }
+        }
+        .onChange(of: agentSpeaking) { _, _ in
+            Task { await syncIsland() }
+        }
+        .sheet(isPresented: $showVoicePicker) {
+            PartnerVoiceSheet(selection: voiceID) { id in
+                selectVoice(id)
+            }
         }
         .onDisappear {
+            Task {
+                await syncIsland(leaving: true)
+                ConversationLiveActivityController.shared.releaseStop()
+            }
             tearDownIfLeaving()
         }
     }
@@ -179,9 +209,20 @@ struct ConversationSessionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var voiceButton: some View {
+        Button {
+            showVoicePicker = true
+        } label: {
+            Image(systemName: "music.note")
+        }
+        .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.standard))
+        .accessibilityLabel("Voice")
+        .accessibilityValue(PartnerVoice.named(voiceID)?.name ?? voiceID)
+    }
+
     private var failureView: some View {
         VStack(spacing: SpeechSpacing.related) {
-            Text(errorMessage ?? "Connection lost.")
+            Text(errorMessage ?? UserFacingFailure.connectionDropped)
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
@@ -226,15 +267,63 @@ struct ConversationSessionView: View {
         }
     }
 
+    /// Background bed. Sits with the voice button at the top trailing edge.
+    private var ambientMenu: some View {
+        Menu {
+            ForEach(AmbientPlace.allCases, id: \.self) { place in
+                Button {
+                    selectAmbient(place)
+                } label: {
+                    if place == ambientPlace {
+                        Label(place.title, systemImage: "checkmark")
+                    } else {
+                        Text(place.title)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: ambientPlace == .off ? "speaker.slash" : "speaker.wave.2")
+        }
+        .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.standard))
+        .accessibilityLabel("Background")
+        .accessibilityValue(ambientPlace.title)
+    }
+
+    private func selectAmbient(_ place: AmbientPlace) {
+        ambientPlace = place
+        AmbientPreference().place = place
+        syncAmbient()
+    }
+
+    private func selectVoice(_ id: String) {
+        let resolved = PartnerVoice.canonical(id)
+        voiceID = resolved
+        VoicePreference().voiceID = resolved
+        let mouth = mouth
+        Task { await mouth?.updateVoice(resolved) }
+    }
+
+    /// The bed follows the phase. Picking a place does not pause the clock.
+    private func syncAmbient() {
+        let command = AmbientBedPolicy.command(place: ambientPlace, phase: phase)
+        let mouth = mouth
+        switch command {
+        case .play(let place):
+            Task { await mouth?.setAmbient(place: place, playing: true) }
+        case .stop:
+            Task { await mouth?.setAmbient(place: ambientPlace, playing: false) }
+        }
+    }
+
     private var conversationOrbBar: some View {
         SessionOrbBar(
             phase: orbPhase,
+            connectingStarted: phase == .connecting ? connectingStarted : nil,
             inputVolume: orbPhase == .listening ? speechEnergy : 0,
             outputVolume: orbPhase == .speaking ? partnerEnergy : 0,
             animating: !isPaused
         ) {
             Button {
-                guard pauseThrottle.allow() else { return }
                 if isPaused {
                     session?.resume()
                 } else {
@@ -242,29 +331,22 @@ struct ConversationSessionView: View {
                 }
             } label: {
                 Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                    .speechGlassCircle()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
             .opacity(showPauseControl ? 1 : 0)
             .allowsHitTesting(showPauseControl)
             .accessibilityHidden(!showPauseControl)
-            .sensoryFeedback(.selection, trigger: isPaused)
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
         } trailing: {
             Button {
-                guard !isStopping else { return }
                 session?.requestStop()
                 showStopConfirm = true
             } label: {
                 Image(systemName: "stop.fill")
-                    .speechGlassCircle(tint: .red)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session, fill: .red))
             .accessibilityLabel("Stop")
         }
-        // While the stop card is up, only its two buttons exist for VoiceOver and UI tests.
-        .accessibilityHidden(showStopConfirm)
-        .allowsHitTesting(!showStopConfirm && !isStopping)
     }
 
     private func beginSession() async {
@@ -289,34 +371,24 @@ struct ConversationSessionView: View {
             mint = built.mint
             startEventPump(session: built.session, mouth: built.mouth)
             startLevelPump()
+            await startListenBack(session: built.session, mouth: built.mouth)
 
-            built.session.beginCountdown()
+            let started = Date()
+            connectingStarted = started
+            built.session.enterConnecting()
 
             let prepareTask = Task {
                 try await built.mouth.prepare()
             }
-
-            for n in [3, 2, 1] {
-                try Task.checkCancellation()
-                countdownRemaining = n
-                try await Task.sleep(for: .seconds(1))
-            }
             try Task.checkCancellation()
-            // Fog and chrome update together: lift overlay, then mount orb + controls.
-            countdownRemaining = nil
-            built.session.enterConnecting()
-
             try await prepareTask.value
 
-            // Format 2: Bearer token from gitignored plist — no mint server.
-            if let apiKey = built.directAPIKey {
-                // On-device budget gate (20 starts a month, 1 live, 3 per 10 min); no server.
-                if let mint = built.mint {
-                    _ = try await mint.mint()
-                    didMint = true
-                }
+            if let apiKey = XAIDirectKey.load() {
                 do {
-                    try await built.session.countdownReachedZero(ephemeralKey: apiKey)
+                    try await built.session.countdownReachedZero(
+                        ephemeralKey: apiKey,
+                        timeout: ConnectionWaitPolicy.remaining(since: started, now: Date())
+                    )
                 } catch {
                     await built.session.handle(.failed)
                     throw error
@@ -335,18 +407,17 @@ struct ConversationSessionView: View {
                 throw ConversationSessionError.missingAPIKey
             }
         } catch is CancellationError {
-            countdownRemaining = nil
             await mouth?.close()
             await postEndedIfNeeded()
         } catch {
-            countdownRemaining = nil
             await mouth?.close()
             await postEndedIfNeeded()
             if let mintError = error as? MintError, mintError == .budget {
                 model.budget.used = model.budget.limit
                 canRetry = false
             }
-            errorMessage = error.localizedDescription
+            UserFacingFailure.log(error, context: "conversation start")
+            errorMessage = ShownError.text(for: error)
             clearLiveSession()
         }
     }
@@ -359,7 +430,27 @@ struct ConversationSessionView: View {
         await beginSession()
     }
 
+    /// Records the user's side for the report player (live mouth only).
+    private func startListenBack(session: ConversationSession, mouth: any ConversationMouth) async {
+        listenBack?.discard()
+        listenBack = nil
+        guard let live = mouth as? LiveConversationMouth,
+              let apiKey = XAIDirectKey.load()
+        else { return }
+        let recorder = ConversationListenBack(mouth: live, apiKey: apiKey)
+        recorder.onLanguageSlip = { end in
+            session.noteOtherLanguageSpan(end: end)
+        }
+        listenBack = recorder
+        await recorder.start {
+            session.phase == .talking || session.phase == .wrapping
+        }
+    }
+
     private func clearLiveSession() {
+        listenBack?.discard()
+        listenBack = nil
+        connectingStarted = nil
         eventPump?.cancel()
         eventPump = nil
         levelTask?.cancel()
@@ -370,10 +461,9 @@ struct ConversationSessionView: View {
         mouth = nil
         fakeMouth = nil
         mint = nil
-        countdownRemaining = nil
     }
 
-    /// The live mouth owns the mic and partner audio; the orb reads both levels from it.
+    /// Mouth owns the mic and partner audio; the orb reads both levels.
     private func startLevelPump() {
         levelTask?.cancel()
         levelTask = Task { @MainActor in
@@ -402,23 +492,20 @@ struct ConversationSessionView: View {
     }
 
     private func makeSession() throws -> SessionStart {
-        let deck = try StanceDeck.loadBundled()
         let bank = try OpenPromptBank.loadBundled()
-        guard !bank.prompts.isEmpty else {
+        guard !bank.cards.isEmpty else {
             throw ConversationSessionError.missingOpens
         }
 
         var rng = SplitMix64(seed: UInt64.random(in: 1...UInt64.max))
-        let stance = deck.sample(rng: &rng).views.joined(separator: "\n")
-        let openQuestion = bank.prompts[Int(rng.next() % UInt64(bank.prompts.count))]
-        // TestFlight: the build's scrambled xAI key, with the on-device start budget (MintClient).
-        // A local XAISecrets.plist (main's Format 2) still wins when present.
-        let mint = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
-        let apiKey = XAIDirectKey.load() ?? mint?.apiKey
+        let card = bank.sample(rng: &rng)
+        let stance = card.views.joined(separator: "\n")
+        let openQuestion = card.question
+        let client = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
         let mouth: any ConversationMouth
         let fake: FakeConversationMouth?
-        if apiKey != nil {
-            mouth = LiveConversationMouth()
+        if XAIDirectKey.load() != nil {
+            mouth = LiveConversationMouth(voiceID: voiceID)
             fake = nil
         } else {
             let prototype = FakeConversationMouth()
@@ -440,8 +527,7 @@ struct ConversationSessionView: View {
             session: session,
             mouth: mouth,
             fake: fake,
-            mint: mint,
-            directAPIKey: apiKey
+            mint: client
         )
     }
 
@@ -508,6 +594,52 @@ struct ConversationSessionView: View {
         routeIfFinished()
     }
 
+    private func installIslandStop() {
+        guard let session else { return }
+        ConversationLiveActivityController.shared.bindStop {
+            await session.confirmStop()
+            routeIfFinished()
+        }
+        ConversationLiveActivityController.shared.bindPause {
+            if session.phase == .paused {
+                session.resume()
+            } else {
+                session.pause()
+            }
+        }
+    }
+
+    private func noteIslandClock(from old: ConversationPhase, to new: ConversationPhase) {
+        if session?.countsAsBudgetStart == true, islandStartedAt == nil {
+            islandStartedAt = Date()
+        }
+        if new == .paused, old != .paused {
+            islandPauseBegan = Date()
+        }
+        if old == .paused, new != .paused, let began = islandPauseBegan {
+            islandPausedAccumulated += Date().timeIntervalSince(began)
+            islandPauseBegan = nil
+        }
+    }
+
+    private func syncIsland(leaving: Bool = false) async {
+        installIslandStop()
+        let input = ConversationLiveActivityInput(
+            exercise: .conversation,
+            phase: phase,
+            floor: floor.owner,
+            agentSpeaking: agentSpeaking,
+            startedAt: islandStartedAt,
+            pausedAccumulated: islandPausedAccumulated,
+            pauseBeganAt: islandPauseBegan,
+            phrase: session?.stageLine ?? "",
+            phraseIsPartner: true,
+            activityIsLive: ConversationLiveActivityController.shared.isLive,
+            leaving: leaving
+        )
+        await ConversationLiveActivityController.shared.sync(input, id: conversationID)
+    }
+
     private func handleRouteChange(_ note: Notification) {
         let raw: UInt
         if let value = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt {
@@ -528,6 +660,8 @@ struct ConversationSessionView: View {
             beginConversationBackgroundTask()
         case .active:
             endConversationBackgroundTask()
+            ConversationLiveActivityController.shared.allowStart()
+            Task { await syncIsland() }
         default:
             break
         }
@@ -553,14 +687,16 @@ struct ConversationSessionView: View {
     private func confirmStop() async {
         debugLoop?.cancel()
         await session?.confirmStop()
+        await ConversationLiveActivityController.shared.end()
         routeIfFinished()
-        if !didRouteFinish { isStopping = false }
     }
 
     private func routeIfFinished() {
         guard !didRouteFinish, let session else { return }
         switch session.phase {
         case .crisis:
+            listenBack?.discard()
+            listenBack = nil
             markRoutedAndPostEnded()
             model.presentCrisis(possibleMinorFlag: session.possibleMinorFlag)
         case .report, .dropped:
@@ -569,17 +705,25 @@ struct ConversationSessionView: View {
                 "conversation end reason=\(String(describing: report.endReason), privacy: .public) turns=\(report.userTurns) present=\(session.shouldPresentReport)"
             )
             if !session.shouldPresentReport {
+                listenBack?.discard()
+                listenBack = nil
                 if errorMessage == nil {
-                    errorMessage = "Connection lost."
+                    errorMessage = UserFacingFailure.connectionDropped
                     canRetry = true
                 }
                 markRoutedAndPostEnded()
                 return
             }
             markRoutedAndPostEnded()
+            let recordingID = report.kind == .crisis
+                ? nil
+                : listenBack?.finish(report: report, inLibrary: RecordingsService.keepRecordings)
+            if recordingID == nil { listenBack?.discard() }
+            listenBack = nil
             model.finishConversation(
                 report: report,
-                possibleMinorFlag: session.possibleMinorFlag
+                possibleMinorFlag: session.possibleMinorFlag,
+                recordingID: recordingID
             )
         default:
             break
@@ -599,7 +743,6 @@ struct ConversationSessionView: View {
         debugLoop?.cancel()
         debugLoop = nil
         endConversationBackgroundTask()
-        countdownRemaining = nil
 
         switch model.route {
         case .conversationReport, .crisis:
@@ -610,6 +753,8 @@ struct ConversationSessionView: View {
         }
 
         didRouteFinish = true
+        listenBack?.discard()
+        listenBack = nil
         Task { await postEndedIfNeeded() }
         guard let session else { return }
         switch session.phase {
@@ -626,7 +771,6 @@ private struct SessionStart {
     let mouth: any ConversationMouth
     let fake: FakeConversationMouth?
     let mint: MintClient?
-    let directAPIKey: String?
 }
 
 private enum ConversationSessionError: LocalizedError {
@@ -635,8 +779,7 @@ private enum ConversationSessionError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingOpens: "Opening prompts didn’t load."
-        case .missingAPIKey: "Conversation isn’t configured. Add XAI_API_KEY to server/.env and rebuild."
+        case .missingOpens, .missingAPIKey: UserFacingFailure.practiceDidNotStart
         }
     }
 }

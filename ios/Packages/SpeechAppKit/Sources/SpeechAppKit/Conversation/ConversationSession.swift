@@ -11,14 +11,15 @@ public final class ConversationSession {
     /// Partner words for the live stage. Empty until the first non-empty caption.
     public private(set) var partnerLine = ""
 
-    /// Opening question until the partner speaks, then the newest partner words.
+    /// Newest partner words. Empty until the partner speaks.
     public var stageLine: String {
-        Self.captionTail(subtitleLine)
+        Self.captionTail(partnerLine)
     }
 
-    /// Full live caption. The subtitle view trims to the screen; do not pre-chop.
+    /// Full live caption. Empty until the partner is speaking.
+    /// The subtitle view trims to the screen; do not pre-chop.
     public var subtitleLine: String {
-        partnerLine.isEmpty ? openQuestion : partnerLine
+        partnerLine
     }
 
     public var elapsed: TimeInterval {
@@ -76,6 +77,14 @@ public final class ConversationSession {
     private var partnerOutstanding = false
     /// After the partner finishes, ignore empty VAD until this time (loudspeaker bleed).
     private var ignoreEmptySpeechUntil: TimeInterval = 0
+    /// Qualifying non-English answers so far (sustained spans, not single loanwords).
+    private var otherLanguageTurns = 0
+    /// Heard code-switch asides this session (cap in `ConversationLiveNudge`).
+    private var codeSwitchHeard = 0
+    /// End time of the last counted slip — avoids double-counting one answer.
+    private var lastOtherLanguageSpanEnd: TimeInterval = -1
+    /// Per-session copy of the live-nudge flag so tests do not race on the process default.
+    public var spokenCodeSwitchEnabled = ConversationLiveNudge.spokenCodeSwitchEnabled
 
     public init(
         time: any ConversationTimeSource,
@@ -101,15 +110,21 @@ public final class ConversationSession {
         phase = .connecting
     }
 
-    public func countdownReachedZero(ephemeralKey: String) async throws {
+    public func countdownReachedZero(
+        ephemeralKey: String,
+        timeout: TimeInterval = ConnectionWaitPolicy.hangLimit
+    ) async throws {
         phase = .connecting
-        try await mouth.connect(ephemeralKey: ephemeralKey)
+        try await mouth.connect(ephemeralKey: ephemeralKey, timeout: timeout)
     }
 
     public func pause() {
         guard phase == .talking else { return }
         phase = .paused
         pausedAt = time.now
+        // The screen was already showing Paused while the mic stayed open,
+        // so the model kept hearing them and answering.
+        mouth.setInputPaused(true)
     }
 
     public func resume() {
@@ -118,6 +133,7 @@ public final class ConversationSession {
         self.pausedAt = nil
         lastUserSpeechAt = time.now
         phase = .talking
+        mouth.setInputPaused(false)
     }
 
     public func requestStop() {}
@@ -127,6 +143,25 @@ public final class ConversationSession {
     public func noteConfigDrift() async { await finish(reason: .configDrift) }
 
     public func ingestUserText(_ text: String) { lastUserText = text }
+
+    /// Called when listen-back STT finds a qualifying non-English span in an answer.
+    /// Counts the turn; queues `.codeSwitch` once the threshold is hit (dev-flagged).
+    public func noteOtherLanguageSpan(end: TimeInterval) {
+        guard end > lastOtherLanguageSpanEnd + 0.01 else { return }
+        lastOtherLanguageSpanEnd = end
+        otherLanguageTurns += 1
+        guard spokenCodeSwitchEnabled,
+              otherLanguageTurns >= ConversationLiveNudge.otherLanguageTurnThreshold,
+              codeSwitchHeard < ConversationLiveNudge.otherLanguageAsideCap
+        else { return }
+        // Lifecycle cues win over a language aside.
+        switch pendingCue {
+        case .open?, .wrapWarn?, .wrapClose?:
+            return
+        default:
+            queueIfAllowed(.codeSwitch)
+        }
+    }
 
     public func noteUserSpeech(seconds: TimeInterval) {
         userSpeechThisTurn += seconds
@@ -138,8 +173,16 @@ public final class ConversationSession {
     }
 
     public func queueIfAllowed(_ cue: ConversationCue) {
-        guard ConversationCueAssembler.v1MaySend(cue) else { return }
+        guard maySend(cue) else { return }
         pendingCue = cue
+    }
+
+    private func maySend(_ cue: ConversationCue) -> Bool {
+        switch cue {
+        case .open, .wrapWarn, .wrapClose: return true
+        case .codeSwitch: return spokenCodeSwitchEnabled
+        case .fillerOk: return false
+        }
     }
 
     public func tick() async {
@@ -281,7 +324,7 @@ public final class ConversationSession {
                 userTranscript += " " + transcript
             }
         }
-        if let pending = pendingCue, ConversationCueAssembler.v1MaySend(pending) {
+        if let pending = pendingCue, maySend(pending) {
             pendingCue = nil
             try? await sendCue(pending)
         } else {
@@ -295,7 +338,10 @@ public final class ConversationSession {
             return
         }
         guard let cue = lastSentCue else { return }
-        if ConversationCueAssembler.heard(cue, in: transcript) { return }
+        if ConversationCueAssembler.heard(cue, in: transcript) {
+            if cue == .codeSwitch { codeSwitchHeard += 1 }
+            return
+        }
         switch cue {
         case .open:
             if openIgnoreRetries < 1 {
@@ -306,7 +352,12 @@ public final class ConversationSession {
             pendingCue = .wrapWarn
         case .wrapClose:
             await finish(reason: .wrap)
-        case .codeSwitch, .fillerOk:
+        case .codeSwitch:
+            // Model ignored the aside — do not consume the heard budget; retry once next turn.
+            if codeSwitchHeard < ConversationLiveNudge.otherLanguageAsideCap {
+                pendingCue = .codeSwitch
+            }
+        case .fillerOk:
             break
         }
     }
@@ -319,7 +370,7 @@ public final class ConversationSession {
 
     private func sendCue(_ cue: ConversationCue) async throws {
         guard !closed else { return }
-        guard ConversationCueAssembler.v1MaySend(cue) else { return }
+        guard maySend(cue) else { return }
         lastSentCue = cue
         partnerOutstanding = true
         try await mouth.sendResponseCreate(

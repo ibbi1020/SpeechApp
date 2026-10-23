@@ -8,22 +8,17 @@ Sizes below are what you see at the **Large** Dynamic Type setting. Larger and s
 
 ### Fonts
 
-Three faces. Headings use the bundled serif. Everything else uses SF Pro, the iOS system font.
+Two jobs. Headings and chrome use SF Pro. A prompt, a subtitle, a passage, or a transcript uses New York, through `SpeechReading`.
+
+Reading text is 22pt at the Large text setting. Words sit 8pt apart. Lines sit 14pt apart. The spoken word is semibold and underlined. The size and the gaps scale with the Title 2 text style.
 
 | Face | Source | Weight | Roles |
 | --- | --- | --- | --- |
-| Instrument Serif | `font/InstrumentSerif-Regular.ttf` | Regular (400) | h1, h2, h3, h4 |
+| SF Pro | System | Semibold (600) | h1, h2, h3, h4, label |
 | SF Pro | System | Regular (400) | body, subtext |
-| SF Pro | System | Semibold (600) | label |
+| New York | System serif | Regular (400), Semibold on the spoken word | prompts, subtitles, passages, transcripts |
 
-Instrument Serif is the only file we ship.
-
-- Family name: Instrument Serif
-- PostScript name: `InstrumentSerif-Regular`
-- Registered in `UIAppFonts` (`ios/App/Info.plist` and `ios/project.yml`)
-- One cut only. Headings do not switch to a bold serif.
-
-SF Pro is not bundled. SwiftUI’s system font draws it.
+SF Pro and New York are not bundled. SwiftUI’s system font draws them.
 
 ### Scale
 
@@ -46,10 +41,10 @@ Line height is the target height of one line, as a multiple of the point size. T
 
 | Role | Size | Face | Tracking | Line height | Dynamic Type bucket |
 | --- | --- | --- | --- | --- | --- |
-| h1 | 51 | Instrument Serif Regular | −0.025 em (−1.28pt) | 1.10 (56.1pt) | Large Title |
-| h2 | 38 | Instrument Serif Regular | −0.020 em (−0.76pt) | 1.12 (42.6pt) | Large Title |
-| h3 | 28 | Instrument Serif Regular | −0.015 em (−0.42pt) | 1.15 (32.2pt) | Title |
-| h4 | 21 | Instrument Serif Regular | −0.010 em (−0.21pt) | 1.20 (25.2pt) | Title 3 |
+| h1 | 51 | SF Pro Semibold | −0.025 em (−1.28pt) | 1.10 (56.1pt) | Large Title |
+| h2 | 38 | SF Pro Semibold | −0.020 em (−0.76pt) | 1.12 (42.6pt) | Large Title |
+| h3 | 28 | SF Pro Semibold | −0.015 em (−0.42pt) | 1.15 (32.2pt) | Title |
+| h4 | 21 | SF Pro Semibold | −0.010 em (−0.21pt) | 1.20 (25.2pt) | Title 3 |
 | body | 16 | SF Pro Regular | 0 | 1.45 (23.2pt) | Body |
 | subtext | 14 | SF Pro Regular | 0 | 1.40 (19.6pt) | Subheadline |
 | label | 12 | SF Pro Semibold | +0.060 em (+0.72pt) | 1.25 (15pt) | Caption |
@@ -76,6 +71,9 @@ The title string stays on the screen as its navigation title, so the back button
 ### How to apply it
 
 ```swift
+Text("Read this aloud")
+    .speechReading()
+
 Text("The passage")
     .speechType(.h2)
 
@@ -114,7 +112,58 @@ Not defined yet.
 
 ## Motion
 
-Not defined yet.
+Source of truth: `SpeechAppKit/Design/BlurMotion.swift` for the numbers, `ios/App/Design/SpeechBlur.swift` for the SwiftUI vocabulary.
+
+### Blur is the transition
+
+Nothing slides and nothing scales between states. What is leaving blurs out of focus; what is arriving resolves into it. This is measured off FocusFlight, where every screen change, label change and modal works this way.
+
+Blur does a job that opacity alone cannot: a cross-fade of two sharp layers reads as two things overlaid, and the eye tries to read both. Blurring the outgoing layer removes it as something readable before it is gone, so only one thing is ever legible.
+
+### The three moves
+
+| Move | Radius | Duration | Use for |
+| --- | --- | --- | --- |
+| Dissolve | 20pt, or 0.4 × type size for text | 280ms, ease-in-out | One surface or line of copy replaced by another |
+| Burst | 30pt | 120ms, ease-in-out | A control leaving with nothing taking its place |
+| Backdrop | 28pt + 55% black scrim | 300ms, ease-in-out | Content pushed behind a modal |
+
+Picking the right move matters more than the numbers.
+
+- **Dissolve** is the default. Both ends blur: out over the first 45% of the duration, in over the remaining 55%. Measured end to end at 290ms on the reference; ours lands at ~250ms.
+- **Burst** is harder and faster because nothing replaces the element, so the eye should release it rather than track it out. The reference's confirm button hit 18pt within a single frame and was down to a sixth of its opacity by 120ms.
+- **Backdrop** holds for as long as the modal is up — it is a state, not a transition. The scrim is required: a Gaussian blur preserves mean brightness, so blur alone does not push anything back.
+
+### Text blur scales with type size
+
+`BlurMotion.textRadius(forSize:)` returns four tenths of the point size, with a 6pt floor. A fixed radius lands wrong in both directions: 20pt erases a caption into a grey bar, and 6pt leaves a 51pt headline perfectly readable. The reference's 51pt header dissolves through about 20pt, which is where four tenths comes from.
+
+### Changing text in place
+
+`BlurDissolve` shows one value at a time. Cross-fading two strings in a `ZStack` sizes the container to the taller one, so a two-line heading replacing a one-line heading leaves a gap below it for the whole transition — and the point of the move is that nothing shifts. So the old value blurs out, the swap happens under the blur unanimated, and the new value resolves in.
+
+### Curves
+
+| Token | Curve | Use |
+| --- | --- | --- |
+| `SpeechBlur.motion` | ease-in-out 280ms | Anything driving a blur dissolve |
+| `SpeechMotion.settle` | spring, response 0.35, damping 1.0 | Layout settling, not blur |
+| `SpeechMotion.press` | spring, response 0.22, damping 1.0 | Press and highlight |
+| `SpeechMotion.scroll` | ease-in-out 450ms | Passage auto-scroll |
+
+Blur never gets a spring. Overshoot on a blur radius reads as a lens hunting for focus.
+
+### Reduce Motion and Reduce Transparency
+
+Reduce Motion drops the blur ramp entirely and leaves a 200ms fade — a blur ramp is exactly the kind of motion that setting exists to avoid. `BlurVeil` and `BlurPhase.dissolved(radius:reduceMotion:)` both handle this, so callers do not each have to remember.
+
+Reduce Transparency drops the backdrop blur and raises its scrim to 72%, since the scrim then carries the whole separation on its own.
+
+### What stays sharp
+
+Numbers use `.contentTransition(.numericText())`, not blur. Digits rolling is the system's own idiom for a value counting, and blurring them loses that.
+
+The reading countdown fog is deliberately softer than a backdrop at 7pt (`SpeechCountdown.fogBlurRadius`). The passage behind it should stay present and shaped, just not readable, because that is the thing you are about to read.
 
 ## Iconography
 

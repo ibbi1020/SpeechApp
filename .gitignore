@@ -22,6 +22,18 @@ logs/
 # Local visual-companion mockups
 .superpowers/
 
+# Reference screen recordings (too large for git; extracted frames are committed)
+inspo/*.MP4
+inspo/*.mp4
+inspo/*.mov
+inspo/*.MOV
+
+# Feedback eval: generated audio, your own voice recordings, Grok caches, reports
+eval/feedback/clips/generated/
+eval/feedback/clips/real/*
+!eval/feedback/clips/real/README.md
+eval/feedback/out/
+
 # Fastlane / CI build output
 ios/build/
 ios/fastlane/report.xml
