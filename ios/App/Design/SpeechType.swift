@@ -3,8 +3,8 @@ import UIKit
 
 /// Text roles for the app.
 ///
-/// Headings and chrome are SF Pro. A prompt, a subtitle, a passage, or a transcript
-/// uses New York through `SpeechReading`.
+/// Headings and chrome are SF Pro. A prompt, a subtitle, a passage, or the person's
+/// words in a transcript use New York through `SpeechReading`. The partner's words use SF Pro.
 ///
 /// Words you read aloud, live or on listen-back, share `SpeechReading`.
 ///

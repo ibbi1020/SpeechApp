@@ -53,9 +53,13 @@ public enum DitherHorizon {
         )
     }
 
-    /// Maps a microphone RMS to 0...1. Room noise sits near 0.01; a hum is well above.
+    /// Maps a microphone RMS to 0...1.
+    ///
+    /// Room noise near 0.005 stays off. A raised voice, around 0.03 RMS, fills
+    /// the field. The old gate needed 0.11 before it reached full, so a loud
+    /// hum barely moved the drawing.
     public static func voiceLevel(rms: Double) -> Double {
-        min(1, max(0, (rms - 0.012) * 10))
+        min(1, max(0, (rms - 0.006) * 36))
     }
 
     /// How far the hum field is driven, 0...1.

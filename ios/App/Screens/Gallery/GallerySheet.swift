@@ -330,6 +330,7 @@ struct GallerySheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 Text(item.topic)
+                    .padding(.top, SpeechSpacing.section)
                     .font(.system(size: 28, weight: .semibold))
                     .tracking(-0.42)
                     .fixedSize(horizontal: false, vertical: true)

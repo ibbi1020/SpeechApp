@@ -74,18 +74,13 @@ final class HumTone {
         let input = engine.inputNode
         let hardware = input.outputFormat(forBus: 0)
         guard hardware.sampleRate > 0, hardware.channelCount > 0 else { return false }
-        // Float at the hardware rate, so the callback gets float samples. A
-        // different rate or channel count makes the tap fail and the tone never
-        // starts, so that case keeps the hardware format. Integer buffers are
+        // The tap has to use the hardware format. Asking for a converted format
+        // throws inside installTap, and that throw is not a Swift error, so the
+        // engine never starts and the field stays still. Integer buffers are
         // still read if the callback arrives as int16.
-        let preferred = Self.meterTapFormat(hardware)
-        if startMeter(on: input, format: preferred) == false {
-            let changed = preferred.commonFormat != hardware.commonFormat
-                || preferred.isInterleaved != hardware.isInterleaved
-            guard changed, startMeter(on: input, format: hardware) else {
-                input.removeTap(onBus: 0)
-                return false
-            }
+        guard startMeter(on: input, format: hardware) else {
+            input.removeTap(onBus: 0)
+            return false
         }
         isListening = true
         return true
@@ -136,6 +131,9 @@ final class HumTone {
             } else {
                 try session.setActive(true)
             }
+            // The receiver is too quiet to hear in a room. This forces the
+            // loudspeaker after the session is on.
+            try session.overrideOutputAudioPort(.speaker)
             return true
         } catch {
             return false
@@ -198,25 +196,6 @@ final class HumTone {
         meter.reset()
     }
 
-    /// Non-interleaved float at the same rate and channel count as the hardware.
-    /// An already-float input keeps its own format object.
-    private nonisolated static func meterTapFormat(_ hardware: AVAudioFormat) -> AVAudioFormat {
-        if hardware.commonFormat == .pcmFormatFloat32, hardware.isInterleaved == false {
-            return hardware
-        }
-        guard hardware.sampleRate > 0, hardware.channelCount > 0,
-              let floatFormat = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: hardware.sampleRate,
-                channels: hardware.channelCount,
-                interleaved: false
-              ),
-              floatFormat.sampleRate == hardware.sampleRate,
-              floatFormat.channelCount == hardware.channelCount
-        else { return hardware }
-        return floatFormat
-    }
-
     private nonisolated static func installMeterTap(
         on input: AVAudioInputNode,
         format: AVAudioFormat,
@@ -235,8 +214,8 @@ final class HumTone {
     }
 
     /// One up-and-down glide across the ten seconds. A second harmonic makes it read
-    /// as a voice, not a beep. Peak is high on purpose: a quiet low sine disappears on
-    /// a phone speaker.
+    /// as a voice. A third sits where a phone speaker can actually move air, because
+    /// G3 on its own disappears. The peak uses the full sample range.
     private struct PlayableTone {
         var buffer: AVAudioPCMBuffer
         var rms: Double
@@ -255,15 +234,22 @@ final class HumTone {
 
         let fade = Int(sampleRate * 0.12)
         let total = Int(frameCount)
-        let harmonic = self.harmonic(clip)
+        let second = self.harmonic(clip)
+        // Upper partial, same for every exercise. Added on top of the voice so
+        // the level rises. The glide pitch does not change.
+        let third = 0.5
         var phase = 0.0
         var sum = 0.0
         for index in 0..<total {
             let time = Double(index) / sampleRate
             let hz = frequency(at: time, seconds: seconds)
             phase += 2 * Double.pi * hz / sampleRate
-            let voice = sin(phase) + harmonic * sin(phase * 2)
-            var sample = Float(voice / (1 + harmonic) * 0.85 * flutter(clip, at: time))
+            let shaped = (sin(phase) + second * sin(phase * 2)) / (1 + second)
+            var sample = VocalPlayback.sample(
+                shaped: shaped,
+                partial: third * sin(phase * 3),
+                flutter: flutter(clip, at: time)
+            )
             if index < fade {
                 sample *= Float(index) / Float(fade)
             }

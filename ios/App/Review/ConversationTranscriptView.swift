@@ -38,7 +38,7 @@ struct ConversationTranscriptView: View {
             .last { $0.start <= currentTime && currentTime <= $0.end + 0.15 }?.id
     }
 
-    /// Same face and size as the reading passage. The partner stays tinted.
+    /// Same size as the reading passage. The person is New York. The partner is SF Pro.
     @ScaledMetric(relativeTo: TranscriptStyle.textStyle) private var size: CGFloat = TranscriptStyle.size
     private let turnGap: CGFloat = 28
 
@@ -50,7 +50,7 @@ struct ConversationTranscriptView: View {
                         partnerLine(partner)
                     }
                     if !block.words.isEmpty {
-                        words(block.words, tint: nil, quietFillers: true)
+                        words(block.words, tint: nil, quietFillers: true, face: .newYork)
                     }
                 }
             }
@@ -61,21 +61,29 @@ struct ConversationTranscriptView: View {
     @ViewBuilder
     private func partnerLine(_ partner: PartnerTurn) -> some View {
         if let timed = partner.words, !timed.isEmpty {
-            words(timed, tint: Color.secondary, quietFillers: false, accessibilityPrefix: "Partner, ")
+            words(
+                timed,
+                tint: Color.secondary,
+                quietFillers: false,
+                accessibilityPrefix: "Partner, ",
+                face: .system
+            )
         } else if !partner.text.isEmpty {
             Text(partner.text)
-                .font(SpeechReading.font(size: size))
+                .font(.system(size: size))
                 .foregroundStyle(Color.secondary)
                 .lineSpacing(SpeechReading.scaledGap(TranscriptStyle.lineGap, size: size))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    /// New York, from `TranscriptStyle`. Both speakers share it.
-    private var wordFace: SpeechReadingWord.Face {
-        switch TranscriptStyle.face {
+    /// New York for the person, SF Pro for the partner. Same faces as `TranscriptStyle`.
+    private func wordFace(_ style: TranscriptStyle.Face) -> SpeechReadingWord.Face {
+        switch style {
         case .newYork:
             .newYork
+        case .system:
+            .system
         }
     }
 
@@ -83,7 +91,8 @@ struct ConversationTranscriptView: View {
         _ words: [RecordedWord],
         tint: Color?,
         quietFillers: Bool,
-        accessibilityPrefix: String = ""
+        accessibilityPrefix: String = "",
+        face: TranscriptStyle.Face
     ) -> some View {
         WordWrapLayout(
             spacing: SpeechReading.scaledGap(TranscriptStyle.wordGap, size: size),
@@ -98,7 +107,7 @@ struct ConversationTranscriptView: View {
                         isCurrent: currentWordID == word.id,
                         quiet: quietFillers && word.isFiller,
                         tint: tint,
-                        face: wordFace,
+                        face: wordFace(face),
                         size: size
                     )
                 }

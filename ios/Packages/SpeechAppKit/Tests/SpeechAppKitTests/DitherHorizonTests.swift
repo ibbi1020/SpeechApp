@@ -33,6 +33,8 @@ struct DitherHorizonTests {
     @Test("silence stays low and a voice lifts the field")
     func drive() {
         #expect(DitherHorizon.voiceLevel(rms: 0.005) == 0)
+        // A raised voice, not a shout. The old gate left this near the floor.
+        #expect(DitherHorizon.voiceLevel(rms: 0.03) > 0.75)
         #expect(DitherHorizon.voiceLevel(rms: 0.08) > 0.5)
         let quiet = DitherHorizon.level(voice: 0, reduceMotion: false)
         let loud = DitherHorizon.level(voice: 1, reduceMotion: false)

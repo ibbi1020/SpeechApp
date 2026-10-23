@@ -1,17 +1,23 @@
 import CoreGraphics
 import SwiftUI
 
-/// Listen-back transcript. Same face, size, and spacing as the reading passage.
+/// Listen-back transcript. Same size and spacing as the reading passage.
 ///
-/// New York, 22pt at the Large text setting, 8pt between words, 14pt between lines.
-/// Matches `SpeechReading`: `.newYork`, `size`, `wordGap`, `lineGap`, and `textStyle`.
+/// The person is New York. The partner is SF Pro. 22pt at the Large text
+/// setting, 8pt between words, 14pt between lines.
 public enum TranscriptStyle {
     public enum Face: Equatable, Sendable {
+        /// New York, the reading serif.
         case newYork
+        /// SF Pro, the system sans.
+        case system
     }
 
-    /// New York, the system serif. Same face as `SpeechReadingWord.Face.newYork`.
-    public static let face: Face = .newYork
+    /// What the person said. New York, same as the reading passage.
+    public static let speaker: Face = .newYork
+
+    /// What the partner said. SF Pro.
+    public static let partner: Face = .system
 
     /// Point size at the Large text setting. Same as `SpeechReading.size`.
     public static let size: CGFloat = 22

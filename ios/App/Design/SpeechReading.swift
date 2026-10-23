@@ -3,8 +3,9 @@ import UIKit
 
 /// Shared settings for words you read or hear back.
 ///
-/// A prompt, a subtitle, a passage, and a transcript all use this.
-/// New York, 22pt at the Large text setting, 8pt between words, 14pt between lines.
+/// A prompt, a subtitle, a passage, and the person's words in a transcript all use this.
+/// The partner's words use SF Pro. New York, 22pt at the Large text setting,
+/// 8pt between words, 14pt between lines.
 /// The spoken word is semibold.
 enum SpeechReading {
     /// Point size at the Large text setting. Scales with `textStyle`.
@@ -52,8 +53,8 @@ struct SpeechReadingWord: View {
     var quiet: Bool = false
     /// Partner words use this so they stay distinct from the speaker.
     var tint: Color? = nil
-    /// New York is the reading and transcript face.
-    /// Instrument Serif stays available; transcripts do not use it.
+    /// New York is the reading face and the person's transcript words.
+    /// The partner uses SF Pro. Instrument Serif stays available; transcripts do not use it.
     var face: Face = .newYork
     var size: CGFloat
 

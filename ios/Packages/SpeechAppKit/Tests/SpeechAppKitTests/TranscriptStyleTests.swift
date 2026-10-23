@@ -8,7 +8,9 @@ import Testing
 struct TranscriptStyleTests {
     @Test("the transcript matches the reading passage face, size, gaps, and text style")
     func matchesReadingPassage() {
-        #expect(TranscriptStyle.face == .newYork)
+        #expect(TranscriptStyle.speaker == .newYork)
+        #expect(TranscriptStyle.partner == .system)
+        #expect(TranscriptStyle.speaker != TranscriptStyle.partner)
         #expect(TranscriptStyle.size == 22)
         #expect(TranscriptStyle.wordGap == 8)
         #expect(TranscriptStyle.lineGap == 14)
