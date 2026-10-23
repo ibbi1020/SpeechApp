@@ -5,7 +5,10 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        navigation
+        SplashContainer {
+            navigation
+        }
+        .preferredColorScheme(.dark)
     }
 
     private var navigation: some View {
@@ -32,7 +35,6 @@ struct RootView: View {
                 }
         }
         .tint(.accentColor)
-        .preferredColorScheme(.dark)
     }
 
     private var recordingsPresented: Binding<Bool> {
