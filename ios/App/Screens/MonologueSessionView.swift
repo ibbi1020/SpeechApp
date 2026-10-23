@@ -446,9 +446,8 @@ struct MonologueSessionView: View {
                 }
             } label: {
                 Image(systemName: session.phase == .paused ? "play.fill" : "pause.fill")
-                    .speechGlassCircle()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
             .disabled(!live)
             .opacity(live ? 1 : 0)
             .allowsHitTesting(live)
@@ -461,9 +460,8 @@ struct MonologueSessionView: View {
                 }
             } label: {
                 Image(systemName: "checkmark")
-                    .speechGlassCircle(tint: .accentColor)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
             .disabled(!live)
             .opacity(live ? 1 : 0)
             .allowsHitTesting(live)

@@ -82,8 +82,8 @@ extension View {
 /// Keeps the edge swipe after the navigation bar is hidden.
 ///
 /// Hiding the bar also hides the system back button, and the navigation
-/// controller then refuses the swipe. Home and the ceremony use a glass
-/// back control instead, so the swipe has to be turned back on by hand.
+/// controller then refuses the swipe. Home and the ceremony use a solid
+/// circle back control instead, so the swipe has to be turned back on by hand.
 struct SpeechEdgeSwipe: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> Controller {
         Controller()
@@ -144,82 +144,112 @@ struct SpeechStartButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: SpeechStartMetrics.labelSize, weight: .medium))
-            // Disabled dims the fill rather than the whole button. Fading the button
-            // to 45% let whatever sat behind it show straight through the capsule.
-            .foregroundStyle(isEnabled ? Color.black : Color(white: 0.26))
-            .frame(maxWidth: .infinity)
-            .frame(height: SpeechStartMetrics.height)
-            .background(isEnabled ? Color.white : Color(white: 0.58), in: Capsule())
-            .padding(.horizontal, SpeechStartMetrics.extraInset)
-            .contentShape(Capsule())
-            .opacity(isEnabled && configuration.isPressed ? 0.92 : 1)
-            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
-            .animation(SpeechMotion.press, value: configuration.isPressed)
+            .modifier(SpeechWideCapsule(
+                isEnabled: isEnabled,
+                isPressed: configuration.isPressed,
+                fill: .white,
+                foreground: .black
+            ))
     }
 }
 
 struct SpeechPrimaryButtonStyle: ButtonStyle {
     var tint: Color = .accentColor
     var isDestructive: Bool = false
-    /// Tinted glass for the primary go action. Other primaries stay clear glass.
+    /// Solid accent capsule and a white label. Off for the plain white capsule.
     var showsTint: Bool = false
 
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
-        let glass: Glass = showsTint
-            ? .regular.tint(isDestructive ? .red : tint).interactive()
-            : .regular.interactive()
         configuration.label
-            .font(.headline)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .foregroundStyle(showsTint ? AnyShapeStyle(.white) : AnyShapeStyle(isDestructive ? Color.red : Color.primary))
-            .glassEffect(glass, in: .capsule)
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .opacity(configuration.isPressed ? 0.92 : 1)
-            .animation(SpeechMotion.press, value: configuration.isPressed)
+            .modifier(SpeechWideCapsule(
+                isEnabled: isEnabled,
+                isPressed: configuration.isPressed,
+                fill: enabledFill,
+                foreground: enabledForeground
+            ))
+    }
+
+    /// Destructive keeps the white capsule and a red label, including when
+    /// `showsTint` is also set. A tint without that flag is the accent fill.
+    private var enabledFill: Color {
+        if isDestructive || !showsTint { return .white }
+        return tint
+    }
+
+    private var enabledForeground: Color {
+        if isDestructive { return .red }
+        if showsTint { return .white }
+        return .black
     }
 }
 
 struct SpeechSecondaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .modifier(SpeechWideCapsule(
+                isEnabled: isEnabled,
+                isPressed: configuration.isPressed,
+                fill: .white,
+                foreground: .black
+            ))
+    }
+}
+
+/// The wide capsule shared by start, primary, and secondary.
+private struct SpeechWideCapsule: ViewModifier {
+    var isEnabled: Bool
+    var isPressed: Bool
+    var fill: Color
+    var foreground: Color
+
+    func body(content: Content) -> some View {
+        content
+            .font(.system(size: SpeechStartMetrics.labelSize, weight: .medium))
+            // Disabled dims the fill rather than the whole button. Fading the button
+            // to 45% let whatever sat behind it show straight through the capsule.
+            .foregroundStyle(isEnabled ? foreground : Color(white: 0.26))
+            .frame(maxWidth: .infinity)
+            .frame(height: SpeechStartMetrics.height)
+            .background(isEnabled ? fill : Color(white: 0.58), in: Capsule())
+            .padding(.horizontal, SpeechStartMetrics.extraInset)
+            .contentShape(Capsule())
+            .opacity(isEnabled && isPressed ? 0.92 : 1)
+            .scaleEffect(isPressed && isEnabled ? 0.97 : 1)
+            .animation(SpeechMotion.press, value: isPressed)
+    }
+}
+
+/// Solid icon circle. White glyph, white fill at 12% opacity.
+/// Gallery chrome is 44pt. Ceremony, voice, and background are 48pt.
+/// Pause, stop, and done beside the orb stay 52pt. 44pt is the floor.
+struct SpeechIconCircleStyle: ButtonStyle {
+    static let gallery: CGFloat = 44
+    static let standard: CGFloat = 48
+    static let session: CGFloat = 52
+
+    var diameter: CGFloat = gallery
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    private var side: CGFloat { max(diameter, Self.gallery) }
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.body.weight(.semibold))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .foregroundStyle(.primary)
-            .glassEffect(.regular.interactive(), in: .capsule)
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .foregroundStyle(Color.white)
+            .frame(width: side, height: side)
+            .background(Color.white.opacity(0.12), in: Circle())
+            .contentShape(Circle())
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1)
             .animation(SpeechMotion.press, value: configuration.isPressed)
     }
 }
 
-/// Equal pause / stop circle chrome for live session bars.
-struct SpeechGlassCircleLabel: ViewModifier {
-    var tint: Color?
-
-    func body(content: Content) -> some View {
-        let glass: Glass = if let tint {
-            .regular.tint(tint).interactive()
-        } else {
-            .regular.interactive()
-        }
-        content
-            .font(.body.weight(.semibold))
-            .foregroundStyle(tint == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(.white))
-            .frame(width: 52, height: 52)
-            .contentShape(Circle())
-            .glassEffect(glass, in: .circle)
-    }
-}
-
-extension View {
-    func speechGlassCircle(tint: Color? = nil) -> some View {
-        modifier(SpeechGlassCircleLabel(tint: tint))
-    }
-}
-
-/// A navigation-bar icon. White, so it does not pick up the blue accent tint.
+/// A navigation-bar icon. Same solid circle as the other icon buttons.
 struct SpeechBarButton: View {
     var systemName: String
     var label: String
@@ -228,10 +258,8 @@ struct SpeechBarButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(Color.white)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.gallery))
         .accessibilityLabel(label)
     }
 }
@@ -253,7 +281,7 @@ struct VoiceOrb: View {
     static let box: CGFloat = 150
     /// orb-ui cloud theme draws the sphere at this fraction of `box`.
     private static let diameterRatio: CGFloat = 0.55
-    /// Clear space between each glass button and the drawn sphere.
+    /// Clear space between each circle button and the drawn sphere.
     private static let controlGap: CGFloat = 28
 
     /// HStack spacing that leaves `controlGap` between the buttons and the cloud.
