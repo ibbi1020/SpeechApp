@@ -146,7 +146,7 @@ final class ConversationListenBack {
                 content: .init(
                     id: id,
                     format: .conversation,
-                    topic: turns.first?.text.isEmpty == false ? turns[0].text : "Conversation",
+                    topic: ConversationTitle.make(userWords: words.map { $0.surface }),
                     lines: report.lines.map { MonologueReport.Line(label: $0.label, value: $0.value) },
                     words: words,
                     durationSeconds: duration,
