@@ -26,17 +26,6 @@ struct CeremonyScaffold: View {
         model.chosenKind ?? .conversation
     }
 
-    /// The plate has to match the step on the first frame. `chosenKind` is still
-    /// nil until the step proposes one, and falling back to conversation would
-    /// dissolve the wrong field in.
-    private var exerciseKind: PracticeFormat.Kind {
-        if let kind = model.chosenKind { return kind }
-        return ExerciseOfferMaker.offer(
-            counts: model.weeklyCounts,
-            conversationAvailable: model.budget.startEnabled
-        ).proposed
-    }
-
     private var control: CeremonyControl {
         if showingRoomWarning {
             return CeremonyControls.roomWarning(warning: roomWarning)
@@ -74,13 +63,6 @@ struct CeremonyScaffold: View {
                 HumField(voice: humVoice)
                     .ignoresSafeArea()
                     .transition(SpeechBlur.dissolve)
-            } else if model.ceremonyStep == .exercise {
-                ZStack {
-                    ExerciseField(kind: exerciseKind)
-                    ExerciseScrim()
-                }
-                .ignoresSafeArea()
-                .transition(SpeechBlur.dissolve)
             }
 
             VStack(alignment: .leading, spacing: 0) {
