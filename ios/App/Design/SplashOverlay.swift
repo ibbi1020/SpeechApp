@@ -34,10 +34,11 @@ struct SplashContainer<Content: View>: View {
         .task { await play() }
     }
 
+    /// Same asset the system launch screen draws, at that image's own size.
+    /// Scaling it here, or using another asset, shows up as a second icon:
+    /// iOS keeps the launch snapshot until the launch screen itself changes.
     private var launchMark: some View {
-        Image("LaunchMark")
-            .resizable()
-            .frame(width: SplashMotion.markSize, height: SplashMotion.markSize)
+        Image("OratorMark")
     }
 
     private func play() async {
