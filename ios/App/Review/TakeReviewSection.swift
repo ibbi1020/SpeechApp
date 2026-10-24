@@ -70,11 +70,15 @@ struct TakeReviewSection: View {
                         currentTime: player.currentTime,
                         markers: take.markers,
                         partnerTurns: take.partnerTurns ?? [],
+                        scrubGeneration: player.scrubGeneration,
                         onSeek: { player.seek(to: $0) },
                         onMarkerTap: { marker in
                             activeMarker = marker
                             player.seek(to: max(0, marker.start - 2), andPlay: true)
-                        }
+                        },
+                        onScrubBegan: { player.beginScrub() },
+                        onScrub: { time, generation in player.scrub(to: time, generation: generation) },
+                        onScrubEnded: { generation in player.endScrub(generation: generation) }
                     )
 
                     HStack(spacing: SpeechSpacing.related) {
@@ -94,7 +98,7 @@ struct TakeReviewSection: View {
                         PlayheadTime(time: player.currentTime)
                         Spacer(minLength: SpeechSpacing.cluster)
                         Text(timeLabel(player.duration > 0 ? player.duration : take.durationSeconds))
-                            .font(.subheadline.monospacedDigit())
+                            .font(.body.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
 
@@ -105,11 +109,18 @@ struct TakeReviewSection: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    if let activeMarker {
+                    if let activeMarker, !activeMarker.note.isEmpty {
                         Text(activeMarker.note)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                            .padding(.leading, 15)
+                            .background(alignment: .leading) {
+                                Rectangle()
+                                    .fill(markerColor(activeMarker.kind))
+                                    .frame(width: 3)
+                                    .accessibilityHidden(true)
+                            }
                     }
                 }
 
@@ -176,7 +187,7 @@ private struct PlayheadDigits: View, Equatable {
 
     var body: some View {
         Text(label)
-            .font(.subheadline.monospacedDigit())
+            .font(.body.monospacedDigit())
             .foregroundStyle(.secondary)
             .digitRoll(label, countsDown: false, reduceMotion: reduceMotion)
     }

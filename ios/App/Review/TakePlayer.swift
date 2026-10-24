@@ -20,9 +20,13 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
     private(set) var duration: TimeInterval = 0
     private(set) var isPlaying = false
     private(set) var playbackError: String?
+    /// Bumps whenever a scrub is replaced. A coast from an older value must not seek or resume.
+    private(set) var scrubGeneration: Int = 0
 
     private var player: AVAudioPlayer?
     private var ticker: Task<Void, Never>?
+    private var scrubbing = false
+    private var resumeAfterScrub = false
 
     func load(url: URL) {
         tearDown()
@@ -42,10 +46,14 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
     }
 
     func play() {
-        Task { await startPlayback() }
+        scrubGeneration += 1
+        let generation = scrubGeneration
+        scrubbing = false
+        resumeAfterScrub = false
+        Task { await startPlayback(generation: generation) }
     }
 
-    private func startPlayback() async {
+    private func startPlayback(generation: Int) async {
         guard let player else { return }
         if duration > 0, player.currentTime >= duration - 0.05 {
             player.currentTime = 0
@@ -55,6 +63,58 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
         } catch {
             playbackError = UserFacingFailure.speakerDidNotStart
             Self.log.error("session failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        guard generation == scrubGeneration else { return }
+        player.volume = 1
+        guard player.play() else {
+            playbackError = UserFacingFailure.playbackDidNotStart
+            Self.log.error("AVAudioPlayer.play() returned false")
+            isPlaying = false
+            return
+        }
+        playbackError = nil
+        isPlaying = true
+        currentTime = player.currentTime
+        startTicker()
+    }
+
+    func pause() {
+        endScrubOwnership()
+        player?.pause()
+        isPlaying = false
+        ticker?.cancel()
+        ticker = nil
+        if let player { currentTime = player.currentTime }
+    }
+
+    /// Pauses the engine without flipping the Pause button. Returns the generation this touch owns.
+    func beginScrub() -> Int {
+        scrubGeneration += 1
+        resumeAfterScrub = isPlaying
+        scrubbing = true
+        ticker?.cancel()
+        ticker = nil
+        player?.pause()
+        return scrubGeneration
+    }
+
+    /// Moves the clock while the engine stays paused. Ignored if a newer touch owns the scrub.
+    func scrub(to time: TimeInterval, generation: Int) {
+        guard generation == scrubGeneration, scrubbing, let player else { return }
+        let upper = duration > 0 ? duration : time
+        player.currentTime = max(0, min(time, upper))
+        currentTime = player.currentTime
+    }
+
+    /// Resumes only if this generation is still the one that paused playback, and the take has not ended.
+    func endScrub(generation: Int) {
+        guard generation == scrubGeneration else { return }
+        scrubbing = false
+        let resume = resumeAfterScrub
+        resumeAfterScrub = false
+        guard resume, let player, duration > 0, currentTime < duration - 0.05 else {
+            isPlaying = false
             return
         }
         player.volume = 1
@@ -70,19 +130,12 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
         startTicker()
     }
 
-    func pause() {
-        player?.pause()
-        isPlaying = false
-        ticker?.cancel()
-        ticker = nil
-        if let player { currentTime = player.currentTime }
-    }
-
     func toggle() {
         if isPlaying { pause() } else { play() }
     }
 
     func seek(to time: TimeInterval, andPlay: Bool = false) {
+        endScrubOwnership()
         guard let player else { return }
         let upper = duration > 0 ? duration : time
         player.currentTime = max(0, min(time, upper))
@@ -91,6 +144,7 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
     }
 
     func tearDown() {
+        endScrubOwnership()
         ticker?.cancel()
         ticker = nil
         player?.stop()
@@ -103,11 +157,18 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
 
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
+            guard !self.scrubbing else { return }
             self.isPlaying = false
             self.currentTime = self.duration
             self.ticker?.cancel()
             self.ticker = nil
         }
+    }
+
+    private func endScrubOwnership() {
+        scrubGeneration += 1
+        scrubbing = false
+        resumeAfterScrub = false
     }
 
     /// Record mode has no speaker. Play-and-record plus the speaker override
@@ -157,7 +218,8 @@ final class TakePlayer: NSObject, AVAudioPlayerDelegate {
     private func startTicker() {
         ticker?.cancel()
         ticker = Task { @MainActor in
-            while !Task.isCancelled, let player, player.isPlaying {
+            while !Task.isCancelled {
+                guard let player, player.isPlaying, !scrubbing else { return }
                 currentTime = player.currentTime
                 try? await Task.sleep(for: .milliseconds(33))
             }
