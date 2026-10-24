@@ -72,6 +72,10 @@ public final class ConversationSession {
     private var waitingForUser = true
     private var closed = false
     private var speechRanges: [ConversationSpeechInterval] = []
+    /// Partner replies on the session clock, from the first playback sample to `response.done`.
+    /// `response.done` can arrive a little before the speaker finishes the last buffer.
+    private var partnerReplies: [ConversationSpeechInterval] = []
+    private var partnerReplyStartedAt: TimeInterval?
     private var userTranscript = ""
     /// True from `response.create` until `response.done`. Blocks continue on echo / cough while the partner owns the floor.
     private var partnerOutstanding = false
@@ -248,6 +252,10 @@ public final class ConversationSession {
                 countsAsBudgetStart = true
                 awaitingFirstAudio = false
             }
+            // One start per reply. Later chunks of the same reply do not move it.
+            if partnerReplyStartedAt == nil {
+                partnerReplyStartedAt = time.now
+            }
         case .partnerCaption(let text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
@@ -261,6 +269,7 @@ public final class ConversationSession {
         case .speechStopped:
             await onSpeechStopped()
         case .responseDone(let transcript):
+            closePartnerReply()
             partnerOutstanding = false
             // Empty post-partner VAD is almost always loudspeaker / AEC bleed.
             ignoreEmptySpeechUntil = time.now + 0.8
@@ -390,8 +399,17 @@ public final class ConversationSession {
         )
     }
 
+    private func closePartnerReply() {
+        guard let start = partnerReplyStartedAt else { return }
+        partnerReplyStartedAt = nil
+        let end = time.now
+        guard end > start else { return }
+        partnerReplies.append(ConversationSpeechInterval(start: start, end: end))
+    }
+
     private func finish(reason: ConversationEndReason) async {
         guard !closed else { return }
+        closePartnerReply()
         closed = true
         wrappingWaitingUpdated = false
         switch reason {
@@ -436,7 +454,7 @@ public final class ConversationSession {
             ))
         }
         if speechRanges.count >= 2 {
-            let pause = ConversationPauseTime.seconds(from: speechRanges)
+            let pause = ConversationPauseTime.seconds(from: speechRanges, excluding: partnerReplies)
             lines.append(ConversationReport.Line(
                 label: "Pause time",
                 value: String(format: "%.1fs", pause)

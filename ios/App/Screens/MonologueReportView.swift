@@ -7,7 +7,7 @@ struct MonologueReportView: View {
     let report: MonologueReport
     let regimenID: UUID?
     var topic: String = ""
-    /// The gallery keeps the profile lines. The report after a talk does not.
+    /// The gallery lists every saved line. The report after a talk lists the last take only.
     var showsLines: Bool = false
 
     @State private var offersSave = false
@@ -55,7 +55,7 @@ struct MonologueReportView: View {
             }
 
             feedback
-                .padding(.top, SpeechSpacing.section)
+                .padding(.top, topic.isEmpty && report.comparison.isEmpty ? 0 : SpeechSpacing.section)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -64,7 +64,10 @@ struct MonologueReportView: View {
     @ViewBuilder
     private var feedback: some View {
         if let regimenID {
-            RecordingReviewLoader(recordingID: regimenID)
+            RecordingReviewLoader(
+                recordingID: regimenID,
+                stats: FeedbackStatRows.talkAfterExercise(report)
+            )
         } else {
             FeedbackPreparing(message: "This take didn't come through.")
         }
@@ -72,7 +75,7 @@ struct MonologueReportView: View {
 
     private var libraryContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            linesCard
+            FeedbackStatList(rows: FeedbackStatRows.stored(report.lines))
 
             if report.kind == .thin {
                 Text("Too little speech to score the rest.")
@@ -106,28 +109,6 @@ struct MonologueReportView: View {
                 SaveThisTakeButton(recordingID: regimenID, kept: $keptThisTake)
             }
         }
-    }
-
-    private var linesCard: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            ForEach(Array(report.lines.enumerated()), id: \.offset) { _, line in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(line.label)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Text(line.value)
-                        .font(.title2.weight(.semibold))
-                        .monospacedDigit()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
     }
 
     private func goHome() {

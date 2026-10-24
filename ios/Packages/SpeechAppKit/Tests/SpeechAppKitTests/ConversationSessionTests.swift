@@ -262,7 +262,7 @@ struct ConversationSessionTests {
         #expect(report.userTurns == 1)
         #expect(report.userSpeechSeconds == 2)
         #expect(report.lines.contains(where: { $0.label == "Time spoken" && $0.value == "0m 2s" }))
-        #expect(report.lines.contains(where: { $0.label == "Turns" && $0.value == "1" }))
+        #expect(report.lines.contains(where: { $0.label == "Your turns" && $0.value == "1" }))
     }
 
     @Test("a cough under 300ms with no transcript gets no reply and no turn")
@@ -393,6 +393,30 @@ struct ConversationSessionTests {
         #expect(!report.lines.contains(where: { $0.value.lowercased().contains("too fast") }))
         #expect(!report.lines.contains(where: { $0.label.lowercased().contains("grammar") }))
         #expect(!report.lines.contains(where: { $0.label.lowercased().contains("pmi") }))
+    }
+
+    @Test("pause time leaves out the partner reply and keeps the wait after it")
+    @MainActor
+    func pauseOmitsPartnerPlayback() async throws {
+        let (session, _, time) = makeSession()
+        try await reachTalking(session)
+        time.advance(1.0)
+        for index in 0..<3 {
+            await session.handle(.speechStarted)
+            time.advance(20)
+            session.noteUserSpeech(seconds: 20)
+            session.ingestUserText("hello")
+            await session.handle(.speechStopped)
+            await session.handle(.audioDelta)
+            time.advance(2)
+            await session.handle(.responseDone(transcript: "Got it — tell me more?"))
+            if index == 1 {
+                time.advance(3)
+            }
+        }
+        await session.confirmStop()
+        let report = try #require(session.report)
+        #expect(report.lines.contains(where: { $0.label == "Pause time" && $0.value == "3.0s" }))
     }
 
     @Test("uncertain coverage omits pace and pause on a full report")

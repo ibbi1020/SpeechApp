@@ -72,7 +72,7 @@ public enum ConversationReportBuilder {
             value: timeValue
         )
         let turns = ConversationReport.Line(
-            label: "Turns",
+            label: "Your turns",
             value: "\(userTurns)"
         )
         let thin = userSpeechSeconds < minSpeech || userTurns < minTurns
@@ -87,12 +87,15 @@ public enum ConversationReportBuilder {
                 captionSyncLogPath: captionSyncLogPath
             )
         }
+        // Pace leads when it is present, so the first row on the feedback list is the large one.
+        let pace = extraFullLines.filter { $0.label == "Pace" }
+        let rest = extraFullLines.filter { $0.label != "Pace" }
         return ConversationReport(
             kind: .full,
             endReason: endReason,
             userSpeechSeconds: userSpeechSeconds,
             userTurns: userTurns,
-            lines: [time, turns] + extraFullLines,
+            lines: pace + [time, turns] + rest,
             limitedAnalysis: limitedAnalysis,
             captionSyncLogPath: captionSyncLogPath
         )

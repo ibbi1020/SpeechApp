@@ -17,7 +17,7 @@ struct SessionReportView: View {
             FeedbackPageScroll {
                 VStack(alignment: .leading, spacing: 0) {
                     header
-                        .padding(.bottom, SpeechSpacing.section)
+                        .padding(.bottom, SpeechSpacing.related)
 
                     feedback
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -55,7 +55,10 @@ struct SessionReportView: View {
     @ViewBuilder
     private var feedback: some View {
         if let recordingID {
-            RecordingReviewLoader(recordingID: recordingID)
+            RecordingReviewLoader(
+                recordingID: recordingID,
+                stats: FeedbackStatRows.reading(report)
+            )
         } else {
             FeedbackPreparing(message: "This take didn't come through.")
         }

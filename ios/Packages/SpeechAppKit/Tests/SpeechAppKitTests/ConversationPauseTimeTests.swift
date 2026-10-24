@@ -41,6 +41,34 @@ struct ConversationPauseTimeTests {
         #expect(count == 2)
     }
 
+    @Test("a gap that is only the partner adds no pause")
+    func partnerFillsTheGap() {
+        let pause = ConversationPauseTime.seconds(
+            from: [
+                ConversationSpeechInterval(start: 0, end: 1),
+                ConversationSpeechInterval(start: 3, end: 4),
+            ],
+            excluding: [
+                ConversationSpeechInterval(start: 1, end: 3),
+            ]
+        )
+        #expect(pause == 0)
+    }
+
+    @Test("silence after the partner stops still counts")
+    func partnerPlusAWait() {
+        let pause = ConversationPauseTime.seconds(
+            from: [
+                ConversationSpeechInterval(start: 0, end: 1),
+                ConversationSpeechInterval(start: 5, end: 6),
+            ],
+            excluding: [
+                ConversationSpeechInterval(start: 1, end: 3),
+            ]
+        )
+        #expect(pause == 2)
+    }
+
     @Test("a single range has no pause count")
     func singleRangeCount() {
         let count = ConversationPauseTime.count(from: [

@@ -56,8 +56,10 @@ private struct SaveProgressRing: View {
 
 /// "Listen back" for a saved recording. Shows the save ring while the take is
 /// still being written, then the player. A slow save is not a failure.
+/// `stats` stay hidden until the audio is actually ready to play.
 struct RecordingReviewLoader: View {
     let recordingID: UUID?
+    var stats: [FeedbackStat] = []
 
     @State private var manifest: RecordingManifest?
     @State private var gaveUp = false
@@ -65,8 +67,9 @@ struct RecordingReviewLoader: View {
     @State private var message = "Saving your take"
     @State private var detail: String?
 
-    init(recordingID: UUID?) {
+    init(recordingID: UUID?, stats: [FeedbackStat] = []) {
         self.recordingID = recordingID
+        self.stats = stats
         if let recordingID, let loaded = Self.ready(recordingID) {
             _manifest = State(initialValue: loaded)
         }
@@ -75,7 +78,13 @@ struct RecordingReviewLoader: View {
     var body: some View {
         Group {
             if let manifest {
-                TakeReviewSection(manifest: manifest, saveError: manifest.saveError)
+                VStack(alignment: .leading, spacing: 0) {
+                    if !manifest.takes.isEmpty, !stats.isEmpty {
+                        FeedbackStatList(rows: stats)
+                            .padding(.bottom, SpeechSpacing.section)
+                    }
+                    TakeReviewSection(manifest: manifest, saveError: manifest.saveError)
+                }
             } else if gaveUp {
                 FeedbackPreparing(message: "This take didn't come through.")
             } else {

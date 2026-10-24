@@ -658,3 +658,123 @@ private extension OrbVisualPhase {
     }
 }
 
+struct FeedbackStat: Equatable {
+    let label: String
+    let value: String
+}
+
+enum FeedbackStatRows {
+    static func reading(_ report: SessionReport) -> [FeedbackStat] {
+        let rate = Int(report.speechRateSyllablesPerMinute.rounded())
+        return [
+            FeedbackStat(label: "Syllables / min", value: "\(rate)"),
+            FeedbackStat(label: "Words read", value: "\(report.matchCount) of \(report.scriptWordCount)"),
+            FeedbackStat(label: "Matched", value: "\(report.matchCount)"),
+            FeedbackStat(label: "Skipped", value: "\(report.skipCount)"),
+            FeedbackStat(label: "Extra", value: "\(report.extraCount)"),
+            FeedbackStat(label: "Swapped", value: "\(report.substituteCount)"),
+        ]
+    }
+
+    static func conversation(_ report: ConversationReport) -> [FeedbackStat] {
+        report.lines.map { FeedbackStat(label: $0.label, value: $0.value) }
+    }
+
+    static func stored(_ lines: [MonologueReport.Line]) -> [FeedbackStat] {
+        lines.map { FeedbackStat(label: $0.label, value: $0.value) }
+    }
+
+    /// Pace, time spoken, and pause time from the last counted take.
+    /// A thin talk has no counted take, so its saved lines are shown as they are.
+    static func talkAfterExercise(_ report: MonologueReport) -> [FeedbackStat] {
+        guard let start = report.lines.lastIndex(where: { $0.label.hasPrefix("Take ") }) else {
+            return stored(report.lines)
+        }
+        var timeSpoken: String?
+        var pause: String?
+        var pace: String?
+        for line in report.lines[start...] {
+            if line.label.hasPrefix("Take ") {
+                timeSpoken = line.value
+            } else if line.label == "Pause time" {
+                pause = line.value
+            } else if line.label == "Pace" {
+                pace = line.value
+            }
+        }
+        var rows: [FeedbackStat] = []
+        if let pace {
+            rows.append(FeedbackStat(label: "Pace", value: pace))
+        }
+        if let timeSpoken {
+            rows.append(FeedbackStat(label: "Time spoken", value: timeSpoken))
+        }
+        if let pause {
+            rows.append(FeedbackStat(label: "Pause time", value: pause))
+        }
+        return rows
+    }
+}
+
+/// Collapsed list of take numbers. Closed until someone opens it.
+struct FeedbackStatList: View {
+    let rows: [FeedbackStat]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var open = false
+
+    var body: some View {
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    withAnimation(reduceMotion ? nil : SpeechMotion.settle) {
+                        open.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Details")
+                            .font(.body)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(open ? 90 : 0))
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Details")
+                .accessibilityValue(open ? "Showing" : "Hidden")
+
+                if open {
+                    VStack(spacing: 0) {
+                        ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                                Text(row.label)
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 12)
+                                Text(row.value)
+                                    .font(.system(size: index == 0 ? 28 : 20, weight: .semibold))
+                                    .monospacedDigit()
+                                    .multilineTextAlignment(.trailing)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(.vertical, 16)
+                            .overlay(alignment: .bottom) {
+                                if index < rows.count - 1 {
+                                    Rectangle()
+                                        .fill(Color.primary.opacity(0.12))
+                                        .frame(height: 0.5)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+            }
+        }
+    }
+}
+

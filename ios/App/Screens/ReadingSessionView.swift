@@ -371,10 +371,9 @@ struct ReadingSessionView: View {
                     id: id,
                     format: .reading,
                     topic: readingPassage.title,
-                    lines: [
-                        .init(label: "Words read", value: "\(report.matchCount) of \(report.scriptWordCount)"),
-                        .init(label: "Time", value: Self.timeLabel(report.durationSeconds)),
-                    ],
+                    lines: FeedbackStatRows.reading(report).map {
+                        MonologueReport.Line(label: $0.label, value: $0.value)
+                    },
                     words: words,
                     durationSeconds: duration,
                     markers: ReadingMarkers.build(passage: readingPassage, words: words, durationSeconds: duration),
@@ -383,11 +382,6 @@ struct ReadingSessionView: View {
             )
         }
         return id
-    }
-
-    private static func timeLabel(_ seconds: TimeInterval) -> String {
-        let total = max(0, Int(seconds.rounded()))
-        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     #if os(iOS)

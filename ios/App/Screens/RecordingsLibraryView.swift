@@ -163,27 +163,7 @@ private struct SavedRecordingView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, SpeechSpacing.related)
 
-                    if !manifest.reportLines.isEmpty {
-                        VStack(alignment: .leading, spacing: 20) {
-                            ForEach(Array(manifest.reportLines.enumerated()), id: \.offset) { _, line in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(line.label)
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                    Text(line.value)
-                                        .font(.title2.weight(.semibold))
-                                        .monospacedDigit()
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                        .padding(24)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                .fill(Color(.secondarySystemBackground))
-                        )
-                    }
+                    FeedbackStatList(rows: FeedbackStatRows.stored(manifest.reportLines))
 
                     TakeReviewSection(manifest: manifest, saveError: manifest.saveError)
                         .padding(.top, SpeechSpacing.section)

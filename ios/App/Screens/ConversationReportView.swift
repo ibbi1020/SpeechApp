@@ -36,7 +36,10 @@ struct ConversationReportView: View {
     @ViewBuilder
     private var feedback: some View {
         if let recordingID {
-            RecordingReviewLoader(recordingID: recordingID)
+            RecordingReviewLoader(
+                recordingID: recordingID,
+                stats: FeedbackStatRows.conversation(report)
+            )
         } else {
             FeedbackPreparing(message: "This take didn't come through.")
         }

@@ -338,7 +338,11 @@ struct GallerySheet: View {
                     .font(.system(size: 15))
                     .foregroundStyle(.secondary)
                     .padding(.top, 6)
-                    .padding(.bottom, 18)
+                    .padding(.bottom, item.reportLines.isEmpty || item.takes.isEmpty ? 18 : SpeechSpacing.related)
+                if !item.takes.isEmpty {
+                    FeedbackStatList(rows: FeedbackStatRows.stored(item.reportLines))
+                        .padding(.bottom, item.reportLines.isEmpty ? 0 : 18)
+                }
                 TakeReviewSection(manifest: item, saveError: item.saveError)
             }
             .padding(.horizontal, 16)
