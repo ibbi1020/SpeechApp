@@ -23,7 +23,6 @@ struct ConversationReportView: View {
             .id(report.id)
         }
         .speechPageTitle("Your conversation")
-        .speechBottomBlur(bar: false)
         .onAppear {
             offersSave = recordingID != nil && !RecordingsService.keepRecordings
         }

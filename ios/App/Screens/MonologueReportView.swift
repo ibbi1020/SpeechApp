@@ -28,7 +28,6 @@ struct MonologueReportView: View {
             }
         }
         .speechPageTitle("Your talk")
-        .speechBottomBlur(bar: false)
         .onAppear {
             offersSave = !showsLines && regimenID != nil && !RecordingsService.keepRecordings
         }

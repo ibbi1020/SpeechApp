@@ -28,7 +28,6 @@ struct SessionReportView: View {
         }
         .speechPageTitle("Your reading")
         .toolbar(.visible, for: .navigationBar)
-        .speechBottomBlur(bar: false)
         .onAppear {
             offersSave = recordingID != nil && !RecordingsService.keepRecordings
         }

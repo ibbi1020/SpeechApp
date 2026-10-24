@@ -194,6 +194,5 @@ private struct SavedRecordingView: View {
             }
         }
         .speechPageTitle(manifest.format == .reading ? "Your reading" : "Your conversation")
-        .speechBottomBlur()
     }
 }
