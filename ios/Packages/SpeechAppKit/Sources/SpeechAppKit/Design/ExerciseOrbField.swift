@@ -4,7 +4,7 @@ import Foundation
 ///
 /// The motion is the cloud orb's, turned down: a chosen disc churns, and the
 /// others keep swirling more slowly and fade to gray. Reading is white and
-/// grey. The other discs use two close hues of their dot-matrix colour.
+/// grey. The other discs use two close hues of their plate colour.
 public struct ExerciseOrbField: Equatable, Sendable {
     public struct Stop: Equatable, Sendable {
         public var red: Double
@@ -79,7 +79,7 @@ public struct ExerciseOrbField: Equatable, Sendable {
         return Self.gases(from: Stop(red: plate.red, green: plate.green, blue: plate.blue))
     }
 
-    /// `plate` is the dot-matrix colour and stays exact. The other gas is
+    /// `plate` is the exercise colour and stays exact. The other gas is
     /// about 22 degrees around the wheel and a clear step lighter or darker,
     /// still the same colour, just easier to tell apart.
     static func gases(from plate: Stop) -> Gases {

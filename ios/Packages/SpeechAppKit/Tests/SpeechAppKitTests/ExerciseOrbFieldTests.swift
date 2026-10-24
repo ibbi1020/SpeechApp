@@ -25,7 +25,7 @@ struct ExerciseOrbFieldTests {
         #expect(idle.gray > 0.7)
     }
 
-    @Test("coloured discs use their dot-matrix colour, and Reading is white")
+    @Test("coloured discs use their plate colour, and Reading is white")
     func plateColor() {
         for kind in [PracticeFormat.Kind.monologue, .conversation] {
             let plate = ExercisePlate.plate(for: kind)

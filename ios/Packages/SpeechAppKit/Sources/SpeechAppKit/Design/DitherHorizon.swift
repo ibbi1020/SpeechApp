@@ -22,7 +22,7 @@ public enum DitherHorizon {
     }
 
     /// One glow in a plate that can hold more than the hum's single horizon.
-    /// The exercise step places a different glow per exercise. Brightness adds.
+    /// Each exercise places a different glow. Brightness adds.
     public struct Source: Equatable, Sendable {
         public var center: CGPoint
         public var radius: CGFloat
@@ -109,24 +109,6 @@ public enum DitherHorizon {
         guard distance < 1.15 else { return 0 }
         let value = brightness(distance: distance, peak: field.peak)
         guard clearsThreshold(value, column: column, row: row) else { return 0 }
-        return cell * (0.62 + 0.38 * min(1, value))
-    }
-
-    /// Side length for a plate made of several glows. Same Bayer test as the
-    /// single horizon, so a quiet cell stays black on every exercise.
-    public static func dotSide(
-        column: Int,
-        row: Int,
-        cell: CGFloat,
-        sources: [Source]
-    ) -> CGFloat {
-        guard cell > 0, sources.isEmpty == false else { return 0 }
-        let point = CGPoint(
-            x: CGFloat(column) * cell + cell / 2,
-            y: CGFloat(row) * cell + cell / 2
-        )
-        let value = brightness(at: point, sources: sources)
-        guard value > 0, clearsThreshold(value, column: column, row: row) else { return 0 }
         return cell * (0.62 + 0.38 * min(1, value))
     }
 

@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// One dither plate per exercise. The numbers are the magnetic-select prototype.
+/// One glow plate per exercise. The numbers are the magnetic-select prototype.
 ///
 /// Reading is a cool horizon, centred and low, so the headline stays on black.
 /// Monologue is a warmer glow set in from the left, climbing. Conversation is
