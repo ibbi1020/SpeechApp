@@ -357,17 +357,17 @@ struct ReadingSessionView: View {
             includesTranscription: transcriber != nil
         )
         Task { @MainActor in
-            // Unhinted words show what was really said; the hinted live words are the fallback.
-            var words = fallback
-            if let transcriber {
-                SaveProgressBoard.update(id: id, .catchingWords, 0)
-                let heard = await transcriber.finish()
-                if !heard.isEmpty { words = heard }
-                SaveProgressBoard.update(id: id, .catchingWords, 1)
-            }
-            await SingleTakeRecording.finalizeAndSave(
-                rawURL: rawURL,
-                content: .init(
+            await SingleTakeRecording.finalizeAndSave(id: id, rawURL: rawURL) {
+                // Unhinted words show what was really said; the hinted live words are the fallback.
+                // The file is already being finalized. Markers wait until these words exist.
+                var words = fallback
+                if let transcriber {
+                    SaveProgressBoard.update(id: id, .catchingWords, 0)
+                    let heard = await transcriber.finish()
+                    if !heard.isEmpty { words = heard }
+                    SaveProgressBoard.update(id: id, .catchingWords, 1)
+                }
+                return .init(
                     id: id,
                     format: .reading,
                     topic: readingPassage.title,
@@ -380,7 +380,7 @@ struct ReadingSessionView: View {
                     markers: ReadingMarkers.build(passage: readingPassage, words: words, durationSeconds: duration),
                     inLibrary: inLibrary
                 )
-            )
+            }
         }
         return id
     }

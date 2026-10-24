@@ -804,9 +804,8 @@ struct MonologueSessionView: View {
         defer { isFinalizingAudio = false }
         do {
             let (finalURL, report) = try await TakeFinalizer.finalizeWithReport(rawCAF: rawURL)
-            Self.log.info(
-                "take \(take.index) saved: inputPeak=\(report.inputPeak) denoise=\(report.usedDenoise) delay=\(report.denoiseDelaySeconds) gain=\(report.gain) outputPeak=\(report.outputPeak)"
-            )
+            let line = "take \(take.index) saved: \(report.stages.line(usedDenoise: report.usedDenoise)) inputPeak=\(report.inputPeak) outputPeak=\(report.outputPeak)"
+            Self.log.info("\(line, privacy: .public)")
             finishedTakes.append(
                 MonologueRecordingPipeline.FinishedTake(
                     index: take.index,
@@ -887,11 +886,13 @@ struct MonologueSessionView: View {
         defer { SaveProgressBoard.markFinished(id: id) }
         var takes = earlier
         var failure = saveError
+        var timing = "clean=not-this-take"
         if lastNeedsFinalize, let rawURL, let last {
             do {
-                let (url, _) = try await TakeFinalizer.finalizeWithReport(rawCAF: rawURL) { step, fraction in
+                let (url, report) = try await TakeFinalizer.finalizeWithReport(rawCAF: rawURL) { step, fraction in
                     SaveProgressBoard.update(id: id, step, fraction)
                 }
+                timing = report.stages.line(usedDenoise: report.usedDenoise)
                 takes.append(
                     MonologueRecordingPipeline.FinishedTake(
                         index: last.index,
@@ -919,6 +920,9 @@ struct MonologueSessionView: View {
             saveError: failure,
             onWriting: { SaveProgressBoard.update(id: id, .writing, $0) }
         )
+        let wall = Int(SaveProgressBoard.wallMilliseconds(id: id).rounded())
+        let line = "monologue save: \(timing) wall=\(wall)ms"
+        Self.log.info("\(line, privacy: .public)")
     }
 
     /// Drops the keyboard on this frame. A normal resign waits out the countdown

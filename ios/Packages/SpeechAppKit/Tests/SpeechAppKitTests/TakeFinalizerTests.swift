@@ -14,8 +14,16 @@ struct TakeFinalizerTests {
         let output = try AudioProbe.read(url)
 
         #expect(abs(output.duration - input.duration) < 0.5)
+        #if !targetEnvironment(simulator)
+        #expect(report.usedDenoise)
+        // The unit delay used to cut the end of the take. A cleaned file
+        // stays within a few milliseconds of the input.
+        #expect(output.duration + 0.02 >= input.duration)
+        #endif
         #expect(output.rms > input.rms * 0.2, "saved rms \(output.rms) vs input \(input.rms)")
         #expect(report.outputPeak > 0.5)
+        #expect(report.stages.readMilliseconds >= 0)
+        #expect(report.stages.encodeMilliseconds >= 0)
     }
 
     @Test("quiet phone take is boosted to a listenable level")

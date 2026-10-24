@@ -34,12 +34,14 @@ public enum ListenBackMix {
         // cutoff is a fraction of how loud the speaker actually got.
         let original = mic
         let threshold = max(speechLevel(original) * 0.35, 0.0001)
+        let squares = prefixSquares(original)
         var out = mic
         for span in spans {
             splice(
                 span,
                 into: &out,
-                quietFrom: original,
+                squares: squares,
+                micCount: original.count,
                 micRate: micRate,
                 timelineShift: timelineShift,
                 threshold: threshold
@@ -68,7 +70,8 @@ public enum ListenBackMix {
     private static func splice(
         _ span: PartnerAudioSpan,
         into output: inout [Float],
-        quietFrom mic: [Float],
+        squares: [Double],
+        micCount: Int,
         micRate: Double,
         timelineShift: TimeInterval,
         threshold: Float
@@ -89,9 +92,22 @@ public enum ListenBackMix {
         let count = min(partner.count - source, output.count - dest)
         for offset in 0..<count {
             let index = dest + offset
-            guard isQuiet(mic, index: index, micRate: micRate, threshold: threshold) else { continue }
+            guard isQuiet(squares: squares, index: index, micCount: micCount, micRate: micRate, threshold: threshold) else { continue }
             output[index] = partner[source + offset]
         }
+    }
+
+    /// Running sum of squares. `prefix[i + 1]` is the sum through `mic[i]`, in
+    /// Double so a long take does not lose the latest window.
+    private static func prefixSquares(_ mic: [Float]) -> [Double] {
+        var prefix = [Double](repeating: 0, count: mic.count + 1)
+        var sum = 0.0
+        for index in mic.indices {
+            let sample = Double(mic[index])
+            sum += sample * sample
+            prefix[index + 1] = sum
+        }
+        return prefix
     }
 
     /// How loud speech got, ignoring the quiet majority of a take.
@@ -110,17 +126,20 @@ public enum ListenBackMix {
         return peaks[picked]
     }
 
-    private static func isQuiet(_ mic: [Float], index: Int, micRate: Double, threshold: Float) -> Bool {
+    private static func isQuiet(
+        squares: [Double],
+        index: Int,
+        micCount: Int,
+        micRate: Double,
+        threshold: Float
+    ) -> Bool {
         let radius = max(0, Int((quietWindowSeconds * micRate / 2).rounded(.down)))
         let lo = max(0, index - radius)
-        let hi = min(mic.count, index + radius + 1)
+        let hi = min(micCount, index + radius + 1)
         guard hi > lo else { return true }
-        var sum: Float = 0
-        for i in lo..<hi {
-            let sample = mic[i]
-            sum += sample * sample
-        }
-        return sqrt(sum / Float(hi - lo)) < threshold
+        let mean = (squares[hi] - squares[lo]) / Double(hi - lo)
+        guard mean > 0 else { return 0 < threshold }
+        return sqrt(mean) < Double(threshold)
     }
 
     /// Linear resample. A constant stays that constant, so a tone lands intact.

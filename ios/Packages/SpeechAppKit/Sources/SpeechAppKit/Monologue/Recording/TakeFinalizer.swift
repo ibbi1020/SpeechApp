@@ -18,6 +18,36 @@ public enum TakeFinalizer {
         public let denoiseDelaySeconds: TimeInterval
         public let gain: Float
         public let outputPeak: Float
+        public let stages: Stages
+    }
+
+    /// Milliseconds spent in each save stage. A skipped clean is 0, not a fast clean.
+    public struct Stages: Sendable, Equatable {
+        public var readMilliseconds: Double
+        public var cleanMilliseconds: Double
+        public var delayMilliseconds: Double
+        public var mixMilliseconds: Double
+        public var gainMilliseconds: Double
+        public var resampleMilliseconds: Double
+        public var encodeMilliseconds: Double
+        /// The clean was not attempted. A simulator save and a take past three minutes.
+        public var cleanSkipped: Bool
+
+        /// One line for the save log. `ran` is a clean that replaced the take.
+        public func line(usedDenoise: Bool) -> String {
+            let clean = cleanSkipped ? "skipped" : (usedDenoise ? "ran" : "failed")
+            return String(
+                format: "read=%.0fms clean=%.0fms(%@) delay=%.0fms mix=%.0fms gain=%.0fms resample=%.0fms encode=%.0fms",
+                readMilliseconds,
+                cleanMilliseconds,
+                clean,
+                delayMilliseconds,
+                mixMilliseconds,
+                gainMilliseconds,
+                resampleMilliseconds,
+                encodeMilliseconds
+            )
+        }
     }
 
     /// Returns a local `.m4a` URL. Falls back to encoding the raw file when denoise fails.
@@ -34,33 +64,59 @@ public enum TakeFinalizer {
         partnerSpans: [PartnerAudioSpan] = [],
         onProgress: SaveProgressHandler? = nil
     ) async throws -> (url: URL, report: Report) {
+        let readStarted = ContinuousClock.now
         onProgress?(.reading, 0)
         let samples = try readFloatMono(url: rawCAF) { onProgress?(.reading, $0) }
+        let readMilliseconds = milliseconds(since: readStarted)
         guard !samples.samples.isEmpty else { throw TakeFinalizerError.empty }
 
         var processed: [Float]
         let rate: Double
         var usedDenoise = false
         var delay: TimeInterval = 0
-        // Offline denoise holds a second full copy and renders slower than
-        // realtime. Past 3 minutes, save the original so a conversation still appears.
+        var delayMilliseconds = 0.0
+        // Offline denoise holds a second full copy. Past 3 minutes, save the
+        // original so a long conversation still appears. The simulator has no
+        // isolation unit, so it skips the same way.
         let tooLongToDenoise = Double(samples.samples.count) / samples.sampleRate > 180
+        #if targetEnvironment(simulator)
+        let cleanSkipped = true
+        #else
+        let cleanSkipped = tooLongToDenoise
+        #endif
+        let cleanStarted = ContinuousClock.now
         if !tooLongToDenoise {
             onProgress?(.cleaning, 0)
         }
-        if !tooLongToDenoise,
-           let denoised = try? denoise(
-               samples: samples.samples,
-               sampleRate: samples.sampleRate,
-               onFraction: { onProgress?(.cleaning, $0) }
-           ),
+        let denoised: (samples: [Float], sampleRate: Double)?
+        if cleanSkipped {
+            denoised = nil
+        } else {
+            denoised = try? denoise(
+                samples: samples.samples,
+                sampleRate: samples.sampleRate,
+                onFraction: { onProgress?(.cleaning, $0) }
+            )
+        }
+        let cleanMilliseconds = cleanSkipped ? 0 : milliseconds(since: cleanStarted)
+        if let denoised,
            audible(denoised.samples, comparedTo: samples.samples) {
+            let delayStarted = ContinuousClock.now
             delay = DelayEstimator.delaySeconds(
                 reference: samples.samples,
                 delayed: denoised.samples,
                 sampleRate: denoised.sampleRate
             )
-            processed = trimLeading(denoised.samples, delaySeconds: delay, sampleRate: denoised.sampleRate)
+            // The pad holds the end of the take, shifted by the unit's delay.
+            // Drop the delay from the front, then keep the original length so
+            // that end stays and the leftover pad silence does not.
+            processed = keepTakeLength(
+                denoised.samples,
+                originalCount: samples.samples.count,
+                delaySeconds: delay,
+                sampleRate: denoised.sampleRate
+            )
+            delayMilliseconds = milliseconds(since: delayStarted)
             rate = denoised.sampleRate
             usedDenoise = true
         } else {
@@ -70,6 +126,7 @@ public enum TakeFinalizer {
 
         // Partner voice goes in after denoise, so isolation does not rewrite it,
         // and before gain, so the partner is not suddenly louder than the mic.
+        let mixStarted = ContinuousClock.now
         if !partnerSpans.isEmpty {
             processed = ListenBackMix.mix(
                 mic: processed,
@@ -78,26 +135,43 @@ public enum TakeFinalizer {
                 timelineShift: delay
             )
         }
+        let mixMilliseconds = partnerSpans.isEmpty ? 0 : milliseconds(since: mixStarted)
 
         // `.measurement` mic mode has no automatic gain, so phone takes are often very quiet.
+        let gainStarted = ContinuousClock.now
         let gain = LoudnessNormalizer.gain(for: processed)
         LoudnessNormalizer.apply(gain: gain, to: &processed)
+        let gainMilliseconds = milliseconds(since: gainStarted)
 
+        let resampleStarted = ContinuousClock.now
         let resampled = resample(processed, from: rate, to: outputSampleRate)
+        let resampleMilliseconds = milliseconds(since: resampleStarted)
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("take-final-\(UUID().uuidString).m4a")
+        let encodeStarted = ContinuousClock.now
         onProgress?(.encoding, 0)
         try writeAAC(samples: resampled, sampleRate: outputSampleRate, to: outURL) {
             onProgress?(.encoding, $0)
         }
         onProgress?(.encoding, 1)
+        let encodeMilliseconds = milliseconds(since: encodeStarted)
         try? FileManager.default.removeItem(at: rawCAF)
         let report = Report(
             inputPeak: peak(samples.samples),
             usedDenoise: usedDenoise,
             denoiseDelaySeconds: delay,
             gain: gain,
-            outputPeak: peak(resampled)
+            outputPeak: peak(resampled),
+            stages: Stages(
+                readMilliseconds: readMilliseconds,
+                cleanMilliseconds: cleanMilliseconds,
+                delayMilliseconds: delayMilliseconds,
+                mixMilliseconds: mixMilliseconds,
+                gainMilliseconds: gainMilliseconds,
+                resampleMilliseconds: resampleMilliseconds,
+                encodeMilliseconds: encodeMilliseconds,
+                cleanSkipped: cleanSkipped
+            )
         )
         return (outURL, report)
     }
@@ -314,12 +388,30 @@ public enum TakeFinalizer {
         }
 
         engine.stop()
-        // Keep input length; delay trim happens separately.
-        if output.count > samples.count {
-            output = Array(output.prefix(samples.count))
-        }
         return (output, sampleRate)
         #endif
+    }
+
+    /// Drops the unit delay from the front of the padded render, then keeps
+    /// `originalCount` frames. The flushed end of the take stays. Extra pad
+    /// silence does not.
+    private static func keepTakeLength(
+        _ samples: [Float],
+        originalCount: Int,
+        delaySeconds: TimeInterval,
+        sampleRate: Double
+    ) -> [Float] {
+        var kept = trimLeading(samples, delaySeconds: delaySeconds, sampleRate: sampleRate)
+        if kept.count > originalCount {
+            kept = Array(kept.prefix(originalCount))
+        }
+        return kept
+    }
+
+    private static func milliseconds(since start: ContinuousClock.Instant) -> Double {
+        let duration = start.duration(to: .now)
+        return Double(duration.components.seconds) * 1_000
+            + Double(duration.components.attoseconds) / 1e15
     }
 
     private static func trimLeading(_ samples: [Float], delaySeconds: TimeInterval, sampleRate: Double) -> [Float] {

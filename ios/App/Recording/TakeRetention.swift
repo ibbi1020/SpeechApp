@@ -53,6 +53,7 @@ enum SaveProgressBoard {
 
     private struct Entry: Sendable {
         var progress: SaveProgress
+        var started: ContinuousClock.Instant
         var finished = false
     }
 
@@ -77,8 +78,19 @@ enum SaveProgressBoard {
             willClean: willClean,
             includesTranscription: includesTranscription
         )
+        let started = ContinuousClock.now
         state.withLock { entries in
-            entries[id] = Entry(progress: progress)
+            entries[id] = Entry(progress: progress, started: started)
+        }
+    }
+
+    /// Milliseconds since `begin`. 0 when this save was never started.
+    static func wallMilliseconds(id: UUID) -> Double {
+        state.withLock { entries in
+            guard let started = entries[id]?.started else { return 0 }
+            let duration = started.duration(to: .now)
+            return Double(duration.components.seconds) * 1_000
+                + Double(duration.components.attoseconds) / 1e15
         }
     }
 
@@ -103,6 +115,7 @@ enum SaveProgressBoard {
                         willClean: false,
                         includesTranscription: false
                     ),
+                    started: ContinuousClock.now,
                     finished: true
                 )
             }

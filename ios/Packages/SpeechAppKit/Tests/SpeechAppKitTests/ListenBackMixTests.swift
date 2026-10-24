@@ -106,4 +106,62 @@ struct ListenBackMixTests {
         let mic: [Float] = [0.2, -0.3]
         #expect(ListenBackMix.mix(mic: mic, micRate: 100, spans: [], timelineShift: 0) == mic)
     }
+
+    /// A float prefix of squares drifts by the end of a long take and would
+    /// paste the partner over a late barge-in. This locks the window sum.
+    @Test("a three minute take keeps the same quiet decisions")
+    func longTakeMatchesWindowSum() {
+        let rate = 48_000.0
+        let count = Int(rate * 180)
+        var mic = [Float](repeating: 0.4, count: count)
+        let quietAt = Int(rate * 170)
+        let loudAt = Int(rate * 175)
+        let stretch = 4_000
+        for index in quietAt ..< (quietAt + stretch) { mic[index] = 0.13 }
+        for index in loudAt ..< (loudAt + stretch) { mic[index] = 0.15 }
+
+        let span = PartnerAudioSpan(
+            start: 170,
+            sampleRate: rate,
+            samples: [Float](repeating: 0.9, count: Int(rate * 8))
+        )
+        let mixed = ListenBackMix.mix(mic: mic, micRate: rate, spans: [span], timelineShift: 0)
+        let threshold = max(ListenBackMix.speechLevel(mic) * 0.35, 0.0001)
+        #expect(abs(threshold - 0.14) < 0.001)
+
+        let quietCenter = quietAt + stretch / 2
+        let loudCenter = loudAt + stretch / 2
+        #expect(windowRMS(mic, index: quietCenter, rate: rate) < threshold - 0.005)
+        #expect(windowRMS(mic, index: loudCenter, rate: rate) > threshold + 0.005)
+
+        let start = Int((span.start * rate).rounded(.down))
+        let end = min(count, start + span.samples.count)
+        var flips = 0
+        for index in start ..< end {
+            let quiet = windowIsQuiet(mic, index: index, rate: rate, threshold: threshold)
+            let becamePartner = mixed[index] == 0.9
+            if quiet != becamePartner { flips += 1 }
+        }
+        #expect(flips == 0)
+        #expect(mixed[quietCenter] == 0.9)
+        #expect(mixed[loudCenter] == 0.15)
+    }
+
+    /// The quiet test before the prefix sum: a fresh Float sum of the window.
+    private func windowIsQuiet(_ mic: [Float], index: Int, rate: Double, threshold: Float) -> Bool {
+        windowRMS(mic, index: index, rate: rate) < threshold
+    }
+
+    private func windowRMS(_ mic: [Float], index: Int, rate: Double) -> Float {
+        let radius = max(0, Int((ListenBackMix.quietWindowSeconds * rate / 2).rounded(.down)))
+        let lo = max(0, index - radius)
+        let hi = min(mic.count, index + radius + 1)
+        guard hi > lo else { return 0 }
+        var sum: Float = 0
+        for sampleIndex in lo ..< hi {
+            let sample = mic[sampleIndex]
+            sum += sample * sample
+        }
+        return sqrt(sum / Float(hi - lo))
+    }
 }

@@ -148,13 +148,17 @@ final class ConversationListenBack {
             includesTranscription: true
         )
         Task { @MainActor in
-            SaveProgressBoard.update(id: id, .catchingWords, 0)
-            let heard = await transcriber.finish()
-            SaveProgressBoard.update(id: id, .catchingWords, 1)
-            let words = ConversationMarkers.userWords(heard, partnerTurns: turns)
             await SingleTakeRecording.finalizeAndSave(
+                id: id,
                 rawURL: rawURL,
-                content: .init(
+                partnerSpans: spans
+            ) {
+                // Words come only from this finish. The file is already being finalized.
+                SaveProgressBoard.update(id: id, .catchingWords, 0)
+                let heard = await transcriber.finish()
+                SaveProgressBoard.update(id: id, .catchingWords, 1)
+                let words = ConversationMarkers.userWords(heard, partnerTurns: turns)
+                return .init(
                     id: id,
                     format: .conversation,
                     topic: ConversationTitle.make(userWords: words.map { $0.surface }),
@@ -164,9 +168,8 @@ final class ConversationListenBack {
                     markers: ConversationMarkers.build(words: words, partnerTurns: turns, durationSeconds: duration),
                     partnerTurns: turns,
                     inLibrary: inLibrary
-                ),
-                partnerSpans: spans
-            )
+                )
+            }
         }
         return id
     }
