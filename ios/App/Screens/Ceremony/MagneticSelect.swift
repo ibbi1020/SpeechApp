@@ -1,9 +1,12 @@
 import SpeechAppKit
 import SwiftUI
 
-/// Three discs of swirling gas. The one you press churns in full colour, and
-/// the other two are pushed off it, slower and gray. Names live in the type
-/// above, because a disc does not carry a word.
+/// Three discs of swirling gas. Unplugged from the exercise step, which shows
+/// `ExerciseCards` instead. Kept so the discs can be wired back without a rebuild.
+///
+/// The one you press churns in full colour, and the other two are pushed off
+/// it, slower and gray. Names live in the type above, because a disc does not
+/// carry a word.
 struct MagneticSelect: View {
     @Binding var selection: PracticeFormat.Kind
 

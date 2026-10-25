@@ -21,6 +21,8 @@ enum SpeechSpacing {
     static let page: CGFloat = 24
     /// Reading passage gutter (wider than chrome).
     static let reading: CGFloat = 32
+    /// Tightest stop on the 4pt scale. Sibling controls in one row.
+    static let tight: CGFloat = 4
     /// Tight grouping inside a header or card cluster.
     static let cluster: CGFloat = 8
     /// Related items in one section.

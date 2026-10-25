@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Exercise tiles — prototype</title>
+<!--
+  Throwaway. Question: what should replace the three exercise orbs?
+
+  Four layouts of the same rule, on the real exercise screen.
+  Every option is exactly as wide as the button under it.
+  Switch with ?variant=cards|squares|segment|stack or the bar at the bottom.
+
+  Selected tile: white fill, black icon.
+  Unselected tile: hairline gray-white border, white icon.
+  The heading (name, sentence, week line, month line) stays the ceremony's.
+
+  Run from prototypes/:
+    python3 -m http.server 8766 --bind 127.0.0.1
+  Then open http://127.0.0.1:8766/exercise-tiles/
+-->
+<style>
+  :root {
+    --paper: #e8e1d4;
+    --ink: #1a1713;
+    --muted: #6a645c;
+    --secondary: rgba(235, 235, 245, 0.6);
+    --tertiary: rgba(235, 235, 245, 0.3);
+    --hairline: rgba(228, 228, 232, 0.55);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 18px 24px 0;
+  }
+  .mark {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -0.03em;
+  }
+  .lede {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  .stage {
+    display: flex;
+    justify-content: center;
+    padding: 22px 24px 0;
+  }
+  .phone-slot {
+    position: relative;
+    width: 390px;
+    height: 844px;
+    overflow: hidden;
+  }
+  .phone {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 390px;
+    height: 844px;
+    background: #0b0b0c;
+    border-radius: 48px;
+    padding: 12px;
+    box-shadow:
+      0 26px 60px rgba(26, 23, 19, 0.22),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    transform-origin: top left;
+  }
+  .screen {
+    position: relative;
+    height: 100%;
+    border-radius: 36px;
+    overflow: hidden;
+    background: #000;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 24px 24px;
+  }
+  .statusbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px 0 12px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .statusbar .island {
+    width: 92px;
+    height: 28px;
+    margin-top: -2px;
+    border-radius: 20px;
+    background: #000;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  }
+  .statusbar .right {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 13px;
+  }
+  .back {
+    width: 48px;
+    height: 48px;
+    margin-top: 10px;
+    border: 0;
+    border-radius: 50%;
+    padding: 0;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+    display: grid;
+    place-items: center;
+    cursor: default;
+  }
+  .back svg { display: block; }
+  .copy { margin-top: 36px; }
+  .kicker {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    color: var(--secondary);
+    transition: filter 0.22s ease, opacity 0.22s ease;
+  }
+  .lines {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .display {
+    margin: 0;
+    max-width: 16ch;
+    font-size: 40px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    transition: filter 0.22s ease, opacity 0.22s ease;
+  }
+  .sub, .note {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 400;
+    line-height: 1.35;
+    transition: filter 0.22s ease, opacity 0.22s ease;
+  }
+  .sub { color: var(--secondary); }
+  .note { color: var(--tertiary); }
+  .sub[hidden], .note[hidden] { display: none; }
+  .grow { flex: 1; }
+  /* The start button is inset 12pt past the page gutter. The choice sits
+     in that same column, so the tiles cannot run wider than the button. */
+  .dock {
+    margin: 0 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 36px;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tile {
+    appearance: none;
+    -webkit-appearance: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--hairline);
+    background: transparent;
+    color: #fff;
+    border-radius: 22px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    font: inherit;
+    transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease, transform 0.12s ease-out;
+  }
+  .tile:active { transform: scale(0.97); }
+  .tile[aria-pressed="true"] {
+    background: #fff;
+    color: #000;
+    border-color: #fff;
+  }
+  .tile svg { display: block; width: 28px; height: 28px; }
+  .tile .name {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+  }
+  .tile.square { aspect-ratio: 1; border-radius: 22px; }
+  .tile.card { aspect-ratio: 3 / 3.7; border-radius: 22px; }
+  .tiles.segment {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--hairline);
+    border-radius: 22px;
+    overflow: hidden;
+  }
+  .tile.segment {
+    height: 72px;
+    border: 0;
+    border-radius: 0;
+    border-right: 1px solid var(--hairline);
+  }
+  .tile.segment:last-child { border-right: 0; }
+  .tile.bar {
+    height: 64px;
+    border-radius: 18px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 14px;
+    padding: 0 18px;
+  }
+  .tile.bar svg, .tile.segment svg { width: 24px; height: 24px; }
+  .go {
+    height: 61px;
+    margin: 0;
+    width: 100%;
+    border: 0;
+    border-radius: 999px;
+    background: #fff;
+    color: #000;
+    font: 500 17px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    letter-spacing: -0.01em;
+    cursor: default;
+  }
+  .go:active { transform: scale(0.97); }
+
+  .state {
+    max-width: 720px;
+    margin: 14px auto 96px;
+    padding: 0 24px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.55;
+    font-variant-numeric: tabular-nums;
+  }
+  .state b { color: var(--ink); font-weight: 600; }
+
+  .switcher {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    background: #1a1713;
+    color: #fff;
+    border-radius: 999px;
+    box-shadow: 0 10px 30px rgba(26, 23, 19, 0.28);
+  }
+  .switcher button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #fff;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .switcher button:hover { background: rgba(255, 255, 255, 0.1); }
+  .switcher .who {
+    min-width: 220px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    padding: 0 8px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <p class="mark">Prototype · throwaway</p>
+  <h1>Exercise tiles</h1>
+  <p class="lede" id="blurb"></p>
+</header>
+
+<div class="stage">
+  <div class="phone-slot">
+    <div class="phone" id="phone">
+      <div class="screen">
+        <div class="statusbar" aria-hidden="true">
+          <span>9:41</span>
+          <span class="island"></span>
+          <span class="right">
+            <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="0.6"/><rect x="4.5" y="5" width="3" height="7" rx="0.6"/><rect x="9" y="2.5" width="3" height="9.5" rx="0.6"/><rect x="13.5" y="0" width="3" height="12" rx="0.6"/></svg>
+            <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 2.2c2.2 0 4.1.8 5.6 2.2l1.1-1.2C12.8 1.2 10.5 0 8 0S3.2 1.2 1.3 3.2L2.4 4.4C3.9 3 5.8 2.2 8 2.2Zm0 3.2c1.3 0 2.4.5 3.3 1.3l1.1-1.2C11.1 4.3 9.6 3.6 8 3.6s-3.1.7-4.4 1.9l1.1 1.2C5.6 5.9 6.7 5.4 8 5.4Zm0 3.1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/></svg>
+            <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="2.5" stroke="currentColor" fill="none"/><rect x="2" y="2" width="14" height="8" rx="1.2" fill="currentColor"/><path d="M23 4.2v3.6c.7-.3 1.2-1 1.2-1.8s-.5-1.5-1.2-1.8Z" fill="currentColor"/></svg>
+          </span>
+        </div>
+        <button class="back" type="button" aria-label="Back" tabindex="-1">
+          <svg width="14" height="20" viewBox="0 0 14 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2 L3 10 L11 18"/></svg>
+        </button>
+        <div class="copy">
+          <p class="kicker" id="kicker"></p>
+          <div class="lines">
+            <p class="display" id="display"></p>
+            <p class="sub" id="history"></p>
+            <p class="note" id="note"></p>
+          </div>
+        </div>
+        <div class="grow"></div>
+        <div class="dock">
+          <div class="tiles" id="tiles"></div>
+          <button class="go" type="button" id="go" tabindex="-1"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="state" id="state"></p>
+
+<nav class="switcher" aria-label="Layout options">
+  <button type="button" id="prev" aria-label="Previous option">‹</button>
+  <span class="who" id="switchLabel"></span>
+  <button type="button" id="next" aria-label="Next option">›</button>
+</nav>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="icon-book" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M3.6 4.6c0-.7.5-1.2 1.2-1.2h6.1c.7 0 1.4.3 1.9.8.1.1.2.1.4 0 .5-.5 1.2-.8 1.9-.8h6.1c.7 0 1.2.5 1.2 1.2v13.1c0 .7-.5 1.2-1.2 1.2h-5.6c-.8 0-1.6.3-2.2.8-.2.2-.5.2-.7 0-.6-.5-1.4-.8-2.2-.8H4.8c-.7 0-1.2-.5-1.2-1.2V4.6Zm8.2.6H5.4v12.2h4.6c.9 0 1.7.2 2.4.6V6.4c-.2-.4-.4-.8-.6-1.2Zm1.6 12.8c.7-.4 1.5-.6 2.4-.6h4.6V5.2h-4.6c-.8 0-1.6.3-2.2.8v11.4Z"/>
+  </symbol>
+  <symbol id="icon-wave" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M12 2.4a3.1 3.1 0 0 1 3.1 3.1v5.4a3.1 3.1 0 0 1-6.2 0V5.5A3.1 3.1 0 0 1 12 2.4Zm-5.2 8.2a.9.9 0 0 1 .9.9 4.3 4.3 0 0 0 8.6 0 .9.9 0 0 1 1.8 0 6.1 6.1 0 0 1-5.2 6v1.7h2.2a.9.9 0 0 1 0 1.8H8.9a.9.9 0 0 1 0-1.8h2.2v-1.7a6.1 6.1 0 0 1-5.2-6 .9.9 0 0 1 .9-.9Z"/>
+  </symbol>
+  <symbol id="icon-bubbles" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M8.2 3.4a3.1 3.1 0 1 1 0 6.2 3.1 3.1 0 0 1 0-6.2ZM4.2 17.2c.3-2.4 2.1-4.2 4.6-4.2h.2c2.2 0 3.8 1.4 4.3 3.4.2.1.5.2.8.2 1.4 0 2.4-1 2.6-2.2.1-.5.6-.8 1.1-.7.5.1.8.6.7 1.1-.4 2-2 3.4-4.2 3.4-.5 0-1-.1-1.4-.2-.6 1.4-1.9 2.4-3.6 2.4h-.4c-2.8 0-4.8-1.8-5.1-4.2-.1-.5.3-1 .8-1.1.5-.1 1 .3 1.1.8l.1.1Zm11.2-9.6c.5 0 1 .1 1.4.3.5.2.7.8.5 1.3-.2.5-.8.7-1.3.5a2.2 2.2 0 0 0-1-.2c-.5 0-1 .4-1 .9s.4 1 1 .9c.2 0 .3 0 .5-.1.5-.2 1.1.1 1.3.6.2.5-.1 1.1-.6 1.3-.4.2-.9.2-1.3.2-1.6 0-2.9-1.3-2.9-2.9s1.3-2.8 2.4-2.8Z"/>
+  </symbol>
+</svg>
+
+<script>
+const FORMATS = [
+  {
+    id: "reading",
+    title: "Reading",
+    line: "Read a passage aloud. Hear every sound.",
+    button: "Choose a passage",
+    icon: "book"
+  },
+  {
+    id: "monologue",
+    title: "Monologue",
+    line: "One topic, three takes, less time each.",
+    button: "Begin a talk",
+    icon: "wave"
+  },
+  {
+    id: "conversation",
+    title: "Conversation",
+    line: "Fifteen minutes with a partner. No script.",
+    button: "Begin rehearsal",
+    icon: "bubbles"
+  }
+];
+
+// Same rule as the app: the least-practised exercise is proposed.
+// This week Reading was done 3 times, so Conversation opens, and the
+// week line cites Reading. The month line is the conversation budget.
+const PROPOSED = "conversation";
+const HISTORY = "You've read 3 times this week.";
+const MONTH = "0 of 20 this month";
+
+const VARIANTS = [
+  {
+    id: "cards",
+    key: "A",
+    name: "Flight cards",
+    blurb: "The cards you liked, now the same width as the button. Three tall rectangles, icon only. Their outer edges line up with the button.",
+    shape: "card",
+    labeled: false,
+    layout: "row"
+  },
+  {
+    id: "squares",
+    key: "B",
+    name: "Squares",
+    blurb: "Same width as the button, cut into three squares instead of tall cards. Icon only. Less height, so the sentence above keeps the room.",
+    shape: "square",
+    labeled: false,
+    layout: "row"
+  },
+  {
+    id: "segment",
+    key: "C",
+    name: "One control",
+    blurb: "One bar, the width of the button, split into three. It reads as a single choice instead of three separate cards. Icon only.",
+    shape: "segment",
+    labeled: false,
+    layout: "segment"
+  },
+  {
+    id: "stack",
+    key: "D",
+    name: "Stacked bars",
+    blurb: "Three bars, each exactly as wide as the button. The name sits beside the icon, because a long bar with only an icon is hard to tell apart.",
+    shape: "bar",
+    labeled: true,
+    layout: "stack"
+  }
+];
+
+const state = {
+  variant: "cards",
+  selected: PROPOSED
+};
+
+const tilesEl = document.getElementById("tiles");
+const blurbEl = document.getElementById("blurb");
+const switchLabel = document.getElementById("switchLabel");
+const stateEl = document.getElementById("state");
+
+function variantMeta() {
+  return VARIANTS.find(v => v.id === state.variant) || VARIANTS[0];
+}
+
+function formatById(id) {
+  return FORMATS.find(f => f.id === id);
+}
+
+function readURL() {
+  const q = new URLSearchParams(location.search);
+  const id = q.get("variant");
+  if (id === "labeled") state.variant = "cards";
+  else if (VARIANTS.some(v => v.id === id)) state.variant = id;
+  const selected = q.get("selected");
+  if (FORMATS.some(f => f.id === selected)) state.selected = selected;
+}
+
+function writeURL() {
+  const q = new URLSearchParams(location.search);
+  q.set("variant", state.variant);
+  q.set("selected", state.selected);
+  history.replaceState(null, "", "?" + q.toString());
+}
+
+function cycle(step) {
+  const index = VARIANTS.findIndex(v => v.id === state.variant);
+  const next = (index + step + VARIANTS.length) % VARIANTS.length;
+  state.variant = VARIANTS[next].id;
+  writeURL();
+  render();
+}
+
+let booted = false;
+
+function setLine(el, text) {
+  const next = text || "";
+  const same = el.textContent === next && el.hidden === !text;
+  if (same) return;
+  if (booted) {
+    el.style.filter = "blur(8px)";
+    el.style.opacity = "0.15";
+  }
+  el.textContent = next;
+  el.hidden = !text;
+  if (booted) {
+    requestAnimationFrame(() => {
+      el.style.filter = "";
+      el.style.opacity = "";
+    });
+  }
+}
+
+function renderTiles() {
+  const meta = variantMeta();
+  tilesEl.className = "tiles " + meta.layout;
+  tilesEl.replaceChildren();
+  for (const format of FORMATS) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "tile " + meta.shape;
+    button.setAttribute("aria-pressed", String(format.id === state.selected));
+    button.setAttribute("aria-label", format.title);
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("aria-hidden", "true");
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", "#icon-" + format.icon);
+    icon.appendChild(use);
+    button.appendChild(icon);
+    if (meta.labeled) {
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = format.title;
+      button.appendChild(name);
+    }
+    button.addEventListener("click", () => {
+      state.selected = format.id;
+      writeURL();
+      render();
+    });
+    tilesEl.appendChild(button);
+  }
+}
+
+function render() {
+  const meta = variantMeta();
+  const format = formatById(state.selected);
+  const onProposal = format.id === PROPOSED;
+  blurbEl.textContent = meta.blurb;
+  switchLabel.textContent = meta.key + " · " + meta.name;
+  setLine(document.getElementById("kicker"), format.title);
+  setLine(document.getElementById("display"), format.line);
+  setLine(document.getElementById("history"), onProposal ? HISTORY : "");
+  setLine(document.getElementById("note"), format.id === "conversation" ? MONTH : "");
+  document.getElementById("go").textContent = format.button;
+  renderTiles();
+
+  const lines = [
+    "variant: " + meta.key + " (" + meta.id + ")",
+    "selected: " + format.id,
+    "label: " + format.title,
+    "line: " + format.line,
+    "history: " + (onProposal ? HISTORY : "—"),
+    "note: " + (format.id === "conversation" ? MONTH : "—"),
+    "button: " + format.button,
+    "tile: " + meta.shape + (meta.labeled ? ", with name" : ", icon only")
+  ];
+  stateEl.innerHTML = lines.map(line => {
+    const cut = line.indexOf(":");
+    return "<b>" + line.slice(0, cut + 1) + "</b> " + line.slice(cut + 2);
+  }).join("<br>");
+}
+
+function fitPhone() {
+  const slot = document.querySelector(".phone-slot");
+  const phone = document.getElementById("phone");
+  const scale = Math.min(1, (window.innerWidth - 32) / 390);
+  phone.style.transform = "scale(" + scale + ")";
+  slot.style.width = (390 * scale) + "px";
+  slot.style.height = (844 * scale) + "px";
+}
+
+document.getElementById("prev").addEventListener("click", () => cycle(-1));
+document.getElementById("next").addEventListener("click", () => cycle(1));
+document.addEventListener("keydown", (event) => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || document.activeElement.isContentEditable) return;
+  if (event.key === "ArrowLeft") { event.preventDefault(); cycle(-1); }
+  if (event.key === "ArrowRight") { event.preventDefault(); cycle(1); }
+});
+window.addEventListener("resize", fitPhone);
+
+readURL();
+writeURL();
+render();
+booted = true;
+fitPhone();
+</script>
+</body>
+</html>
