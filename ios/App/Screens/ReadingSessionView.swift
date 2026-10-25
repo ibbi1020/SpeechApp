@@ -234,17 +234,15 @@ struct ReadingSessionView: View {
             .accessibilityHidden(isPreparing)
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
         } trailing: {
-            Button {
+            ReadingDoneControl(
+                expanded: session?.offersDone == true && !isPreparing,
+                enabled: !isPreparing && !isFinishing
+            ) {
                 Task { await stopSession() }
-            } label: {
-                Image(systemName: "checkmark")
             }
-            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session, fill: .red))
-            .disabled(isPreparing || isFinishing)
             .opacity(isPreparing ? 0 : 1)
             .allowsHitTesting(!isPreparing)
             .accessibilityHidden(isPreparing)
-            .accessibilityLabel("Done")
         }
         .opacity(isFinishing ? 0.7 : 1)
     }
@@ -446,6 +444,81 @@ private struct WordLineTops: PreferenceKey {
 
     static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
         value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
+/// Blue Done control. The word's own width is what widens the capsule.
+/// The checkmark stays on the left.
+private struct ReadingDoneControl: View {
+    var expanded: Bool
+    var enabled: Bool
+    var action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Laid-out width of "Done", including the space after it.
+    @State private var labelWidth: CGFloat = 0
+
+    private var side: CGFloat { SpeechIconCircleStyle.session }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 0) {
+                Image(systemName: "checkmark")
+                    .frame(width: side, height: side)
+                    .accessibilityHidden(true)
+                doneLabel
+            }
+            .font(.body.weight(.semibold))
+            .foregroundStyle(Color.white)
+            .background(Color.blue, in: Capsule())
+            .background(alignment: .leading) { labelMeasure }
+            .animation(reduceMotion ? nil : SpeechMotion.settle, value: expanded)
+        }
+        .buttonStyle(ReadingDonePressStyle())
+        .disabled(!enabled)
+        .accessibilityLabel("Done")
+        .sensoryFeedback(.impact(flexibility: .soft), trigger: expanded) { _, now in
+            now
+        }
+    }
+
+    /// Width animates from nothing to the word. The capsule follows that width,
+    /// and the clip keeps the glyphs inside the growing edge.
+    private var doneLabel: some View {
+        Text("Done")
+            .padding(.trailing, 18)
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(width: expanded && labelWidth > 0 ? labelWidth : 0, alignment: .leading)
+            .clipped()
+            .accessibilityHidden(true)
+    }
+
+    private var labelMeasure: some View {
+        Text("Done")
+            .font(.body.weight(.semibold))
+            .padding(.trailing, 18)
+            .fixedSize()
+            .hidden()
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { _, newWidth in
+                guard newWidth > 0, labelWidth != newWidth else { return }
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    labelWidth = newWidth
+                }
+            }
+    }
+}
+
+private struct ReadingDonePressStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1, anchor: .leading)
+            .animation(SpeechMotion.press, value: configuration.isPressed)
     }
 }
 

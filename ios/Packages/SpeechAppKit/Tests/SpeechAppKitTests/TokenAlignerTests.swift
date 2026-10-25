@@ -90,6 +90,18 @@ struct TokenAlignerTests {
         #expect(aligner.scriptCursor == 0)
     }
 
+    @Test("a hypothesis that covers the passage has reached the end")
+    func volatileReachesEnd() {
+        let aligner = TokenAligner(script: words(["the", "quick", "fox"]))
+        let covered = aligner.previewVolatile(surfaces: ["the", "quick", "fox"])
+        #expect(covered.reachedEnd == true)
+        #expect(covered.currentWordID == nil)
+
+        let prefix = aligner.previewVolatile(surfaces: ["the", "quick"])
+        #expect(prefix.reachedEnd == false)
+        #expect(prefix.currentWordID == "w2")
+    }
+
     @Test("volatile preview does not jump on function words")
     func volatileNoJumpOnThe() {
         let aligner = TokenAligner(

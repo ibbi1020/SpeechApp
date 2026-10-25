@@ -48,6 +48,8 @@ public final class ReadingSession {
     public private(set) var finalCaretLatencies: [TimeInterval] = []
     /// Mic energy above VAD threshold — drives speaking-pulse UI before ASR returns.
     public private(set) var isHearingSpeech: Bool = false
+    /// The reader has been quiet long enough that Done should widen. Microphone only.
+    public private(set) var offersDone: Bool = false
     /// Normalized mic energy 0…1 for continuous speaking feedback.
     public private(set) var speechEnergy: Float = 0
     /// Idle span-presence fields (Pass 7 UI uses aurora only; kept for kit API stability).
@@ -87,6 +89,9 @@ public final class ReadingSession {
     private var enginePreference: LiveTranscriptionEngine.EnginePreference = .autoPreferSpeechTranscriber
     private var lastOccupancyAdvanceAt: TimeInterval?
     private var lastRawHypothesis: String = ""
+    private var speechRest = SpeechRest()
+    /// Pause time is not quiet time. The next heard chunk restarts the wait.
+    private var restartQuietClock = false
     private static let fallingBehindSeconds: TimeInterval = 1.25
     private static let audioDrainTimeoutMs: UInt64 = 1_000
     private static let transcriptDrainTimeoutMs: UInt64 = 15_000
@@ -139,6 +144,9 @@ public final class ReadingSession {
         sessionHostStart = ProcessInfo.processInfo.systemUptime
         isHearingSpeech = false
         speechEnergy = 0
+        speechRest.reset()
+        offersDone = false
+        restartQuietClock = false
         clearSpanPresenceState()
         registrationHealth = .idle
         lastOccupancyAdvanceAt = nil
@@ -221,6 +229,8 @@ public final class ReadingSession {
         phase = .running
         sendGate.set(open: true)
         stallDetector.dismiss()
+        restartQuietClock = true
+        offersDone = false
     }
 
     public func stop() async -> SessionReport {
@@ -442,7 +452,14 @@ public final class ReadingSession {
                 surfaces = Self.tokenizeHypothesis(update.rawText).filter { !FillerWords.isFiller($0) }
             }
             let preview = aligner.previewVolatile(surfaces: surfaces)
-            let proposed = preview.currentWordID ?? aligner.currentWordID
+            // Walking off the last word used to come back as "no word", and the
+            // underline kept the older committed word, a few from the end.
+            let proposed: String?
+            if preview.reachedEnd {
+                proposed = passage.words.last?.id
+            } else {
+                proposed = preview.currentWordID ?? aligner.currentWordID
+            }
             currentWordID = aligner.monotonicWordID(proposing: proposed)
             provisionalMatchedIDs = preview.provisionalMatchedIDs
             stickyHear(preview.provisionalMatchedIDs)
@@ -616,6 +633,14 @@ public final class ReadingSession {
         // Reading screen is not re-rendered for each mic buffer.
         if isHearingSpeech != speaking {
             isHearingSpeech = speaking
+        }
+        if restartQuietClock {
+            speechRest.hold(at: chunk.hostTime)
+            restartQuietClock = false
+        }
+        speechRest.note(speaking: speaking, at: chunk.hostTime)
+        if offersDone != speechRest.offersDone {
+            offersDone = speechRest.offersDone
         }
         speechEnergy = ListenDrive.normalized(rms: rms)
         refreshRegistrationHealth(speaking: speaking)

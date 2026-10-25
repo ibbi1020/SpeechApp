@@ -96,15 +96,19 @@ public struct VolatilePreview: Equatable, Sendable {
     public let provisionalMatchedIDs: [String]
     /// Intermediates jumped when a later script word matched (keep-going recovery).
     public let provisionalSkippedIDs: [String]
+    /// The hypothesis walked off the last script word. `currentWordID` is nil in that case.
+    public let reachedEnd: Bool
 
     public init(
         currentWordID: String?,
         provisionalMatchedIDs: [String] = [],
-        provisionalSkippedIDs: [String] = []
+        provisionalSkippedIDs: [String] = [],
+        reachedEnd: Bool = false
     ) {
         self.currentWordID = currentWordID
         self.provisionalMatchedIDs = provisionalMatchedIDs
         self.provisionalSkippedIDs = provisionalSkippedIDs
+        self.reachedEnd = reachedEnd
     }
 }
 
@@ -312,7 +316,8 @@ public final class TokenAligner: @unchecked Sendable {
 
         return VolatilePreview(
             currentWordID: cursor < script.count ? script[cursor].id : nil,
-            provisionalMatchedIDs: provisionalMatched
+            provisionalMatchedIDs: provisionalMatched,
+            reachedEnd: !script.isEmpty && cursor >= script.count && !provisionalMatched.isEmpty
         )
     }
 
