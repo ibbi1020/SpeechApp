@@ -10,8 +10,8 @@ enum ConversationBlurEdge {
 /// Vertical blur along one edge of a conversation picture.
 ///
 /// The radius follows a mask, the same backdrop filter Apple uses for an edge
-/// fade. It is strongest at the screen edge and eases to nothing at the other
-/// end, flat against the picture so the band does not end on a line.
+/// fade. Strength falls in a straight line: full at the screen edge, zero
+/// where the band meets the picture.
 struct ConversationEdgeBlur: View {
     var edge: ConversationBlurEdge
     var maxRadius: CGFloat
@@ -44,12 +44,15 @@ private struct EdgeBlurRepresentable: UIViewRepresentable {
         EdgeBlurView(edge: edge, maxRadius: maxRadius)
     }
 
-    func updateUIView(_ view: EdgeBlurView, context: Context) {}
+    func updateUIView(_ view: EdgeBlurView, context: Context) {
+        view.setRadius(maxRadius)
+    }
 }
 
 private final class EdgeBlurView: UIVisualEffectView {
     private let edge: ConversationBlurEdge
-    private let maxRadius: CGFloat
+    private var maxRadius: CGFloat
+    private var filter: NSObject?
     private var didInstall = false
 
     init(edge: ConversationBlurEdge, maxRadius: CGFloat) {
@@ -59,6 +62,12 @@ private final class EdgeBlurView: UIVisualEffectView {
         isUserInteractionEnabled = false
         backgroundColor = .clear
         install()
+    }
+
+    func setRadius(_ radius: CGFloat) {
+        guard radius != maxRadius else { return }
+        maxRadius = radius
+        filter?.setValue(NSNumber(value: Double(radius)), forKey: "inputRadius")
     }
 
     @available(*, unavailable)
@@ -85,6 +94,7 @@ private final class EdgeBlurView: UIVisualEffectView {
             effect = nil
             return
         }
+        self.filter = filter
         backdrop.filters = [filter]
         for subview in subviews where subview.layer !== backdrop {
             subview.alpha = 0
@@ -100,7 +110,7 @@ private final class EdgeBlurView: UIVisualEffectView {
         let selector = NSSelectorFromString(selectorName)
         guard let created = filterClass.perform(selector, with: "variableBlur") else { return nil }
         guard let filter = created.takeUnretainedValue() as? NSObject else { return nil }
-        filter.setValue(radius, forKey: "inputRadius")
+        filter.setValue(NSNumber(value: Double(radius)), forKey: "inputRadius")
         filter.setValue(mask, forKey: "inputMaskImage")
         filter.setValue(true, forKey: "inputNormalizeEdges")
         return filter
@@ -135,21 +145,11 @@ private enum EdgeBlurMask {
                 let fromTop = CGFloat(y) / CGFloat(height - 1)
                 let along = strongAtTop ? (1 - fromTop) : fromTop
                 ctx.cgContext.setFillColor(
-                    UIColor.black.withAlphaComponent(taper(along)).cgColor
+                    UIColor.black.withAlphaComponent(along).cgColor
                 )
                 ctx.cgContext.fill(CGRect(x: 0, y: y, width: width, height: 1))
             }
         }
         return image.cgImage
-    }
-
-    /// `along` is 0 beside the picture and 1 at the screen edge.
-    /// The tails stay near zero and near full strength longer than a normal
-    /// S-curve. The picture end is exactly 0, not a small leftover radius.
-    private static func taper(_ along: CGFloat) -> CGFloat {
-        let x = min(1, max(0, along))
-        let rise = x * x * x
-        let fall = (1 - x) * (1 - x) * (1 - x)
-        return rise / (rise + fall)
     }
 }
