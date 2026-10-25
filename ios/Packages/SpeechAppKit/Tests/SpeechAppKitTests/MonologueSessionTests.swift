@@ -4,7 +4,7 @@ import Testing
 @Suite("Monologue session clock")
 struct MonologueSessionClockTests {
     @MainActor
-    @Test("I'm ready starts take 1 at 4:00 with no warmup")
+    @Test("I'm ready starts take 1 at 1:00 with no warmup")
     func readyStartsTake() {
         let time = ControllableTimeSource(now: 0)
         let session = MonologueSession(
@@ -17,11 +17,11 @@ struct MonologueSessionClockTests {
         session.notes = "keyword outline"
         session.ready()
         #expect(session.phase == .taking)
-        #expect(session.remaining == 240)
+        #expect(session.remaining == 60)
         #expect(session.store.lastPrompt == "A familiar topic")
         time.advance(10)
         #expect(session.elapsed == 10)
-        #expect(session.remaining == 230)
+        #expect(session.remaining == 50)
     }
 
     @MainActor
@@ -35,7 +35,7 @@ struct MonologueSessionClockTests {
         await session.tick()
         #expect(session.phase == .taking)
         #expect(session.clockSample == 3)
-        #expect(session.remaining == 237)
+        #expect(session.remaining == 57)
     }
 
     @MainActor
@@ -61,10 +61,10 @@ struct MonologueSessionClockTests {
         let time = ControllableTimeSource(now: 0)
         let session = makeSession(time: time)
         session.ready()
-        time.advance(90)
+        time.advance(45)
         await session.tick()
         #expect(session.phase == .taking)
-        #expect(session.elapsed == 90)
+        #expect(session.elapsed == 45)
     }
 
     @MainActor
@@ -103,7 +103,7 @@ struct MonologueSessionClockTests {
 @Suite("Monologue session takes")
 struct MonologueSessionTakeTests {
     @MainActor
-    @Test("Done after take 1 goes between with Three minutes")
+    @Test("Done after take 1 goes between with Two minutes")
     func afterTake1() {
         let time = ControllableTimeSource(now: 0)
         let session = makeSession(time: time)
@@ -113,7 +113,8 @@ struct MonologueSessionTakeTests {
         session.ingestText("I take the bus")
         session.done()
         #expect(session.phase == .between)
-        #expect(session.betweenCopy == "Three minutes.")
+        #expect(session.betweenCopy == "Two minutes.")
+        #expect(session.ceiling == 120)
         #expect(session.takeNumber == 2)
         #expect(session.takes.count == 1)
     }
@@ -124,10 +125,10 @@ struct MonologueSessionTakeTests {
         let time = ControllableTimeSource(now: 0)
         let session = makeSession(time: time)
         session.ready()
-        time.advance(240)
+        time.advance(60)
         await session.tick()
         #expect(session.phase == .between)
-        #expect(session.takes.first?.wallSeconds == 240)
+        #expect(session.takes.first?.wallSeconds == 60)
     }
 
     @MainActor
@@ -148,14 +149,15 @@ struct MonologueSessionTakeTests {
     }
 
     @MainActor
-    @Test("between copy after take 2 is Two minutes")
+    @Test("between copy after take 2 is Three minutes")
     func afterTake2() {
         let time = ControllableTimeSource(now: 0)
         let session = makeSession(time: time)
         session.ready(); time.advance(35); session.done()
         session.ready(); time.advance(35); session.done()
         #expect(session.phase == .between)
-        #expect(session.betweenCopy == "Two minutes.")
+        #expect(session.betweenCopy == "Three minutes.")
+        #expect(session.ceiling == 180)
         #expect(session.takeNumber == 3)
     }
 

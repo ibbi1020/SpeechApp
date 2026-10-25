@@ -3,11 +3,11 @@ import Testing
 
 @Suite("Monologue phase and ceilings")
 struct MonologuePhaseTests {
-    @Test("ceilings are 4 then 3 then 2 minutes")
+    @Test("ceilings are 1 then 2 then 3 minutes")
     func ceilings() {
-        #expect(MonologueCeiling.seconds(forTake: 1) == 240)
-        #expect(MonologueCeiling.seconds(forTake: 2) == 180)
-        #expect(MonologueCeiling.seconds(forTake: 3) == 120)
+        #expect(MonologueCeiling.seconds(forTake: 1) == 60)
+        #expect(MonologueCeiling.seconds(forTake: 2) == 120)
+        #expect(MonologueCeiling.seconds(forTake: 3) == 180)
     }
 
     @Test("a take counts at 30s wall")

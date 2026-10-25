@@ -279,7 +279,7 @@ struct MonologueSessionView: View {
             Text("\(minutes)")
                 .font(.system(size: stageDurationSize, weight: .semibold))
                 .monospacedDigit()
-                .digitRoll(minutes, countsDown: true, reduceMotion: reduceMotion)
+                .digitRoll(minutes, countsDown: false, reduceMotion: reduceMotion)
             Text(minutes == 1 ? "minute" : "minutes")
                 .speechType(.h3)
                 .foregroundStyle(.secondary)
@@ -981,6 +981,10 @@ private struct MonologueCountdown: View, Equatable {
 
     private func spokenRemaining(_ t: TimeInterval) -> String {
         let total = max(0, Int(t.rounded()))
-        return "\(total / 60) minutes \(total % 60) seconds remaining"
+        let minutes = total / 60
+        let seconds = total % 60
+        let minuteWord = minutes == 1 ? "minute" : "minutes"
+        let secondWord = seconds == 1 ? "second" : "seconds"
+        return "\(minutes) \(minuteWord) \(seconds) \(secondWord) remaining"
     }
 }
