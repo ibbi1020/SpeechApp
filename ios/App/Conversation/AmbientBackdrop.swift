@@ -58,6 +58,18 @@ struct AmbientBackdrop: View {
                 )
                 .opacity(scrimOpacity)
                 .allowsHitTesting(false)
+                if front != .off || back != nil {
+                    let topInset = geo.safeAreaInsets.top
+                    let belowNotch = (topInset > 20 ? topInset : 59) + 18
+                    ConversationEdgeBlur(edge: .top, maxRadius: 5.25, height: belowNotch)
+                        .opacity(scrimOpacity)
+                    ConversationEdgeBlur(
+                        edge: .bottom,
+                        maxRadius: 6.75,
+                        height: geo.size.height * 0.15
+                    )
+                    .opacity(scrimOpacity)
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }

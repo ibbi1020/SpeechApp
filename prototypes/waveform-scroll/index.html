@@ -1,0 +1,1499 @@
+<!DOCTYPE html>
+<!--
+PROTOTYPE. Throwaway. Not the app.
+
+Question: how should the feedback waveform stay readable on a long conversation,
+keep the markers and the partner stretches, and still let someone go to any moment?
+
+Five ideas, one phone, switchable with ?variant=today|tape|window|map|turns
+and the bar at the bottom. Take length is ?length=45|180|480.
+
+This is the player on "Your conversation" and in the gallery. Same component.
+Today is the current player, kept here so the other four have something to beat.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waveform prototypes</title>
+<style>
+  :root {
+    --ink: #f5f5f7;
+    --muted: rgba(235, 235, 245, 0.6);
+    --faint: rgba(245, 245, 247, 0.48);
+    --line: rgba(255, 255, 255, 0.12);
+    --phone-w: 390px;
+    --phone-h: 844px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100%;
+    background: #2a2a2c;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 16px 128px;
+  }
+  .intro { width: min(540px, 100%); text-align: center; }
+  .kicker { margin: 0 0 8px; font-size: 13px; color: var(--faint); }
+  .kicker a { color: inherit; }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+  }
+  .blurb {
+    margin: 0;
+    min-height: 4.6em;
+    font-size: 15px;
+    line-height: 1.45;
+    color: rgba(245, 245, 247, 0.82);
+  }
+  .legend {
+    margin: 12px 0 0;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--faint);
+  }
+  .swatch {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin: 0 4px 0 10px;
+    border-radius: 99px;
+    vertical-align: 1px;
+  }
+  .swatch:first-child { margin-left: 0; }
+  .lengths {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin: 16px 0 18px;
+  }
+  .lengths button {
+    border: 0;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(245, 245, 247, 0.72);
+    border-radius: 999px;
+    padding: 8px 14px;
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .lengths button.on { background: #f5f5f7; color: #111; font-weight: 600; }
+  .phone {
+    width: var(--phone-w);
+    height: var(--phone-h);
+    flex: none;
+    background: #000;
+    border-radius: 48px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+  .screen {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    padding: 54px 0 28px;
+    scrollbar-width: none;
+  }
+  .screen::-webkit-scrollbar { display: none; }
+  .nav {
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    align-items: center;
+    height: 44px;
+  }
+  .nav-title { text-align: center; font-size: 17px; font-weight: 600; }
+  .back {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+  .body { padding: 4px 24px 32px; }
+  .details {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 17px;
+    cursor: pointer;
+  }
+  .details .chev {
+    margin-left: auto;
+    color: var(--muted);
+    transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .details.open .chev { transform: rotate(90deg); }
+  .stat {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 0.5px solid var(--line);
+    font-size: 17px;
+  }
+  .stat:last-child { border-bottom: 0; }
+  .stat span { color: var(--muted); }
+  .stat strong {
+    margin-left: auto;
+    font-size: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat strong.big { font-size: 28px; }
+  .row-label {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 0 4px;
+    font-size: 12px;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .lane, .overview, .turn-wave { position: relative; overflow: hidden; }
+  .lane { height: 64px; touch-action: none; cursor: grab; }
+  .today .lane { height: 56px; }
+  .tape .lane { height: 92px; }
+  .overview { height: 40px; margin-bottom: 14px; touch-action: none; cursor: pointer; overflow: hidden; }
+  .overview .marker { pointer-events: none; }
+  .lane.grabbing, .overview.grabbing { cursor: grabbing; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .tape canvas, .window canvas, .map .lane canvas {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 14px, #000 calc(100% - 14px), transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 14px, #000 calc(100% - 14px), transparent);
+  }
+  .needle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1.5px;
+    margin-left: -0.75px;
+    background: #fff;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .tape .needle { top: 20px; }
+  .needle::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 50%;
+    width: 7px;
+    height: 7px;
+    border-radius: 99px;
+    background: #fff;
+    transform: translateX(-50%);
+  }
+  .markers { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+  .tape .markers { top: 20px; }
+  .marker {
+    position: absolute;
+    top: 0;
+    width: 44px;
+    height: 100%;
+    margin-left: -22px;
+    border: 0;
+    padding: 0;
+    background: none;
+    display: grid;
+    place-items: center;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .marker i {
+    width: 10px;
+    height: 10px;
+    border-radius: 99px;
+    box-shadow: 0 0 0 1.5px #000;
+    display: block;
+  }
+  .overview .marker i { width: 8px; height: 8px; }
+  .bracket {
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    border-radius: 5px;
+    border: 1.5px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .now, .now-float {
+    border: 0;
+    background: rgba(44, 44, 46, 0.94);
+    color: #fff;
+    border-radius: 999px;
+    height: 32px;
+    padding: 0 12px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.16), 0 8px 20px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+  }
+  .lane .now {
+    position: absolute;
+    z-index: 4;
+    top: 8px;
+    right: 8px;
+  }
+  .now-float {
+    position: absolute;
+    z-index: 6;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+  }
+  .transport {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .transport.stuck {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    margin: 0 -24px 8px;
+    padding: 8px 24px 10px;
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: blur(16px);
+  }
+  #play {
+    width: 44px;
+    height: 44px;
+    flex: none;
+    border: 0;
+    border-radius: 99px;
+    background: #fff;
+    color: #000;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    cursor: pointer;
+  }
+  #play:active { transform: scale(0.96); }
+  #play[data-on="false"] svg { transform: translateX(1px); }
+  .time {
+    font-size: 15px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .transport .spacer { flex: 1; }
+  .note {
+    margin: 12px 0 0;
+    padding-left: 12px;
+    border-left: 3px solid var(--note, #ff9f0a);
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.35;
+  }
+  .block, .said {
+    margin: 22px 0 0;
+    font-size: 22px;
+    line-height: 1.45;
+  }
+  .block.you, .turn.you .said {
+    font-family: "New York", "Iowan Old Style", Palatino, "Times New Roman", serif;
+    color: var(--ink);
+  }
+  .block.partner, .turn.partner .said {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    color: var(--muted);
+  }
+  .word {
+    display: inline;
+    margin: 0 8px 0 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    line-height: inherit;
+    cursor: pointer;
+  }
+  .word.future { opacity: 0.38; }
+  .word.now { opacity: 1; color: #fff; }
+  .word:focus { outline: none; }
+  .turn { margin-top: 26px; }
+  .turn header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .turn.partner .who { color: #64d2ff; }
+  .turn.you .who { color: var(--ink); }
+  .turn-wave { height: 48px; touch-action: pan-y; }
+  .turn.on .turn-wave { filter: none; }
+  .home {
+    display: block;
+    width: 100%;
+    margin-top: 36px;
+    height: 50px;
+    border: 0;
+    border-radius: 999px;
+    background: #fff;
+    color: #000;
+    font: inherit;
+    font-size: 17px;
+    font-weight: 590;
+    cursor: default;
+  }
+  .home-ind {
+    position: absolute;
+    left: 50%;
+    bottom: 8px;
+    width: 134px;
+    height: 5px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.85);
+    transform: translateX(-50%);
+    z-index: 5;
+    pointer-events: none;
+  }
+  .state {
+    width: min(640px, 100%);
+    margin: 16px 0 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.45;
+    text-align: center;
+    color: rgba(245, 245, 247, 0.42);
+  }
+  .switcher {
+    position: fixed;
+    z-index: 20;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 6px;
+    background: #f5f5f7;
+    color: #111;
+    border-radius: 999px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  }
+  .switcher button {
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: 99px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .switcher button:hover { background: rgba(0, 0, 0, 0.06); }
+  .switcher-mid { min-width: 188px; text-align: center; padding: 0 6px; }
+  #switchLabel { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .switcher-hint { margin-top: 1px; font-size: 11px; font-weight: 500; color: rgba(0, 0, 0, 0.5); }
+  @media (prefers-reduced-motion: reduce) {
+    .details .chev { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <header class="intro">
+    <p class="kicker">Prototype · <a href="https://github.com/ibbi1020/SpeechApp/issues/72">issue 72</a> · feedback and gallery</p>
+    <h1>A long take, still readable</h1>
+    <p class="blurb" id="blurb"></p>
+    <p class="legend">
+      <i class="swatch" style="background:#64d2ff"></i>Partner
+      <i class="swatch" style="background:#f5f5f7"></i>You
+      <i class="swatch" style="background:#ff9f0a"></i>Pause
+      <i class="swatch" style="background:#ffd60a"></i>Fillers
+      <i class="swatch" style="background:#63e6be"></i>Restart
+      <i class="swatch" style="background:#5e5ce6"></i>Other language
+    </p>
+  </header>
+  <div class="lengths" role="group" aria-label="Take length">
+    <button type="button" data-length="45">0:45</button>
+    <button type="button" data-length="180">3:00</button>
+    <button type="button" data-length="480">8:00</button>
+  </div>
+  <div class="phone">
+    <div class="screen" id="screen">
+      <div class="nav">
+        <div class="back" aria-hidden="true">
+          <svg width="12" height="20" viewBox="0 0 12 20"><path d="M10 2L2 10l8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="nav-title">Your conversation</div>
+        <div></div>
+      </div>
+      <div class="body">
+        <button type="button" class="details" id="details" aria-expanded="false">
+          <span>Details</span>
+          <svg class="chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div id="stats" hidden></div>
+        <div id="stage"></div>
+        <div class="transport" id="transport">
+          <button type="button" id="play" data-on="false" aria-label="Play"></button>
+          <span class="time" id="elapsed">0:00</span>
+          <span class="spacer"></span>
+          <span class="time" id="total">8:00</span>
+        </div>
+        <p class="note" id="note" hidden></p>
+        <div id="transcript"></div>
+        <button type="button" class="home">Back to home</button>
+      </div>
+    </div>
+    <button type="button" class="now-float" id="nowFloat" hidden>Now</button>
+    <div class="home-ind"></div>
+  </div>
+  <p class="state" id="state"></p>
+  <div class="switcher">
+    <button type="button" id="prev" aria-label="Previous idea">‹</button>
+    <div class="switcher-mid">
+      <div id="switchLabel">A · Today</div>
+      <div class="switcher-hint">← → switch · space plays</div>
+    </div>
+    <button type="button" id="next" aria-label="Next idea">›</button>
+  </div>
+
+<script>
+const VARIANTS = [
+  { id: 'today', key: 'A', name: 'Today' },
+  { id: 'tape', key: 'B', name: 'Tape' },
+  { id: 'window', key: 'C', name: 'Window' },
+  { id: 'map', key: 'D', name: 'Map' },
+  { id: 'turns', key: 'E', name: 'Turns' },
+];
+const WINDOW_SEC = 28;
+const NEEDLE = 0.36;
+const COLORS = {
+  pause: '#ff9f0a',
+  slowStart: '#ff9f0a',
+  fillerCluster: '#ffd60a',
+  restart: '#63e6be',
+  otherLanguage: '#5e5ce6',
+};
+
+const TURNS = [
+  { who: 'partner', start: 0, end: 7.4, text: 'How did the launch go yesterday?' },
+  { who: 'you', start: 7.8, end: 42, text: 'It went well until the rollout. There was a long pause around billing, and then the queue backed up.' },
+  { who: 'partner', start: 42.6, end: 49, text: 'Where did it back up?' },
+  { who: 'you', start: 49.2, end: 78, text: 'Right after checkout. People confirmed, and the retry kept firing.' },
+  { who: 'partner', start: 78.6, end: 85.5, text: 'How long did the retry keep firing?' },
+  { who: 'you', start: 85.8, end: 120, text: 'Um, like, a few minutes. I kept saying it was fine, like, and it was not. The queue was the whole problem.' },
+  { who: 'partner', start: 120.6, end: 128, text: 'Did anyone notice before you did?' },
+  { who: 'you', start: 128.4, end: 158, text: 'Support saw the tickets first. I saw them after lunch.' },
+  { who: 'partner', start: 158.4, end: 164, text: 'What did you tell them?' },
+  { who: 'you', start: 168.6, end: 198, text: 'I waited, then I told them the billing page was the break. I should have said that sooner.' },
+  { who: 'partner', start: 198.6, end: 205.5, text: 'Was the graph already wrong by then?' },
+  { who: 'you', start: 205.8, end: 250, text: 'I looked at the graph and started that sentence over. The graph was late, not wrong. The numbers landed after the pause.' },
+  { who: 'partner', start: 250.6, end: 257.5, text: 'Say the last part once more.' },
+  { who: 'you', start: 257.8, end: 286, text: 'The numbers landed after the pause. The page itself was up.' },
+  { who: 'partner', start: 286.6, end: 294, text: 'And then you switched languages for a stretch.' },
+  { who: 'you', start: 294.2, end: 340, text: 'I was with the Madrid desk for that stretch, so it was not English, and then I came back to the timeline and the owners.' },
+  { who: 'partner', start: 340.6, end: 347.5, text: 'Did the room notice the switch?' },
+  { who: 'you', start: 347.8, end: 368, text: 'A few people did. I marked it and kept going.' },
+  { who: 'partner', start: 368.4, end: 375.2, text: 'Then what did you change?' },
+  { who: 'you', start: 376, end: 424, text: 'I cut the retry in half. There was a long pause while I checked the queue, and then it drained.' },
+  { who: 'partner', start: 424.6, end: 431.4, text: 'Anything you would say differently next time?' },
+  { who: 'you', start: 431.8, end: 470, text: 'Next time I would name the billing pause sooner. I would not, like, you know, stack fillers on the retry.' },
+  { who: 'partner', start: 470.6, end: 476.6, text: 'Send me the graph when you have it.' },
+  { who: 'you', start: 477, end: 480, text: 'I will.' },
+];
+
+const MARKERS = [
+  { kind: 'pause', start: 22, end: 24.6, note: 'A 3-second pause in the middle of a sentence. Listen: what word were you looking for?' },
+  { kind: 'fillerCluster', start: 92, end: 98, note: '3 fillers in 6 seconds. Listen: what were you about to say?' },
+  { kind: 'slowStart', start: 164, end: 168.2, note: 'After “What did you tell them?”, you took 4 seconds to start. Listen: were you deciding what to say, or finding the first words?' },
+  { kind: 'restart', start: 236, end: 239, note: 'You started this part again. Listen: did the second try say it better?' },
+  { kind: 'otherLanguage', start: 308, end: 316, note: 'You switched languages here. Listen: how could you say this in English?' },
+  { kind: 'pause', start: 380, end: 382.6, note: 'A 3-second pause between sentences. Listen: were you planning your next point?' },
+  { kind: 'fillerCluster', start: 452, end: 458, note: '3 fillers in 6 seconds. Listen: what were you about to say?' },
+];
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const playIcon = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.2v9.6L13.2 8 5 3.2z" fill="currentColor"/></svg>';
+const pauseIcon = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h3v10H4zM9 3h3v10H9z" fill="currentColor"/></svg>';
+
+const state = {
+  variant: 'today',
+  length: 480,
+  time: 4,
+  playing: false,
+  gesture: null,
+  follow: true,
+  listFollow: true,
+  viewStart: 0,
+  pull: 0,
+  pullVel: 0,
+  vel: 0,
+  sliding: false,
+  viewVel: 0,
+  viewTarget: 0,
+  downTime: 0,
+  downView: 0,
+  note: '',
+  noteKind: '',
+  lastTurn: -1,
+};
+
+let pressGen = 0;
+let programmaticScroll = false;
+let lastStateLine = '';
+
+function mulberry32(a) {
+  return function () {
+    a |= 0;
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function quietAt(t) {
+  return MARKERS.some(m => (m.kind === 'pause' || m.kind === 'slowStart') && t >= m.start && t < m.end);
+}
+function turnAt(t) {
+  for (const turn of TURNS) {
+    if (t >= turn.start && t < turn.end) return turn;
+  }
+  return null;
+}
+function buildSamples() {
+  const rate = 40;
+  const out = new Float32Array(480 * rate);
+  const rand = mulberry32(72);
+  for (let i = 0; i < out.length; i++) {
+    const t = i / rate;
+    const turn = turnAt(t);
+    if (!turn || quietAt(t)) {
+      out[i] = 0.025;
+      continue;
+    }
+    const hz = turn.who === 'partner' ? 3.3 : 4.7;
+    const syl = Math.abs(Math.sin((t - turn.start) * hz * Math.PI));
+    const phrase = 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(t * 1.6 + (turn.who === 'partner' ? 0.8 : 0)));
+    let amp = Math.pow(syl, 0.72) * phrase * (0.38 + rand() * 0.62);
+    if (rand() > 0.9) amp *= 0.22;
+    out[i] = Math.max(0, Math.min(1, amp));
+  }
+  return out;
+}
+const samples = buildSamples();
+
+function duration() { return state.length; }
+function clamp(n, a, b) { return Math.min(b, Math.max(a, n)); }
+function formatClock(t) {
+  const s = Math.max(0, Math.round(t));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+function formatSpoken(t) {
+  const s = Math.max(0, Math.round(t));
+  return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+}
+function visibleTurns() {
+  const d = duration();
+  return TURNS.filter(t => t.start < d).map(t => ({ ...t, end: Math.min(t.end, d) })).filter(t => t.end - t.start > 0.15);
+}
+function visibleMarkers() {
+  return MARKERS.filter(m => m.start < duration());
+}
+function laneWidth() {
+  const el = document.querySelector('.lane') || document.querySelector('.turn-wave') || document.getElementById('stage');
+  return el && el.clientWidth ? el.clientWidth : 342;
+}
+function pxPerSec() { return laneWidth() / WINDOW_SEC; }
+function maxView() { return Math.max(0, duration() - WINDOW_SEC); }
+function rubberband(over, dim) {
+  const c = 0.55;
+  return (over * dim * c) / (dim + c * Math.abs(over));
+}
+function spring(x, v, target, dt, response) {
+  if (reduceMotion) return { x: target, v: 0 };
+  const omega = (2 * Math.PI) / response;
+  const a = -omega * omega * (x - target) - 2 * omega * v;
+  v += a * dt;
+  x += v * dt;
+  return { x, v };
+}
+function maxAmp(t0, t1) {
+  const rate = 40;
+  let a = 0;
+  const i0 = Math.max(0, Math.floor(t0 * rate));
+  const i1 = Math.min(samples.length - 1, Math.ceil(t1 * rate));
+  for (let i = i0; i <= i1; i++) a = Math.max(a, samples[i]);
+  return a;
+}
+function partnerAt(t) {
+  const turn = turnAt(t);
+  return !!(turn && turn.who === 'partner');
+}
+function variantMeta() {
+  return VARIANTS.find(v => v.id === state.variant) || VARIANTS[0];
+}
+function esc(s) {
+  return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+function wordButtons(turn) {
+  const parts = turn.text.split(' ');
+  const span = (turn.end - turn.start) / parts.length;
+  return parts.map((word, i) => {
+    const start = turn.start + i * span;
+    return `<button type="button" class="word future" data-start="${start}" data-end="${start + span}">${esc(word)}</button>`;
+  }).join('');
+}
+function markersForTurn(turn) {
+  return visibleMarkers().filter(m => {
+    if (m.kind === 'slowStart') return turn.who === 'you' && turn.start - m.end < 1 && turn.start - m.end > -0.2;
+    return m.start >= turn.start && m.start < turn.end;
+  });
+}
+function activeTurnIndex() {
+  const turns = visibleTurns();
+  let idx = 0;
+  for (let i = 0; i < turns.length; i++) {
+    if (turns[i].start <= state.time) idx = i;
+  }
+  return idx;
+}
+
+function readURL() {
+  const q = new URLSearchParams(location.search);
+  const id = q.get('variant');
+  if (VARIANTS.some(v => v.id === id)) state.variant = id;
+  const len = Number(q.get('length'));
+  if (len === 45 || len === 180 || len === 480) state.length = len;
+  state.time = clamp(state.time, 0, state.length);
+}
+function writeURL() {
+  const q = new URLSearchParams();
+  q.set('variant', state.variant);
+  q.set('length', String(state.length));
+  history.replaceState(null, '', '?' + q.toString());
+}
+
+function blurb() {
+  const spp = duration() / Math.max(1, laneWidth());
+  if (state.variant === 'today') {
+    if (spp > 0.35) {
+      return `This is the player now. The whole ${formatClock(duration())} is one row, about ${spp.toFixed(1)} seconds on each pixel. A pause disappears, and a finger covers a few seconds. Markers and the partner color are still there. They are just hard to aim at.`;
+    }
+    return `This is the player now. At ${formatClock(duration())} the row still reads, about ${spp.toFixed(2)} seconds per pixel. Switch the length to 8:00. That is the take that falls apart.`;
+  }
+  if (state.variant === 'tape') {
+    return 'The needle stays put, left of center, so you can see what is coming. The wave moves right to left and the bars stay the same size. Drag it. Flick it. Both ends come to the needle. A marker tap still starts two seconds early.';
+  }
+  if (state.variant === 'window') {
+    return 'The needle walks across about 28 seconds, and the bars stay still so you can read them. Near the right edge, that slice slides forward. Drag to look ahead without moving the needle. Now brings you back. You can rest the start or the end against the side of the screen.';
+  }
+  if (state.variant === 'map') {
+    return 'The thin row is the whole take, so minute 7 is one drag. The large row is only the piece inside the bracket, drawn big enough to read. Drag the large row to scrub. The bracket shows where you are.';
+  }
+  return 'Each turn has its own wave, so the conversation gets taller instead of thinner. A short question stays short. Scroll to any turn. The play button stays put. The longest answer still fills one row. That is the limit of this idea.';
+}
+
+function statsRows() {
+  const yours = visibleTurns().filter(t => t.who === 'you');
+  const spoken = yours.reduce((sum, t) => sum + (t.end - t.start), 0);
+  const pause = visibleMarkers()
+    .filter(m => m.kind === 'pause' || m.kind === 'slowStart')
+    .reduce((sum, m) => sum + (Math.min(m.end, duration()) - m.start), 0);
+  return [
+    ['Pace', '142 syl/min'],
+    ['Time spoken', formatSpoken(spoken)],
+    ['Pause time', pause.toFixed(1) + 's'],
+    ['Your turns', String(yours.length)],
+  ];
+}
+
+function drawWave(canvas, viewStart, seconds, time, opts) {
+  const cssW = canvas.clientWidth;
+  const cssH = canvas.clientHeight;
+  if (cssW < 2 || cssH < 2) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const bw = Math.round(cssW * dpr);
+  const bh = Math.round(cssH * dpr);
+  if (canvas.width !== bw || canvas.height !== bh) {
+    canvas.width = bw;
+    canvas.height = bh;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  const barW = opts.barW;
+  const step = barW + opts.gap;
+  const px = cssW / seconds;
+  const ruler = opts.ruler ? 20 : 0;
+  const top = ruler;
+  const h = cssH - top;
+  const mid = top + h / 2;
+  const endT = viewStart + seconds;
+
+  if (opts.wash) {
+    ctx.fillStyle = 'rgba(100, 210, 255, 0.10)';
+    for (const turn of TURNS) {
+      if (turn.who !== 'partner' || turn.end <= viewStart || turn.start >= endT || turn.start >= duration()) continue;
+      const a = Math.max(turn.start, viewStart);
+      const b = Math.min(turn.end, duration(), endT);
+      ctx.fillRect((a - viewStart) * px, top, Math.max(0, (b - a) * px), h);
+    }
+  }
+
+  for (let x = 0; x < cssW; x += step) {
+    const t0 = viewStart + x / px;
+    const t1 = t0 + barW / px;
+    const midT = (t0 + t1) / 2;
+    if (midT < 0 || midT > duration()) continue;
+    const amp = maxAmp(t0, t1);
+    const played = midT <= time;
+    const partner = partnerAt(midT);
+    ctx.fillStyle = partner
+      ? (played ? '#64D2FF' : 'rgba(100, 210, 255, 0.38)')
+      : (played ? 'rgba(245, 245, 247, 1)' : 'rgba(245, 245, 247, 0.22)');
+    const barH = Math.max(2, amp * (h * 0.86));
+    const y = mid - barH / 2;
+    const r = Math.min(1, barW / 2, barH / 2);
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, barW, barH, r);
+    else ctx.rect(x, y, barW, barH);
+    ctx.fill();
+  }
+
+  if (opts.ruler) {
+    ctx.fillStyle = 'rgba(235, 235, 245, 0.55)';
+    ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const first = Math.floor(viewStart / 15) * 15;
+    for (let t = first; t <= endT; t += 15) {
+      if (t < 0 || t > duration()) continue;
+      const x = (t - viewStart) * px;
+      if (x < 18 || x > cssW - 18) continue;
+      ctx.fillText(formatClock(t), x, 9);
+    }
+  }
+}
+
+function markerButton(m) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'marker';
+  btn.dataset.time = String(m.start);
+  btn.setAttribute('aria-label', m.note);
+  const dot = document.createElement('i');
+  dot.style.background = COLORS[m.kind];
+  btn.appendChild(dot);
+  btn.addEventListener('pointerdown', e => e.stopPropagation());
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    openMarker(m);
+  });
+  return btn;
+}
+function openMarker(m) {
+  state.time = Math.max(0, m.start - 2);
+  state.playing = true;
+  state.note = m.note;
+  state.noteKind = m.kind;
+  state.follow = true;
+  state.listFollow = true;
+  state.gesture = null;
+  state.pull = 0;
+  state.sliding = false;
+  if (state.variant === 'window') parkWindow(0.22);
+}
+function parkWindow(lead) {
+  state.viewStart = clamp(state.time - lead * WINDOW_SEC, 0, maxView());
+  state.viewVel = 0;
+}
+
+function bindPress(el, handlers) {
+  const gen = pressGen;
+  el.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    if (e.target.closest('button')) return;
+    if (handlers.prevent) e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const pointerId = e.pointerId;
+    let claimed = false;
+    const samplesV = [];
+    handlers.down?.(e);
+    const onMove = ev => {
+      if (ev.pointerId !== pointerId || gen !== pressGen) return finish(false, ev, 0, true);
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!claimed) {
+        if (Math.hypot(dx, dy) < 6) {
+          if (handlers.live) handlers.move?.(dx, ev);
+          return;
+        }
+        if (handlers.axis === 'x' && Math.abs(dy) > Math.abs(dx)) return finish(false, ev, 0, true);
+        claimed = true;
+        try { el.setPointerCapture(pointerId); } catch (err) {}
+        el.classList.add('grabbing');
+        handlers.start?.(dx);
+      }
+      const now = performance.now();
+      samplesV.push({ x: ev.clientX, t: now });
+      while (samplesV.length && now - samplesV[0].t > 90) samplesV.shift();
+      handlers.move?.(dx, ev);
+    };
+    const onUp = ev => {
+      if (ev.pointerId !== pointerId) return;
+      let vel = 0;
+      if (samplesV.length >= 2) {
+        const a = samplesV[0];
+        const b = samplesV[samplesV.length - 1];
+        const dt = (b.t - a.t) / 1000;
+        if (dt > 0) vel = (b.x - a.x) / dt;
+      }
+      finish(claimed, ev, vel, false);
+    };
+    function finish(didClaim, ev, vel, cancelled) {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      el.classList.remove('grabbing');
+      if (gen !== pressGen || cancelled) {
+        if (state.gesture === 'hold' || state.gesture === 'drag') state.gesture = null;
+        return;
+      }
+      if (!didClaim) handlers.tap?.(ev || e);
+      else handlers.end?.(vel || 0);
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  });
+}
+
+function tapeStart() {
+  return state.time - NEEDLE * WINDOW_SEC - state.pull / pxPerSec();
+}
+function windowStart() {
+  return state.viewStart - state.pull / pxPerSec();
+}
+function applyTape(dx) {
+  const proposed = state.downTime - dx / pxPerSec();
+  const d = duration();
+  const w = laneWidth();
+  if (proposed < 0) {
+    state.time = 0;
+    state.pull = rubberband(-proposed * pxPerSec(), w);
+  } else if (proposed > d) {
+    state.time = d;
+    state.pull = -rubberband((proposed - d) * pxPerSec(), w);
+  } else {
+    state.time = proposed;
+    state.pull = 0;
+  }
+}
+function applyWindowPan(dx) {
+  const proposed = state.downView - dx / pxPerSec();
+  const max = maxView();
+  const w = laneWidth();
+  if (proposed < 0) {
+    state.viewStart = 0;
+    state.pull = rubberband(-proposed * pxPerSec(), w);
+  } else if (proposed > max) {
+    state.viewStart = max;
+    state.pull = -rubberband((proposed - max) * pxPerSec(), w);
+  } else {
+    state.viewStart = proposed;
+    state.pull = 0;
+  }
+}
+function releaseScrub(vel, kind) {
+  if (state.pull !== 0) {
+    state.gesture = 'spring';
+    state.pullVel = vel;
+    return;
+  }
+  if (Math.abs(vel) > 90) {
+    state.gesture = 'coast';
+    state.vel = vel;
+    state.coastKind = kind;
+    return;
+  }
+  state.gesture = null;
+}
+function seekAtX(clientX, el, viewStart, seconds) {
+  const x = clientX - el.getBoundingClientRect().left;
+  const width = el.clientWidth || 1;
+  state.time = clamp(viewStart + (x / width) * seconds, 0, duration());
+  state.pull = 0;
+}
+
+function mountStage() {
+  pressGen++;
+  state.gesture = null;
+  state.pull = 0;
+  state.pullVel = 0;
+  state.vel = 0;
+  state.sliding = false;
+  const stage = document.getElementById('stage');
+  const transcript = document.getElementById('transcript');
+  const transport = document.getElementById('transport');
+  stage.className = state.variant;
+  transport.classList.toggle('stuck', state.variant === 'turns');
+  transcript.hidden = state.variant === 'turns';
+  const note = document.getElementById('note');
+  if (state.variant === 'turns') stage.parentElement.insertBefore(transport, stage);
+  else stage.after(transport);
+  transport.after(note);
+
+  if (state.variant === 'today') {
+    stage.innerHTML = '<div class="lane" id="lane"><canvas></canvas><div class="needle" id="needle"></div><div class="markers"></div></div>';
+    const lane = stage.querySelector('.lane');
+    fillMarkers(lane.querySelector('.markers'), m => m.start / duration());
+    bindPress(lane, {
+      prevent: true,
+      live: true,
+      down(e) {
+        state.gesture = 'drag';
+        seekAtX(e.clientX, lane, 0, duration());
+      },
+      move(_dx, ev) { seekAtX(ev.clientX, lane, 0, duration()); },
+      end() { state.gesture = null; },
+      tap(e) {
+        seekAtX(e.clientX, lane, 0, duration());
+        state.gesture = null;
+      },
+    });
+  } else if (state.variant === 'tape' || state.variant === 'map') {
+    const map = state.variant === 'map';
+    stage.innerHTML = (map ? `
+      <div class="row-label"><span>Whole take</span><span>${formatClock(duration())}</span></div>
+      <div class="overview" id="overview"><canvas></canvas><div class="bracket" id="bracket"></div><div class="needle" id="mapNeedle"></div><div class="markers"></div></div>
+      <div class="row-label"><span id="sliceL"></span><span id="sliceR"></span></div>
+    ` : '') + '<div class="lane" id="lane"><canvas></canvas><div class="needle" id="needle"></div><div class="markers"></div></div>';
+    const lane = stage.querySelector('.lane');
+    fillMarkers(lane.querySelector('.markers'), () => 0);
+    bindPress(lane, {
+      prevent: true,
+      down() {
+        state.gesture = 'hold';
+        state.downTime = state.time;
+        state.pull = 0;
+        state.vel = 0;
+      },
+      start() { state.gesture = 'drag'; },
+      move(dx) { applyTape(dx); },
+      end(vel) { releaseScrub(vel, 'tape'); },
+      tap(e) {
+        seekAtX(e.clientX, lane, tapeStart(), WINDOW_SEC);
+        state.gesture = null;
+      },
+    });
+    if (map) {
+      const overview = stage.querySelector('.overview');
+      fillMarkers(overview.querySelector('.markers'), m => m.start / duration());
+      bindPress(overview, {
+        prevent: true,
+        live: true,
+        down(e) {
+          state.gesture = 'drag';
+          seekOverview(e, overview);
+        },
+        move(_dx, ev) { seekOverview(ev, overview); },
+        end() { state.gesture = null; },
+        tap(e) {
+          seekOverview(e, overview);
+          state.gesture = null;
+        },
+      });
+    }
+  } else if (state.variant === 'window') {
+    stage.innerHTML = `
+      <div class="row-label"><span id="sliceL"></span><span id="sliceR"></span></div>
+      <div class="lane" id="lane">
+        <canvas></canvas>
+        <div class="needle" id="needle"></div>
+        <div class="markers"></div>
+        <button type="button" class="now" id="nowBtn" hidden>Now</button>
+      </div>`;
+    const lane = stage.querySelector('.lane');
+    fillMarkers(lane.querySelector('.markers'), () => 0);
+    const now = stage.querySelector('#nowBtn');
+    now.addEventListener('pointerdown', e => e.stopPropagation());
+    now.addEventListener('click', () => {
+      state.follow = true;
+      state.sliding = false;
+      state.gesture = null;
+      state.pull = 0;
+      parkWindow(0.22);
+    });
+    bindPress(lane, {
+      prevent: true,
+      axis: 'x',
+      down() {
+        state.gesture = 'hold';
+        state.downView = state.viewStart;
+        state.pull = 0;
+        state.vel = 0;
+        state.sliding = false;
+      },
+      start() {
+        state.gesture = 'drag';
+        state.follow = false;
+      },
+      move(dx) { applyWindowPan(dx); },
+      end(vel) { releaseScrub(vel, 'window'); },
+      tap(e) {
+        seekAtX(e.clientX, lane, windowStart(), WINDOW_SEC);
+        state.follow = true;
+        state.gesture = null;
+      },
+    });
+    parkWindow(0.22);
+  } else {
+    const width = stage.clientWidth || 342;
+    const turns = visibleTurns();
+    stage.innerHTML = turns.map((turn, i) => {
+      const natural = (turn.end - turn.start) * (width / WINDOW_SEC);
+      const waveW = Math.min(width, Math.max(72, natural));
+      const dots = markersForTurn(turn).map(m => {
+        const at = m.kind === 'slowStart' ? 0 : (m.start - turn.start) / (turn.end - turn.start);
+        return `<button type="button" class="marker" data-time="${m.start}" style="left:${at * 100}%" aria-label="${esc(m.note)}"><i style="background:${COLORS[m.kind]}"></i></button>`;
+      }).join('');
+      return `
+        <article class="turn ${turn.who}" data-start="${turn.start}" data-end="${turn.end}">
+          <header><span class="who">${turn.who === 'partner' ? 'Partner' : 'You'}</span><span>${formatClock(turn.start)}</span></header>
+          <div class="turn-wave" style="width:${waveW}px">
+            <canvas></canvas>
+            <div class="needle" hidden></div>
+            <div class="markers">${dots}</div>
+          </div>
+          <p class="said">${wordButtons(turn)}</p>
+        </article>`;
+    }).join('');
+    stage.querySelectorAll('.marker').forEach(btn => {
+      btn.addEventListener('pointerdown', e => e.stopPropagation());
+      btn.addEventListener('click', () => {
+        const marker = MARKERS.find(m => m.start === Number(btn.dataset.time));
+        if (marker) openMarker(marker);
+      });
+    });
+    stage.querySelectorAll('.turn-wave').forEach(wave => {
+      const article = wave.closest('.turn');
+      const start = Number(article.dataset.start);
+      const end = Number(article.dataset.end);
+      bindPress(wave, {
+        axis: 'x',
+        down() { state.gesture = 'hold'; },
+        start() { state.gesture = 'drag'; },
+        move(_dx, ev) {
+          seekTurn(ev, wave, start, end);
+          state.listFollow = false;
+        },
+        end() { state.gesture = null; },
+        tap(e) {
+          seekTurn(e, wave, start, end);
+          state.playing = true;
+          state.listFollow = true;
+          state.gesture = null;
+        },
+      });
+    });
+    bindWords(stage);
+  }
+
+  if (state.variant !== 'turns') {
+    transcript.innerHTML = visibleTurns().map(turn =>
+      `<p class="block ${turn.who}">${wordButtons(turn)}</p>`
+    ).join('');
+    bindWords(transcript);
+  } else {
+    transcript.innerHTML = '';
+  }
+  document.getElementById('nowFloat').hidden = true;
+}
+
+function seekTurn(e, wave, start, end) {
+  const x = e.clientX - wave.getBoundingClientRect().left;
+  const frac = clamp(x / Math.max(1, wave.clientWidth), 0, 1);
+  state.time = start + frac * (end - start);
+}
+function seekOverview(e, overview) {
+  const x = e.clientX - overview.getBoundingClientRect().left;
+  state.time = clamp(x / overview.clientWidth * duration(), 0, duration());
+  state.pull = 0;
+  state.gesture = 'drag';
+}
+function fillMarkers(container, frac) {
+  container.replaceChildren();
+  for (const m of visibleMarkers()) {
+    const btn = markerButton(m);
+    btn.style.left = (frac(m) * 100) + '%';
+    container.appendChild(btn);
+  }
+}
+function bindWords(root) {
+  root.querySelectorAll('.word').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.time = Number(btn.dataset.start);
+      state.playing = true;
+      state.gesture = null;
+      state.pull = 0;
+      state.follow = true;
+      state.listFollow = true;
+      state.sliding = false;
+      if (state.variant === 'window') parkWindow(0.28);
+    });
+  });
+}
+
+function placeLaneMarkers(container, viewStart, seconds) {
+  const w = container.clientWidth || laneWidth();
+  container.querySelectorAll('.marker').forEach(btn => {
+    const t = Number(btn.dataset.time);
+    const x = ((t - viewStart) / seconds) * w;
+    btn.style.left = x + 'px';
+    btn.hidden = x < -24 || x > w + 24;
+  });
+}
+function setNeedle(el, x, visible) {
+  if (!el) return;
+  el.hidden = !visible;
+  el.style.left = x + 'px';
+}
+
+function tick(dt) {
+  const d = duration();
+  if (state.playing && state.gesture == null) {
+    state.time += dt;
+    if (state.time >= d) {
+      state.time = d;
+      state.playing = false;
+    }
+  }
+
+  if (state.variant === 'window' && state.follow && state.playing && state.gesture == null && !state.sliding) {
+    const pos = (state.time - state.viewStart) / WINDOW_SEC;
+    if (pos > 0.82) {
+      const target = clamp(state.time - 0.18 * WINDOW_SEC, 0, maxView());
+      if (target > state.viewStart + 0.35) {
+        state.viewTarget = target;
+        state.sliding = true;
+        state.viewVel = 0;
+      }
+    }
+  }
+  if (state.variant === 'window' && state.sliding && state.gesture == null) {
+    const next = spring(state.viewStart, state.viewVel, state.viewTarget, dt, 0.4);
+    state.viewStart = next.x;
+    state.viewVel = next.v;
+    if (Math.abs(state.viewStart - state.viewTarget) < 0.15 && Math.abs(state.viewVel) < 0.4) {
+      state.viewStart = state.viewTarget;
+      state.sliding = false;
+      state.viewVel = 0;
+    }
+  }
+
+  if (state.gesture === 'coast') {
+    const px = pxPerSec();
+    state.vel *= Math.exp(-dt / 0.42);
+    if (state.coastKind === 'window') {
+      const proposed = state.viewStart - (state.vel * dt) / px;
+      const max = maxView();
+      if (proposed < 0 || proposed > max) {
+        state.viewStart = clamp(proposed, 0, max);
+        const over = proposed < 0 ? -proposed * px : (proposed - max) * px;
+        state.pull = proposed < 0 ? rubberband(over, laneWidth()) : -rubberband(over, laneWidth());
+        state.pullVel = state.vel;
+        state.gesture = 'spring';
+      } else {
+        state.viewStart = proposed;
+      }
+    } else {
+      const proposed = state.time - (state.vel * dt) / px;
+      if (proposed < 0 || proposed > d) {
+        state.time = clamp(proposed, 0, d);
+        const over = proposed < 0 ? -proposed * px : (proposed - d) * px;
+        state.pull = proposed < 0 ? rubberband(over, laneWidth()) : -rubberband(over, laneWidth());
+        state.pullVel = state.vel;
+        state.gesture = 'spring';
+      } else {
+        state.time = proposed;
+      }
+    }
+    if (state.gesture === 'coast' && Math.abs(state.vel) < 12) {
+      state.vel = 0;
+      state.gesture = null;
+    }
+  }
+
+  if (state.gesture === 'spring') {
+    const next = spring(state.pull, state.pullVel, 0, dt, 0.35);
+    state.pull = next.x;
+    state.pullVel = next.v;
+    if (Math.abs(state.pull) < 0.4 && Math.abs(state.pullVel) < 8) {
+      state.pull = 0;
+      state.pullVel = 0;
+      state.gesture = null;
+    }
+  }
+}
+
+function render() {
+  const meta = variantMeta();
+  const label = meta.key + ' · ' + meta.name;
+  const switchLabel = document.getElementById('switchLabel');
+  if (switchLabel.textContent !== label) switchLabel.textContent = label;
+  const blurbEl = document.getElementById('blurb');
+  const text = blurb();
+  if (blurbEl.textContent !== text) blurbEl.textContent = text;
+  document.querySelectorAll('.lengths button').forEach(btn => {
+    btn.classList.toggle('on', Number(btn.dataset.length) === state.length);
+    btn.setAttribute('aria-pressed', String(Number(btn.dataset.length) === state.length));
+  });
+
+  const play = document.getElementById('play');
+  const on = state.playing ? 'true' : 'false';
+  if (play.dataset.on !== on) {
+    play.dataset.on = on;
+    play.innerHTML = state.playing ? pauseIcon : playIcon;
+    play.setAttribute('aria-label', state.playing ? 'Pause' : 'Play');
+  }
+  document.getElementById('elapsed').textContent = formatClock(state.time);
+  document.getElementById('total').textContent = formatClock(duration());
+
+  const note = document.getElementById('note');
+  note.hidden = !state.note;
+  if (note.textContent !== state.note) note.textContent = state.note;
+  if (state.noteKind) note.style.setProperty('--note', COLORS[state.noteKind]);
+
+  document.querySelectorAll('.word').forEach(el => {
+    const start = Number(el.dataset.start);
+    const end = Number(el.dataset.end);
+    const now = state.time >= start && state.time < end;
+    const past = state.time >= end;
+    el.classList.toggle('now', now);
+    el.classList.toggle('past', past);
+    el.classList.toggle('future', !now && !past);
+  });
+
+  if (state.variant === 'today') {
+    const canvas = document.querySelector('#stage canvas');
+    const lane = document.getElementById('lane');
+    if (canvas && lane) {
+    drawWave(canvas, 0, duration(), state.time, { barW: 1, gap: 0, wash: false, ruler: false });
+      setNeedle(document.getElementById('needle'), state.time / duration() * lane.clientWidth, true);
+    }
+  } else if (state.variant === 'tape' || state.variant === 'map') {
+    const lane = document.getElementById('lane');
+    const canvas = lane && lane.querySelector('canvas');
+    if (canvas && lane) {
+      const start = tapeStart();
+      drawWave(canvas, start, WINDOW_SEC, state.time, { barW: 2, gap: 1.5, wash: false, ruler: state.variant === 'tape' });
+      setNeedle(document.getElementById('needle'), NEEDLE * lane.clientWidth, true);
+      placeLaneMarkers(lane.querySelector('.markers'), start, WINDOW_SEC);
+      const sliceL = document.getElementById('sliceL');
+      const sliceR = document.getElementById('sliceR');
+      if (sliceL) sliceL.textContent = formatClock(Math.max(0, start));
+      if (sliceR) sliceR.textContent = formatClock(Math.min(duration(), start + WINDOW_SEC));
+    }
+    const overview = document.getElementById('overview');
+    if (overview) {
+      drawWave(overview.querySelector('canvas'), 0, duration(), state.time, { barW: 1, gap: 1, wash: false, ruler: false });
+      const w = overview.clientWidth;
+      const start = Math.max(0, tapeStart());
+      const end = Math.min(duration(), tapeStart() + WINDOW_SEC);
+      const bracket = document.getElementById('bracket');
+      bracket.style.left = (start / duration() * w) + 'px';
+      bracket.style.width = Math.max(8, (end - start) / duration() * w) + 'px';
+      setNeedle(document.getElementById('mapNeedle'), state.time / duration() * w, true);
+    }
+  } else if (state.variant === 'window') {
+    const lane = document.getElementById('lane');
+    const canvas = lane && lane.querySelector('canvas');
+    if (canvas && lane) {
+      const start = windowStart();
+      drawWave(canvas, start, WINDOW_SEC, state.time, { barW: 2, gap: 1.5, wash: false, ruler: false });
+      const x = (state.time - start) * pxPerSec();
+      setNeedle(document.getElementById('needle'), x, x >= -8 && x <= lane.clientWidth + 8);
+      placeLaneMarkers(lane.querySelector('.markers'), start, WINDOW_SEC);
+      const now = document.getElementById('nowBtn');
+      if (now) now.hidden = state.follow;
+      const sliceL = document.getElementById('sliceL');
+      const sliceR = document.getElementById('sliceR');
+      if (sliceL) sliceL.textContent = formatClock(Math.max(0, start));
+      if (sliceR) sliceR.textContent = formatClock(Math.min(duration(), start + WINDOW_SEC));
+    }
+  } else {
+    document.querySelectorAll('.turn').forEach(row => {
+      const start = Number(row.dataset.start);
+      const end = Number(row.dataset.end);
+      const wave = row.querySelector('.turn-wave');
+      const canvas = row.querySelector('canvas');
+      drawWave(canvas, start, end - start, state.time, { barW: 2, gap: 1.5, wash: false, ruler: false });
+      const inside = state.time >= start && state.time <= end;
+      const x = ((state.time - start) / (end - start)) * wave.clientWidth;
+      setNeedle(row.querySelector('.needle'), x, inside);
+      row.classList.toggle('on', state.time >= start && state.time < end);
+    });
+    const idx = activeTurnIndex();
+    if (idx !== state.lastTurn) {
+      state.lastTurn = idx;
+      followActiveTurn();
+    }
+    const row = document.querySelectorAll('.turn')[idx];
+    const screen = document.getElementById('screen');
+    const floatBtn = document.getElementById('nowFloat');
+    if (row && screen) {
+      const rb = row.getBoundingClientRect();
+      const sb = screen.getBoundingClientRect();
+      const off = rb.bottom < sb.top + 70 || rb.top > sb.bottom - 70;
+      floatBtn.hidden = !off;
+    }
+  }
+
+  if (state.variant !== 'turns') document.getElementById('nowFloat').hidden = true;
+
+  const spp = state.variant === 'today'
+    ? duration() / Math.max(1, laneWidth())
+    : state.variant === 'turns'
+      ? longestTurnSpp()
+      : 1 / pxPerSec();
+  const shown = state.variant === 'today'
+    ? formatClock(duration())
+    : state.variant === 'turns'
+      ? 'one turn'
+      : WINDOW_SEC.toFixed(0) + 's';
+  const line = [
+    state.variant,
+    'length ' + formatClock(duration()),
+    'time ' + state.time.toFixed(1) + 's',
+    state.playing ? 'playing' : 'paused',
+    'gesture ' + (state.gesture || 'none'),
+    'follow ' + (state.variant === 'turns' ? (state.listFollow ? 'on' : 'off') : (state.follow ? 'on' : 'off')),
+    'showing ' + shown,
+    spp.toFixed(2) + ' s/px',
+  ].join(' · ');
+  if (line !== lastStateLine) {
+    lastStateLine = line;
+    document.getElementById('state').textContent = line;
+  }
+}
+
+function longestTurnSpp() {
+  const w = document.getElementById('stage').clientWidth || 342;
+  let worst = 0;
+  for (const turn of visibleTurns()) {
+    const span = turn.end - turn.start;
+    const used = Math.min(w, Math.max(72, span * (w / WINDOW_SEC)));
+    worst = Math.max(worst, span / used);
+  }
+  return worst || 0;
+}
+function followActiveTurn() {
+  if (state.variant !== 'turns' || !state.listFollow) return;
+  const row = document.querySelectorAll('.turn')[state.lastTurn];
+  if (!row) return;
+  programmaticScroll = true;
+  row.scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
+  setTimeout(() => { programmaticScroll = false; }, reduceMotion ? 0 : 700);
+}
+
+function setVariant(id) {
+  state.variant = id;
+  state.follow = true;
+  state.listFollow = true;
+  state.lastTurn = -1;
+  writeURL();
+  mountStage();
+}
+function setLength(len) {
+  state.length = len;
+  state.time = clamp(state.time, 0, len);
+  state.note = '';
+  state.noteKind = '';
+  state.lastTurn = -1;
+  writeURL();
+  paintStats();
+  mountStage();
+}
+function paintStats() {
+  document.getElementById('stats').innerHTML = statsRows().map((row, i) =>
+    `<div class="stat"><span>${row[0]}</span><strong class="${i === 0 ? 'big' : ''}">${row[1]}</strong></div>`
+  ).join('');
+}
+function togglePlay() {
+  if (!state.playing && state.time >= duration() - 0.05) state.time = 0;
+  state.playing = !state.playing;
+  if (state.playing) state.listFollow = true;
+}
+
+function boot() {
+  readURL();
+  writeURL();
+  paintStats();
+  document.getElementById('play').innerHTML = playIcon;
+  document.getElementById('details').addEventListener('click', () => {
+    const stats = document.getElementById('stats');
+    const btn = document.getElementById('details');
+    stats.hidden = !stats.hidden;
+    btn.classList.toggle('open', !stats.hidden);
+    btn.setAttribute('aria-expanded', String(!stats.hidden));
+  });
+  document.getElementById('play').addEventListener('click', togglePlay);
+  document.querySelectorAll('.lengths button').forEach(btn => {
+    btn.addEventListener('click', () => setLength(Number(btn.dataset.length)));
+  });
+  document.getElementById('prev').addEventListener('click', () => cycle(-1));
+  document.getElementById('next').addEventListener('click', () => cycle(1));
+  document.getElementById('nowFloat').addEventListener('click', () => {
+    state.listFollow = true;
+    state.lastTurn = -2;
+  });
+  document.getElementById('screen').addEventListener('scroll', () => {
+    if (programmaticScroll || state.variant !== 'turns') return;
+    state.listFollow = false;
+  }, { passive: true });
+  window.addEventListener('keydown', e => {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.key === 'ArrowRight') { cycle(1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft') { cycle(-1); e.preventDefault(); }
+    else if (e.key === ' ') { togglePlay(); e.preventDefault(); }
+  });
+  mountStage();
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    tick(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+function cycle(dir) {
+  const i = VARIANTS.findIndex(v => v.id === state.variant);
+  const next = VARIANTS[(i + dir + VARIANTS.length) % VARIANTS.length];
+  setVariant(next.id);
+}
+
+boot();
+</script>
+</body>
+</html>

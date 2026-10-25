@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<!--
+Throwaway prototype. Not production.
+Question: how should the post-exercise numbers be built?
+Three variants, switchable via ?variant=, across six screens via ?screen=.
+A One plate — one surface, the rate is the only large number.
+B Separate cards — one equal card per fact.
+C List — no cards, name on the left, number on the right.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototype · feedback numbers</title>
+<style>
+  :root {
+    --ink: #1c1c1e;
+    --secondary: #6c6c70;
+    --tertiary: #8e8e93;
+    --plate: rgba(255, 255, 255, 0.92);
+    --line: rgba(60, 60, 67, 0.18);
+    --ease: cubic-bezier(0.23, 1, 0.32, 1);
+    --page: 24px;
+    font: 17px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    color: var(--ink);
+    font-optical-sizing: auto;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background:
+      radial-gradient(900px 420px at 50% -10%, #fff, transparent 60%),
+      #e6e6eb;
+    color: var(--ink);
+  }
+  .desk {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 28px 24px 120px;
+  }
+  .lede {
+    max-width: 640px;
+    margin: 0 auto 22px;
+    text-align: center;
+  }
+  .lede p {
+    margin: 6px 0 0;
+    color: var(--secondary);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--tertiary);
+  }
+  .screens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 22px;
+  }
+  .screens button, .switcher button {
+    font: inherit;
+    cursor: pointer;
+    border: 0;
+    background: #fff;
+    color: var(--ink);
+  }
+  .screens button {
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--secondary);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset;
+  }
+  .screens button[aria-pressed="true"] {
+    background: var(--ink);
+    color: #fff;
+  }
+  .stage { display: flex; justify-content: center; }
+  .phone {
+    width: 390px;
+    height: 780px;
+    background: linear-gradient(#fff, #f3f3f7 70%);
+    border-radius: 36px;
+    overflow: hidden;
+    position: relative;
+    box-shadow:
+      0 0 0 1px rgba(0,0,0,0.06),
+      0 24px 60px rgba(0,0,0,0.12);
+  }
+  .scroll {
+    height: 100%;
+    overflow: auto;
+    padding: 54px var(--page) 28px;
+  }
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    margin-bottom: 18px;
+  }
+  .back {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: var(--ink);
+    flex: none;
+  }
+  .back svg { display: block; }
+  .nav h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+  .topic {
+    margin: 0 0 4px;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.022em;
+    line-height: 1.2;
+  }
+  .meta {
+    margin: 0 0 22px;
+    font-size: 13px;
+    color: var(--secondary);
+  }
+  .stats { margin-bottom: 28px; }
+  .player { margin-bottom: 22px; }
+  .wave {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 72px;
+  }
+  .bar {
+    flex: 1;
+    border-radius: 1px;
+    background: rgba(28, 28, 30, 0.22);
+    align-self: center;
+  }
+  .bar.on { background: var(--ink); }
+  .bar.partner { background: #5aa8a8; }
+  .bar.partner.on { background: #1f7a78; }
+  .transport {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .play {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 0;
+    background: var(--ink);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    flex: none;
+  }
+  .times {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    color: var(--secondary);
+  }
+  .mark {
+    margin: 10px 0 0;
+    font-size: 13px;
+    color: var(--secondary);
+  }
+  .mark b { font-weight: 600; color: var(--ink); }
+  .actions { display: flex; flex-direction: column; gap: 10px; }
+  .actions button {
+    font: 500 17px/1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    height: 61px;
+    border: 0;
+    border-radius: 999px;
+    background: #fff;
+    color: #000;
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,0.04);
+  }
+  .actions button:active { transform: scale(0.97); }
+  .actions button.secondary { color: var(--secondary); }
+
+  /* A — one plate */
+  .plate {
+    background: var(--plate);
+    border-radius: 22px;
+    padding: 22px 22px 18px;
+  }
+  .kicker {
+    margin: 0;
+    font-size: 13px;
+    color: var(--secondary);
+  }
+  .hero {
+    margin: 2px 0 0;
+    font-size: 40px;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+  }
+  .sentence {
+    margin: 14px 0 0;
+    font-size: 17px;
+    letter-spacing: -0.01em;
+    line-height: 1.35;
+  }
+  .quiet {
+    margin: 8px 0 0;
+    font-size: 15px;
+    color: var(--secondary);
+    line-height: 1.4;
+  }
+  .extra {
+    margin: 14px 0 0;
+    padding-top: 12px;
+    border-top: 0.5px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .extra span {
+    font-size: 13px;
+    color: var(--secondary);
+  }
+  .extra b {
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* B — equal cards */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .card {
+    background: var(--plate);
+    border-radius: 18px;
+    padding: 16px 14px 14px;
+    min-height: 92px;
+  }
+  .card .kicker { font-size: 12px; }
+  .card .num {
+    margin: 6px 0 0;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* C — list, no cards */
+  .list { padding: 0; }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding: 11px 2px;
+    border-bottom: 0.5px solid var(--line);
+  }
+  .row:first-child { padding-top: 0; }
+  .row span { color: var(--secondary); font-size: 17px; }
+  .row b {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    text-align: right;
+  }
+  .row.lead b { font-size: 22px; }
+
+  .state {
+    max-width: 640px;
+    margin: 18px auto 0;
+    text-align: center;
+    font-size: 13px;
+    color: var(--secondary);
+    line-height: 1.45;
+  }
+  .switcher {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: max-content;
+    margin: 0 auto 18px;
+    background: #111;
+    color: #fff;
+    border-radius: 999px;
+    padding: 6px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  }
+  .switcher button {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: transparent;
+    color: #fff;
+    font-size: 18px;
+  }
+  .switcher button:active { transform: scale(0.96); }
+  .switcher .name {
+    min-width: 210px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .actions button:active, .switcher button:active { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="desk">
+  <div class="lede">
+    <div class="eyebrow">Throwaway prototype</div>
+    <p id="blurb"></p>
+  </div>
+  <div class="screens" id="screens"></div>
+  <div class="switcher" role="toolbar" aria-label="Stat treatment">
+    <button type="button" id="prev" aria-label="Previous treatment">‹</button>
+    <div class="name" id="vname"></div>
+    <button type="button" id="next" aria-label="Next treatment">›</button>
+  </div>
+  <div class="stage">
+    <div class="phone" id="phone"></div>
+  </div>
+  <p class="state" id="state"></p>
+</div>
+<script>
+const variants = [
+  ["A", "One plate", "One shared surface. The rate is the only large number. The other facts sit in the same plate, smaller."],
+  ["B", "Separate cards", "One card per fact, all the same size. This is the plain stat-card version."],
+  ["C", "List", "No cards. The name sits on the left and the number on the right, like a short settings list."]
+];
+const screens = [
+  ["reading-after", "Reading · after"],
+  ["reading-gallery", "Reading · gallery"],
+  ["conversation-after", "Conversation · after"],
+  ["conversation-gallery", "Conversation · gallery"],
+  ["talk-after", "Talk · after"],
+  ["talk-gallery", "Talk · gallery"]
+];
+
+const data = {
+  "reading-after": {
+    title: "Your reading",
+    gallery: false,
+    topic: "The night market",
+    meta: "40 words · 1:12",
+    heroLabel: "Syllables / min",
+    hero: "148",
+    sentence: "32 of 40 words",
+    quiet: "28 matched · 6 skipped · 3 extra · 2 swapped",
+    rows: [
+      ["Syllables / min", "148", true],
+      ["Words read", "32 of 40"],
+      ["Matched", "28"],
+      ["Skipped", "6"],
+      ["Extra", "3"],
+      ["Swapped", "2"]
+    ],
+    cards: [
+      ["Syllables / min", "148"],
+      ["Words read", "32 of 40"],
+      ["Matched", "28"],
+      ["Skipped", "6"],
+      ["Extra", "3"],
+      ["Swapped", "2"]
+    ],
+    player: "reading",
+    mark: "Skipped “lantern”",
+    actions: ["Read this again", "Choose another passage"]
+  },
+  "reading-gallery": null,
+  "conversation-after": {
+    title: "Your conversation",
+    gallery: false,
+    topic: "",
+    meta: "",
+    heroLabel: "Pace",
+    hero: "142",
+    sentence: "3m 12s spoken · 8 turns",
+    quiet: "18.4s pause",
+    rows: [
+      ["Pace", "142 syl/min", true],
+      ["Time spoken", "3m 12s"],
+      ["Your turns", "8"],
+      ["Pause time", "18.4s"]
+    ],
+    cards: [
+      ["Pace", "142"],
+      ["Time spoken", "3m 12s"],
+      ["Your turns", "8"],
+      ["Pause time", "18.4s"]
+    ],
+    player: "conversation",
+    mark: "Slow start, 2.4s",
+    actions: ["Back to home"]
+  },
+  "conversation-gallery": null,
+  "talk-after": {
+    title: "Your talk",
+    gallery: false,
+    topic: "A place I keep going back to",
+    meta: "",
+    heroLabel: "Pace",
+    hero: "136",
+    sentence: "Take 3 vs take 1: more talking time, fewer long gaps.",
+    quiet: "2m 04s spoken · 11.2s pause",
+    rows: [
+      ["Pace", "136 / min", true],
+      ["Time spoken", "2m 04s"],
+      ["Pause time", "11.2s"]
+    ],
+    cards: [
+      ["Pace", "136"],
+      ["Time spoken", "2m 04s"],
+      ["Pause time", "11.2s"]
+    ],
+    note: "Take 3 vs take 1: more talking time, fewer long gaps.",
+    player: "talk",
+    mark: "3 fillers in 2 seconds",
+    actions: ["Back to home"]
+  },
+  "talk-gallery": {
+    title: "Your talk",
+    gallery: true,
+    topic: "A place I keep going back to",
+    meta: "",
+    heroLabel: "Pace",
+    hero: "136",
+    sentence: "Take 3 vs take 1: more talking time, fewer long gaps.",
+    quiet: "2m 04s spoken · 11.2s pause",
+    extras: [
+      ["Phonation-time ratio", "0.72"],
+      ["Silent gaps ≥250 ms", "7"],
+      ["Overlap vs take 2", "64%"]
+    ],
+    rows: [
+      ["Pace", "136 / min", true],
+      ["Time spoken", "2m 04s"],
+      ["Pause time", "11.2s"],
+      ["Phonation-time ratio", "0.72"],
+      ["Silent gaps ≥250 ms", "7"],
+      ["Overlap vs take 2", "64%"]
+    ],
+    cards: [
+      ["Pace", "136"],
+      ["Time spoken", "2m 04s"],
+      ["Pause time", "11.2s"],
+      ["Phonation", "0.72"],
+      ["Silent gaps", "7"],
+      ["Overlap", "64%"]
+    ],
+    player: "talk",
+    mark: "3 fillers in 2 seconds",
+    actions: []
+  }
+};
+data["reading-gallery"] = { ...data["reading-after"], gallery: true, actions: [] };
+data["conversation-gallery"] = { ...data["conversation-after"], gallery: true, topic: "After work", actions: [] };
+
+const bars = [18, 28, 40, 22, 48, 36, 16, 44, 30, 52, 24, 38, 20, 46, 32, 14, 42, 26, 50, 22, 34, 18, 44, 28, 16, 40, 24, 36, 20, 48, 30, 14, 42, 26, 38, 22];
+
+function params() {
+  const q = new URLSearchParams(location.search);
+  return {
+    variant: variants.some(v => v[0] === q.get("variant")) ? q.get("variant") : "A",
+    screen: data[q.get("screen")] ? q.get("screen") : "reading-after"
+  };
+}
+function writeParams(variant, screen) {
+  const q = new URLSearchParams({ variant, screen });
+  history.replaceState(null, "", "?" + q.toString());
+  render();
+}
+function wave(kind) {
+  return bars.map((h, i) => {
+    const on = i < 14;
+    const partner = kind === "conversation" && i >= 8 && i < 18;
+    const cls = ["bar", on ? "on" : "", partner ? "partner" : ""].filter(Boolean).join(" ");
+    return `<i class="${cls}" style="height:${h}px"></i>`;
+  }).join("");
+}
+function statsA(d) {
+  const extras = (d.extras || []).map(([k, v]) => `<span>${k} <b>${v}</b></span>`).join("");
+  return `<div class="plate">
+    <p class="kicker">${d.heroLabel}</p>
+    <p class="hero">${d.hero}</p>
+    <p class="sentence">${d.sentence}</p>
+    <p class="quiet">${d.quiet}</p>
+    ${extras ? `<div class="extra">${extras}</div>` : ""}
+  </div>`;
+}
+function talkSentence(d) {
+  if (d.screenKey !== "talk-after" && d.screenKey !== "talk-gallery") return "";
+  return `<p class="sentence" style="margin:0 0 12px">${d.sentence}</p>`;
+}
+function statsB(d) {
+  const cards = d.cards.map(([k, v]) => `<div class="card"><p class="kicker">${k}</p><p class="num">${v}</p></div>`).join("");
+  return talkSentence(d) + `<div class="grid">${cards}</div>`;
+}
+function statsC(d) {
+  const rows = d.rows.map(([k, v, lead]) => `<div class="row${lead ? " lead" : ""}"><span>${k}</span><b>${v}</b></div>`).join("");
+  return talkSentence(d) + `<div class="list">${rows}</div>`;
+}
+function screenHtml(id, variant) {
+  const d = { ...data[id], screenKey: id };
+  const back = d.gallery ? `<div class="back" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 2 L4 7 L9 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>` : "";
+  const topic = d.topic ? `<h2 class="topic">${d.topic}</h2>` : "";
+  const meta = d.meta ? `<p class="meta">${d.meta}</p>` : (d.topic ? `<div style="height:18px"></div>` : "");
+  const stats = variant === "A" ? statsA(d) : variant === "B" ? statsB(d) : statsC(d);
+  const actions = d.actions.map((label, i) => `<button type="button" class="${i ? "secondary" : ""}">${label}</button>`).join("");
+  return `<div class="scroll">
+    <div class="nav">${back}<h1>${d.title}</h1></div>
+    ${topic}${meta}
+    <div class="stats">${stats}</div>
+    <div class="player">
+      <div class="wave" aria-hidden="true">${wave(d.player)}</div>
+      <div class="transport">
+        <button class="play" type="button" aria-label="Play"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M4 2.5 L12 7 L4 11.5 Z" fill="currentColor"/></svg></button>
+        <div class="times">0:18 <span style="color:#aeaeb2">/ 1:12</span></div>
+      </div>
+      <p class="mark">${d.mark}</p>
+    </div>
+    ${actions ? `<div class="actions">${actions}</div>` : ""}
+  </div>`;
+}
+function render() {
+  const { variant, screen } = params();
+  const v = variants.find(x => x[0] === variant);
+  document.getElementById("phone").innerHTML = screenHtml(screen, variant);
+  document.getElementById("blurb").textContent = v[2];
+  document.getElementById("vname").textContent = `${v[0]} · ${v[1]}`;
+  document.querySelectorAll("#screens button").forEach(b => {
+    b.setAttribute("aria-pressed", String(b.dataset.screen === screen));
+  });
+  const s = screens.find(x => x[0] === screen);
+  const d = data[screen];
+  document.getElementById("state").textContent =
+    `${s[1]}. Treatment ${v[0]}, ${v[1].toLowerCase()}. Showing ${d.heroLabel.toLowerCase()} ${d.hero}. ${d.sentence} ${d.quiet}`;
+}
+document.getElementById("screens").innerHTML = screens.map(([id, label]) =>
+  `<button type="button" data-screen="${id}">${label}</button>`).join("");
+document.getElementById("screens").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  writeParams(params().variant, b.dataset.screen);
+});
+function cycle(dir) {
+  const { variant, screen } = params();
+  const i = variants.findIndex(v => v[0] === variant);
+  const next = variants[(i + dir + variants.length) % variants.length][0];
+  writeParams(next, screen);
+}
+document.getElementById("prev").onclick = () => cycle(-1);
+document.getElementById("next").onclick = () => cycle(1);
+document.addEventListener("keydown", (e) => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+  if (e.key === "ArrowLeft") cycle(-1);
+  if (e.key === "ArrowRight") cycle(1);
+});
+render();
+</script>
+</body>
+</html>

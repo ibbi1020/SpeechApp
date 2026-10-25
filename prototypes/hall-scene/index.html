@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototype — the round hall</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; }
+  body {
+    display: grid; place-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #f4f1ea;
+  }
+  .stage { position: relative; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+  h1 {
+    position: absolute; top: 28px; left: 24px; right: 24px; margin: 0;
+    font-size: 40px; font-weight: 650; letter-spacing: -0.03em; line-height: 1.05;
+    pointer-events: none;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.35);
+  }
+  .begin {
+    position: absolute; left: 24px; right: 24px; bottom: 108px;
+    height: 61px; border: 0; border-radius: 999px;
+    background: #fff; color: #000;
+    font: 500 17px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+    cursor: default;
+  }
+  .switcher {
+    position: absolute; left: 16px; right: 16px; bottom: 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .state { font-size: 11px; letter-spacing: 0.03em; color: rgba(244,241,234,0.7); }
+  .knobs {
+    display: flex; gap: 12px; align-items: center;
+    background: #fff; color: #141311;
+    border-radius: 14px; padding: 8px 12px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .knobs label { display: flex; align-items: center; gap: 6px; }
+  .knobs input[type="range"] { width: 72px; accent-color: #141311; }
+  .knobs button {
+    border: 0; border-radius: 999px; padding: 7px 10px; cursor: pointer;
+    background: #141311; color: #fff; font: inherit; letter-spacing: 0.06em;
+  }
+  .knobs button.off { background: #e7e2d8; color: #141311; }
+  #err {
+    position: absolute; left: 12px; right: 12px; top: 12px; z-index: 4;
+    margin: 0; white-space: pre-wrap;
+    font: 12px/1.4 ui-monospace, monospace;
+    color: #fff; background: #7f1d1d; padding: 10px 12px; border-radius: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <canvas id="c"></canvas>
+  <h1>Find your voice</h1>
+  <button class="begin" type="button">Begin</button>
+  <div class="switcher">
+    <div class="state" id="state"></div>
+    <div class="knobs">
+      <label>Dots <input id="pitch" type="range" min="1" max="4" step="1" value="2" /></label>
+      <label>Inks <input id="levels" type="range" min="2" max="8" step="1" value="6" /></label>
+      <button id="mode" type="button">Dots</button>
+    </div>
+  </div>
+  <pre id="err" hidden></pre>
+</div>
+<script>
+// Prototype. Throwaway.
+// One person in an empty circular hall. The waterline cuts the seats.
+// The chairs are one mesh, repeated. The dots are the same ordered dither.
+
+const sceneVert = `#version 300 es
+in vec3 aPos;
+in vec3 aNrm;
+in float aKind;
+uniform mat4 uMvp;
+uniform float uTime;
+out vec3 vN;
+out vec3 vW;
+out float vKind;
+void main() {
+  vec3 p = aPos;
+  vec3 n = aNrm;
+  if (aKind > 1.5) {
+    float r = length(p.xz);
+    float phase = r * 5.2 - uTime * 1.25;
+    float w = sin(phase);
+    float dw = cos(phase) * 5.2;
+    vec2 dir = p.xz / max(r, 0.0001);
+    p.y += w * 0.035;
+    n = normalize(vec3(-dir * dw * 0.035, 1.0));
+  }
+  vW = p;
+  vN = normalize(n);
+  vKind = aKind;
+  gl_Position = uMvp * vec4(p, 1.0);
+}
+`;
+
+const sceneFrag = `#version 300 es
+precision highp float;
+in vec3 vN;
+in vec3 vW;
+in float vKind;
+uniform vec3 uEye;
+out vec4 fragColor;
+void main() {
+  vec3 n = normalize(vN);
+  vec3 viewDir = normalize(uEye - vW);
+  vec3 lightDir = normalize(vec3(-0.55, 0.82, 0.28));
+  float diff = clamp(dot(n, lightDir), 0.0, 1.0);
+  float rim = pow(1.0 - clamp(dot(n, viewDir), 0.0, 1.0), 2.2);
+  float luma = 0.10 + n.y * 0.06 + diff * 0.78 + rim * 0.12;
+  if (vKind < 0.5) luma = 0.07 + diff * 0.5 + rim * 0.04;
+  if (vKind > 0.5 && vKind < 1.5) luma = 0.18 + diff * 1.05 + rim * 0.22;
+  if (vKind > 1.5) {
+    float fres = pow(1.0 - clamp(dot(n, viewDir), 0.0, 1.0), 2.4);
+    luma = mix(0.035, 0.62, fres);
+  }
+  float dist = length(uEye - vW);
+  luma = mix(0.02, luma, exp(-dist * 0.03));
+  fragColor = vec4(vec3(clamp(luma, 0.0, 1.0)), 1.0);
+}
+`;
+
+const ditherVert = `#version 300 es
+in vec2 a;
+void main() { gl_Position = vec4(a, 0.0, 1.0); }
+`;
+
+const ditherFrag = `#version 300 es
+precision highp float;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uPitch;
+uniform float uLevels;
+uniform float uDither;
+out vec4 fragColor;
+const int BAYER[64] = int[64](
+   0, 32,  8, 40,  2, 34, 10, 42,
+  48, 16, 56, 24, 50, 18, 58, 26,
+  12, 44,  4, 36, 14, 46,  6, 38,
+  60, 28, 52, 20, 62, 30, 54, 22,
+   3, 35, 11, 43,  1, 33,  9, 41,
+  51, 19, 59, 27, 49, 17, 57, 25,
+  15, 47,  7, 39, 13, 45,  5, 37,
+  63, 31, 55, 23, 61, 29, 53, 21
+);
+float bayer8(vec2 pix) {
+  ivec2 ip = ivec2(mod(floor(pix), 8.0));
+  return (float(BAYER[ip.y * 8 + ip.x]) + 0.5) / 64.0;
+}
+vec3 grade(float q) {
+  q = clamp(q, 0.0, 1.0);
+  vec3 shadow = vec3(0.012, 0.030, 0.026);
+  vec3 mid = vec3(0.09, 0.28, 0.20);
+  vec3 paper = vec3(0.78, 0.90, 0.78);
+  if (q < 0.5) return mix(shadow, mid, q * 2.0);
+  return mix(mid, paper, (q - 0.5) * 2.0);
+}
+void main() {
+  float luma = texture(uTex, gl_FragCoord.xy / uRes).r;
+  if (uDither < 0.5) {
+    fragColor = vec4(grade(luma), 1.0);
+    return;
+  }
+  float t = bayer8(gl_FragCoord.xy / max(uPitch, 1.0));
+  float scale = max(uLevels - 1.0, 1.0);
+  float q = floor(luma * scale + t) / scale;
+  fragColor = vec4(grade(q), 1.0);
+}
+`;
+
+const p = [];
+const nrm = [];
+const kind = [];
+const idx = [];
+
+function pushVert(x, y, z, nx, ny, nz, k) {
+  const s = 1 / (Math.hypot(nx, ny, nz) || 1);
+  p.push(x, y, z);
+  nrm.push(nx * s, ny * s, nz * s);
+  kind.push(k);
+  return (p.length / 3) - 1;
+}
+
+function tri(a, b, c) { idx.push(a, b, c); }
+
+function addBox(center, half, yaw, k) {
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const xf = (x, y, z) => {
+    const X = x * c + z * s;
+    const Z = -x * s + z * c;
+    return [center[0] + X, center[1] + y, center[2] + Z];
+  };
+  const nf = (x, y, z) => {
+    const X = x * c + z * s;
+    const Z = -x * s + z * c;
+    return [X, y, Z];
+  };
+  const faces = [
+    [0, 0, 1], [0, 0, -1], [0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0]
+  ];
+  const [hx, hy, hz] = half;
+  for (const fn of faces) {
+    const [nx, ny, nz] = fn;
+    const u = Math.abs(nx) > 0.5 ? [0, 0, 1] : [1, 0, 0];
+    const v = [
+      ny * u[2] - nz * u[1],
+      nz * u[0] - nx * u[2],
+      nx * u[1] - ny * u[0]
+    ];
+    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+    const ids = corners.map(([su, sv]) => {
+      const lx = nx * hx + u[0] * su * (Math.abs(nx) > 0.5 ? hz : hx) + v[0] * sv * hy;
+      const ly = ny * hy + u[1] * su * hy + v[1] * sv * (Math.abs(ny) > 0.5 ? hx : hy);
+      const lz = nz * hz + u[2] * su * (Math.abs(nz) > 0.5 ? hx : hz) + v[2] * sv * hy;
+      // The tangent sizes above are easy to get wrong. Build from the axis instead.
+      return 0;
+    });
+    void ids;
+  }
+}
+
+// Face-based box. Local axes, then yaw around Y.
+function addBoxSafe(center, half, yaw, k) {
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const rot = (x, y, z) => [x * c + z * s, y, -x * s + z * c];
+  const [hx, hy, hz] = half;
+  const faces = [
+    { n: [1, 0, 0], t: [0, 0, 1], b: [0, 1, 0], e: [hx, hz, hy] },
+    { n: [-1, 0, 0], t: [0, 0, -1], b: [0, 1, 0], e: [hx, hz, hy] },
+    { n: [0, 1, 0], t: [1, 0, 0], b: [0, 0, -1], e: [hy, hx, hz] },
+    { n: [0, -1, 0], t: [1, 0, 0], b: [0, 0, 1], e: [hy, hx, hz] },
+    { n: [0, 0, 1], t: [-1, 0, 0], b: [0, 1, 0], e: [hz, hx, hy] },
+    { n: [0, 0, -1], t: [1, 0, 0], b: [0, 1, 0], e: [hz, hx, hy] }
+  ];
+  for (const f of faces) {
+    const centerL = [f.n[0] * hx, f.n[1] * hy, f.n[2] * hz];
+    const ids = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([su, sv]) => {
+      const lx = centerL[0] + f.t[0] * su * f.e[1] + f.b[0] * sv * f.e[2];
+      const ly = centerL[1] + f.t[1] * su * f.e[1] + f.b[1] * sv * f.e[2];
+      const lz = centerL[2] + f.t[2] * su * f.e[1] + f.b[2] * sv * f.e[2];
+      const w = rot(lx, ly, lz);
+      const nn = rot(f.n[0], f.n[1], f.n[2]);
+      return pushVert(w[0] + center[0], w[1] + center[1], w[2] + center[2], nn[0], nn[1], nn[2], k);
+    });
+    tri(ids[0], ids[1], ids[2]);
+    tri(ids[0], ids[2], ids[3]);
+  }
+}
+
+function addEllipsoid(center, radius, k, lat, lon) {
+  const rings = [];
+  for (let i = 0; i <= lat; i++) {
+    const v = i / lat;
+    const phi = v * Math.PI;
+    const row = [];
+    for (let j = 0; j <= lon; j++) {
+      const u = j / lon;
+      const theta = u * Math.PI * 2;
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+      row.push(pushVert(
+        center[0] + nx * radius[0],
+        center[1] + ny * radius[1],
+        center[2] + nz * radius[2],
+        nx / radius[0], ny / radius[1], nz / radius[2],
+        k
+      ));
+    }
+    rings.push(row);
+  }
+  for (let i = 0; i < lat; i++) {
+    for (let j = 0; j < lon; j++) {
+      const a = rings[i][j];
+      const b = rings[i + 1][j];
+      const c = rings[i + 1][j + 1];
+      const d = rings[i][j + 1];
+      tri(a, b, c);
+      tri(a, c, d);
+    }
+  }
+}
+
+function addCylinder(center, radius, height, seg, k) {
+  const y0 = center[1];
+  const y1 = center[1] + height;
+  const bottom = [];
+  const top = [];
+  for (let i = 0; i <= seg; i++) {
+    const a = (i / seg) * Math.PI * 2;
+    const nx = Math.cos(a), nz = Math.sin(a);
+    const x = center[0] + nx * radius;
+    const z = center[2] + nz * radius;
+    bottom.push(pushVert(x, y0, z, nx, 0, nz, k));
+    top.push(pushVert(x, y1, z, nx, 0, nz, k));
+  }
+  for (let i = 0; i < seg; i++) {
+    tri(bottom[i], top[i], top[i + 1]);
+    tri(bottom[i], top[i + 1], bottom[i + 1]);
+  }
+  const bc = pushVert(center[0], y0, center[2], 0, -1, 0, k);
+  const tc = pushVert(center[0], y1, center[2], 0, 1, 0, k);
+  for (let i = 0; i < seg; i++) {
+    const a0 = (i / seg) * Math.PI * 2;
+    const a1 = ((i + 1) / seg) * Math.PI * 2;
+    const b0 = pushVert(center[0] + Math.cos(a0) * radius, y0, center[2] + Math.sin(a0) * radius, 0, -1, 0, k);
+    const b1 = pushVert(center[0] + Math.cos(a1) * radius, y0, center[2] + Math.sin(a1) * radius, 0, -1, 0, k);
+    tri(bc, b1, b0);
+    const t0 = pushVert(center[0] + Math.cos(a0) * radius, y1, center[2] + Math.sin(a0) * radius, 0, 1, 0, k);
+    const t1 = pushVert(center[0] + Math.cos(a1) * radius, y1, center[2] + Math.sin(a1) * radius, 0, 1, 0, k);
+    tri(tc, t0, t1);
+  }
+}
+
+function addAnnulus(y, r0, r1, seg, k) {
+  for (let i = 0; i < seg; i++) {
+    const a0 = (i / seg) * Math.PI * 2;
+    const a1 = ((i + 1) / seg) * Math.PI * 2;
+    const ring = (r, a) => pushVert(Math.sin(a) * r, y, Math.cos(a) * r, 0, 1, 0, k);
+    const a = ring(r0, a0), b = ring(r1, a0), c = ring(r1, a1), d = ring(r0, a1);
+    tri(a, b, c);
+    tri(a, c, d);
+  }
+}
+
+function addCapsule(a, b, radius, k) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+  const len = Math.hypot(dx, dy, dz) || 1;
+  const dir = [dx / len, dy / len, dz / len];
+  const hint = Math.abs(dir[1]) < 0.85 ? [0, 1, 0] : [1, 0, 0];
+  let sx = hint[1] * dir[2] - hint[2] * dir[1];
+  let sy = hint[2] * dir[0] - hint[0] * dir[2];
+  let sz = hint[0] * dir[1] - hint[1] * dir[0];
+  const sl = Math.hypot(sx, sy, sz) || 1;
+  sx /= sl; sy /= sl; sz /= sl;
+  const ux = dir[1] * sz - dir[2] * sy;
+  const uy = dir[2] * sx - dir[0] * sz;
+  const uz = dir[0] * sy - dir[1] * sx;
+  const mapP = (lx, ly, lz) => [
+    a[0] + sx * lx + dir[0] * ly + ux * lz,
+    a[1] + sy * lx + dir[1] * ly + uy * lz,
+    a[2] + sz * lx + dir[2] * ly + uz * lz
+  ];
+  const mapN = (lx, ly, lz) => {
+    const m = mapP(lx, ly, lz);
+    return [m[0] - (a[0] + dir[0] * ly), m[1] - (a[1] + dir[1] * ly), m[2] - (a[2] + dir[2] * ly)];
+  };
+  const seg = 8;
+  const rings = 6;
+  const rows = [];
+  for (let i = 0; i <= rings; i++) {
+    const t = i / rings;
+    const y = t * len;
+    const row = [];
+    for (let j = 0; j <= seg; j++) {
+      const ang = (j / seg) * Math.PI * 2;
+      const lx = Math.cos(ang) * radius;
+      const lz = Math.sin(ang) * radius;
+      const w = mapP(lx, y, lz);
+      const nn = mapN(lx, 0, lz);
+      row.push(pushVert(w[0], w[1], w[2], nn[0], nn[1], nn[2], k));
+    }
+    rows.push(row);
+  }
+  for (let i = 0; i < rings; i++) {
+    for (let j = 0; j < seg; j++) {
+      tri(rows[i][j], rows[i + 1][j], rows[i + 1][j + 1]);
+      tri(rows[i][j], rows[i + 1][j + 1], rows[i][j + 1]);
+    }
+  }
+  addEllipsoid(a, [radius, radius, radius], k, 6, 8);
+  addEllipsoid(b, [radius, radius, radius], k, 6, 8);
+}
+
+function addChair(theta, radius, seatY) {
+  const x = Math.sin(theta) * radius;
+  const z = Math.cos(theta) * radius;
+  addBoxSafe([x, seatY + 0.035, z], [0.2, 0.03, 0.18], theta, 0);
+  const back = [
+    x + Math.sin(theta) * 0.16,
+    seatY + 0.42,
+    z + Math.cos(theta) * 0.16
+  ];
+  addBoxSafe(back, [0.2, 0.34, 0.022], theta, 0);
+}
+
+const platformTop = 0.1;
+addCylinder([0, -0.55, 0], 1.15, platformTop + 0.55, 40, 0);
+
+const feet = platformTop;
+addCylinder([-0.1, feet, 0.02], 0.065, 0.78, 10, 1);
+addCylinder([0.1, feet, 0.02], 0.065, 0.78, 10, 1);
+addEllipsoid([0, feet + 1.08, 0.02], [0.23, 0.36, 0.13], 1, 12, 16);
+addEllipsoid([0, feet + 1.38, 0], [0.24, 0.1, 0.12], 1, 8, 12);
+addCylinder([0, feet + 1.44, 0], 0.045, 0.08, 8, 1);
+addEllipsoid([0, feet + 1.66, 0], [0.11, 0.13, 0.11], 1, 12, 16);
+addCapsule([-0.18, feet + 1.32, 0.05], [-0.26, feet + 0.78, 0.1], 0.055, 1);
+addCapsule([0.18, feet + 1.32, 0.05], [0.26, feet + 0.78, 0.1], 0.055, 1);
+
+const tiers = [
+  { r: 2.4, y: -0.05, gap: 0.74 },
+  { r: 3.55, y: 0.34, gap: 0.66 }
+];
+for (const tier of tiers) {
+  const count = Math.round((Math.PI * 2 * tier.r) / tier.gap);
+  for (let i = 0; i < count; i++) {
+    const theta = (i / count) * Math.PI * 2;
+    let a = Math.atan2(Math.sin(theta), Math.cos(theta));
+    if (Math.abs(a) < 0.42) continue;
+    addChair(theta, tier.r, tier.y);
+  }
+  addAnnulus(tier.y, tier.r - 0.45, tier.r + 0.48, 64, 0);
+}
+for (let i = 0; i < 16; i++) {
+  const theta = (i / 16) * Math.PI * 2;
+  if (Math.abs(Math.atan2(Math.sin(theta), Math.cos(theta))) < 0.28) continue;
+  addCylinder([Math.sin(theta) * 4.55, -0.4, Math.cos(theta) * 4.55], 0.07, 2.5, 8, 0);
+}
+addAnnulus(0, 0, 6.2, 72, 2);
+
+const canvas = document.getElementById("c");
+const stage = document.getElementById("stage");
+const err = document.getElementById("err");
+const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+if (!gl) {
+  err.hidden = false;
+  err.textContent = "This browser has no WebGL2.";
+}
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function program(vs, fs, attribs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  attribs.forEach((name, i) => gl.bindAttribLocation(p, i, name));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+let sceneProg, ditherProg, sceneLoc, ditherLoc, fbo, colorTex, depthRb, fboW = 0, fboH = 0;
+try {
+  sceneProg = program(sceneVert, sceneFrag, ["aPos", "aNrm", "aKind"]);
+  ditherProg = program(ditherVert, ditherFrag, ["a"]);
+  sceneLoc = {
+    mvp: gl.getUniformLocation(sceneProg, "uMvp"),
+    time: gl.getUniformLocation(sceneProg, "uTime"),
+    eye: gl.getUniformLocation(sceneProg, "uEye")
+  };
+  ditherLoc = {
+    tex: gl.getUniformLocation(ditherProg, "uTex"),
+    res: gl.getUniformLocation(ditherProg, "uRes"),
+    pitch: gl.getUniformLocation(ditherProg, "uPitch"),
+    levels: gl.getUniformLocation(ditherProg, "uLevels"),
+    dither: gl.getUniformLocation(ditherProg, "uDither")
+  };
+
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  const stride = 7 * 4;
+  const packed = new Float32Array(p.length / 3 * 7);
+  for (let i = 0; i < p.length / 3; i++) {
+    packed.set(p.slice(i * 3, i * 3 + 3), i * 7);
+    packed.set(nrm.slice(i * 3, i * 3 + 3), i * 7 + 3);
+    packed[i * 7 + 6] = kind[i];
+  }
+  gl.bufferData(gl.ARRAY_BUFFER, packed, gl.STATIC_DRAW);
+  const ibo = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(idx), gl.STATIC_DRAW);
+
+  gl.useProgram(sceneProg);
+  gl.enableVertexAttribArray(0);
+  gl.enableVertexAttribArray(1);
+  gl.enableVertexAttribArray(2);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, stride, 0);
+  gl.vertexAttribPointer(1, 3, gl.FLOAT, false, stride, 12);
+  gl.vertexAttribPointer(2, 1, gl.FLOAT, false, stride, 24);
+
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+
+  colorTex = gl.createTexture();
+  depthRb = gl.createRenderbuffer();
+  fbo = gl.createFramebuffer();
+
+  window.__draw = { vbo, ibo, quad, count: idx.length, stride };
+} catch (e) {
+  err.hidden = false;
+  err.textContent = String(e.message || e);
+}
+
+function lookAt(eye, target, up) {
+  let fx = eye[0] - target[0], fy = eye[1] - target[1], fz = eye[2] - target[2];
+  let fl = Math.hypot(fx, fy, fz) || 1;
+  fx /= fl; fy /= fl; fz /= fl;
+  let sx = up[1] * fz - up[2] * fy;
+  let sy = up[2] * fx - up[0] * fz;
+  let sz = up[0] * fy - up[1] * fx;
+  let sl = Math.hypot(sx, sy, sz) || 1;
+  sx /= sl; sy /= sl; sz /= sl;
+  const ux = fy * sz - fz * sy;
+  const uy = fz * sx - fx * sz;
+  const uz = fx * sy - fy * sx;
+  return new Float32Array([
+    sx, ux, fx, 0,
+    sy, uy, fy, 0,
+    sz, uz, fz, 0,
+    -(sx * eye[0] + sy * eye[1] + sz * eye[2]),
+    -(ux * eye[0] + uy * eye[1] + uz * eye[2]),
+    -(fx * eye[0] + fy * eye[1] + fz * eye[2]),
+    1
+  ]);
+}
+function perspective(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2);
+  const nf = 1 / (near - far);
+  return new Float32Array([
+    f / aspect, 0, 0, 0,
+    0, f, 0, 0,
+    0, 0, (far + near) * nf, -1,
+    0, 0, 2 * far * near * nf, 0
+  ]);
+}
+function mul(a, b) {
+  const o = new Float32Array(16);
+  for (let col = 0; col < 4; col++) {
+    for (let row = 0; row < 4; row++) {
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += a[k * 4 + row] * b[col * 4 + k];
+      o[col * 4 + row] = s;
+    }
+  }
+  return o;
+}
+
+function ensureTarget(w, h) {
+  if (w === fboW && h === fboH) return;
+  fboW = w; fboH = h;
+  gl.bindTexture(gl.TEXTURE_2D, colorTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindRenderbuffer(gl.RENDERBUFFER, depthRb);
+  gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTex, 0);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthRb);
+}
+
+function fit() {
+  const maxW = Math.min(window.innerWidth, 440);
+  const maxH = window.innerHeight;
+  let h = maxH;
+  let w = h * 9 / 19.5;
+  if (w > maxW) { w = maxW; h = w * 19.5 / 9; }
+  stage.style.width = w + "px";
+  stage.style.height = h + "px";
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const pw = Math.max(2, Math.round(w * dpr));
+  const ph = Math.max(2, Math.round(h * dpr));
+  if (canvas.width !== pw || canvas.height !== ph) {
+    canvas.width = pw;
+    canvas.height = ph;
+  }
+}
+
+let ditherOn = true;
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const t0 = performance.now();
+const eye = [0.55, 1.85, 5.35];
+
+function showState() {
+  const pitch = document.getElementById("pitch").value;
+  const levels = document.getElementById("levels").value;
+  document.getElementById("state").textContent =
+    "Prototype · " + (ditherOn ? "dots " + pitch + "px" : "smooth") + " · " + levels + " inks";
+  const mode = document.getElementById("mode");
+  mode.textContent = ditherOn ? "Dots" : "Smooth";
+  mode.classList.toggle("off", !ditherOn);
+}
+document.getElementById("mode").onclick = () => { ditherOn = !ditherOn; showState(); };
+document.getElementById("pitch").oninput = showState;
+document.getElementById("levels").oninput = showState;
+showState();
+
+function frame(now) {
+  fit();
+  if (!window.__draw) { requestAnimationFrame(frame); return; }
+  const w = canvas.width, h = canvas.height;
+  ensureTarget(w, h);
+  const view = lookAt(eye, [0, 1.05, -0.2], [0, 1, 0]);
+  const proj = perspective(0.68, w / h, 0.08, 40);
+  const mvp = mul(proj, view);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.viewport(0, 0, w, h);
+  gl.clearColor(0.02, 0.02, 0.02, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+  gl.useProgram(sceneProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, window.__draw.vbo);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, window.__draw.ibo);
+  const stride = window.__draw.stride;
+  gl.enableVertexAttribArray(0);
+  gl.enableVertexAttribArray(1);
+  gl.enableVertexAttribArray(2);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, stride, 0);
+  gl.vertexAttribPointer(1, 3, gl.FLOAT, false, stride, 12);
+  gl.vertexAttribPointer(2, 1, gl.FLOAT, false, stride, 24);
+  gl.uniformMatrix4fv(sceneLoc.mvp, false, mvp);
+  gl.uniform1f(sceneLoc.time, reduce ? 1.2 : (now - t0) / 1000);
+  gl.uniform3f(sceneLoc.eye, eye[0], eye[1], eye[2]);
+  gl.drawElements(gl.TRIANGLES, window.__draw.count, gl.UNSIGNED_INT, 0);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, w, h);
+  gl.disable(gl.DEPTH_TEST);
+  gl.useProgram(ditherProg);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, colorTex);
+  gl.uniform1i(ditherLoc.tex, 0);
+  gl.uniform2f(ditherLoc.res, w, h);
+  gl.uniform1f(ditherLoc.pitch, Number(document.getElementById("pitch").value));
+  gl.uniform1f(ditherLoc.levels, Number(document.getElementById("levels").value));
+  gl.uniform1f(ditherLoc.dither, ditherOn ? 1 : 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, window.__draw.quad);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

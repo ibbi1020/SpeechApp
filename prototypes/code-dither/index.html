@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototype — code dither</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #141311; }
+  body {
+    display: grid; place-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #f4f1ea;
+  }
+  .stage {
+    position: relative;
+    background: #000;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
+    overflow: hidden;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  .title {
+    position: absolute; top: 28px; left: 22px; right: 22px;
+    pointer-events: none;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.45);
+  }
+  .title h1 {
+    margin: 0;
+    font-family: "Iowan Old Style", Palatino, Georgia, serif;
+    font-size: 34px; font-weight: 500; letter-spacing: -0.03em; line-height: 0.95;
+  }
+  .title p {
+    margin: 8px 0 0; max-width: 22ch;
+    font-size: 13px; line-height: 1.35; color: rgba(244,241,234,0.82);
+  }
+  .switcher {
+    position: fixed; z-index: 5; left: 50%; bottom: 18px; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    width: min(440px, calc(100vw - 24px));
+  }
+  .state {
+    font-size: 11px; letter-spacing: 0.04em; color: rgba(244,241,234,0.72);
+    text-align: center;
+  }
+  .pill {
+    display: flex; align-items: center; gap: 8px;
+    background: #fff; color: #141311;
+    border-radius: 999px; padding: 6px 8px 6px 6px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  }
+  .pill button {
+    width: 36px; height: 36px; border: 0; border-radius: 50%;
+    background: #141311; color: #fff; font-size: 20px; line-height: 1; cursor: pointer;
+  }
+  .pill .name { flex: 1; text-align: center; font-size: 13px; font-weight: 650; letter-spacing: -0.01em; }
+  .knobs {
+    display: flex; gap: 12px; align-items: center;
+    background: #fff; color: #141311;
+    border-radius: 14px; padding: 8px 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .knobs label { display: flex; align-items: center; gap: 6px; }
+  .knobs input[type="range"] { width: 72px; accent-color: #141311; }
+  .knobs button {
+    border: 0; border-radius: 999px; padding: 7px 10px; cursor: pointer;
+    background: #141311; color: #fff; font: inherit; letter-spacing: 0.06em;
+  }
+  .knobs button.off { background: #e7e2d8; color: #141311; }
+  #err {
+    position: fixed; inset: 12px auto auto 12px; z-index: 6;
+    margin: 0; max-width: min(640px, calc(100vw - 24px));
+    white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace;
+    color: #fff; background: #7f1d1d; padding: 10px 12px; border-radius: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <canvas id="c"></canvas>
+  <div class="title">
+    <h1 id="headline">A still hour</h1>
+    <p id="sub">A stone, a moon, and water. All of it is a shader.</p>
+  </div>
+</div>
+<div class="switcher">
+  <div class="state" id="state"></div>
+  <div class="pill">
+    <button id="prev" type="button" aria-label="Previous scene">‹</button>
+    <div class="name" id="label">A · Stone and water</div>
+    <button id="next" type="button" aria-label="Next scene">›</button>
+  </div>
+  <div class="knobs">
+    <label>Dots <input id="pitch" type="range" min="1" max="4" step="1" value="2" /></label>
+    <label>Inks <input id="levels" type="range" min="2" max="8" step="1" value="6" /></label>
+    <button id="mode" type="button">Dots</button>
+  </div>
+</div>
+<pre id="err" hidden></pre>
+<script>
+// Prototype. Throwaway.
+// Question: if the picture is built only in a shader, does a lit form plus one
+// ordered dither read like the reference?
+// Three scenes, one dither. ?variant=A|B|C
+
+const SCENES = [
+  { key: "A", name: "Stone and water", headline: "A still hour", sub: "A stone, a moon, and water. All of it is a shader." },
+  { key: "B", name: "A standing figure", headline: "The speaker", sub: "A few rounded forms, lit from one side. No model file." },
+  { key: "C", name: "A hull", headline: "Out on the water", sub: "The hull and the gull are math. The ripples are math." }
+];
+
+const vert = `#version 300 es
+in vec2 a;
+void main() { gl_Position = vec4(a, 0.0, 1.0); }
+`;
+
+const frag = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 uRes;
+uniform float uTime;
+uniform float uScene;
+uniform float uPitch;
+uniform float uLevels;
+uniform float uDither;
+uniform vec2 uPointer;
+
+const int BAYER[64] = int[64](
+   0, 32,  8, 40,  2, 34, 10, 42,
+  48, 16, 56, 24, 50, 18, 58, 26,
+  12, 44,  4, 36, 14, 46,  6, 38,
+  60, 28, 52, 20, 62, 30, 54, 22,
+   3, 35, 11, 43,  1, 33,  9, 41,
+  51, 19, 59, 27, 49, 17, 57, 25,
+  15, 47,  7, 39, 13, 45,  5, 37,
+  63, 31, 55, 23, 61, 29, 53, 21
+);
+
+float bayer8(vec2 pix) {
+  ivec2 ip = ivec2(mod(floor(pix), 8.0));
+  return (float(BAYER[ip.y * 8 + ip.x]) + 0.5) / 64.0;
+}
+
+float gradeLuma(float q) { return clamp(q, 0.0, 1.0); }
+
+vec3 grade(float q, float scene) {
+  q = clamp(q, 0.0, 1.0);
+  vec3 shadow;
+  vec3 mid;
+  vec3 paper;
+  if (scene < 1.5) {
+    shadow = vec3(0.012, 0.030, 0.026);
+    mid = vec3(0.09, 0.28, 0.20);
+    paper = vec3(0.78, 0.90, 0.78);
+  } else if (scene < 2.5) {
+    shadow = vec3(0.045, 0.038, 0.032);
+    mid = vec3(0.42, 0.36, 0.30);
+    paper = vec3(0.94, 0.89, 0.80);
+  } else {
+    shadow = vec3(0.012, 0.028, 0.026);
+    mid = vec3(0.10, 0.30, 0.24);
+    paper = vec3(0.82, 0.90, 0.80);
+  }
+  if (q < 0.5) return mix(shadow, mid, q * 2.0);
+  return mix(mid, paper, (q - 0.5) * 2.0);
+}
+
+vec3 paint(float luma, vec2 frag, float scene) {
+  luma = clamp(luma, 0.0, 1.0);
+  if (uDither < 0.5) return grade(luma, scene);
+  float t = bayer8(frag / max(uPitch, 1.0));
+  float scale = max(uLevels - 1.0, 1.0);
+  float q = floor(luma * scale + t) / scale;
+  return grade(q, scene);
+}
+
+mat3 cam(vec3 ro, vec3 target) {
+  vec3 f = normalize(target - ro);
+  vec3 r = normalize(cross(f, vec3(0.0, 1.0, 0.0)));
+  vec3 u = cross(r, f);
+  return mat3(r, u, f);
+}
+
+bool sphereHit(vec3 ro, vec3 rd, vec3 c, vec3 rad, out float t, out vec3 n) {
+  vec3 srd = rd / rad;
+  vec3 sro = (ro - c) / rad;
+  float a = dot(srd, srd);
+  float b = dot(sro, srd);
+  float h = b * b - a * (dot(sro, sro) - 1.0);
+  if (h < 0.0 || a < 1e-5) return false;
+  h = sqrt(h);
+  t = (-b - h) / a;
+  float tFar = (-b + h) / a;
+  if (t < 0.002) t = tFar;
+  if (t < 0.002) return false;
+  vec3 p = ro + rd * t;
+  n = normalize((p - c) / (rad * rad));
+  return true;
+}
+
+float skyLuma(vec3 rd) {
+  float h = clamp(rd.y, -0.2, 1.0);
+  float sky = mix(0.34, 0.02, smoothstep(0.0, 0.55, h));
+  vec3 moon = normalize(vec3(0.28, 0.34, -0.90));
+  float ang = acos(clamp(dot(rd, moon), -1.0, 1.0));
+  float disk = 1.0 - smoothstep(0.034, 0.046, ang);
+  float glow = exp(-ang * 22.0);
+  return sky + disk * 1.0 + glow * 0.22;
+}
+
+float stoneShade(vec3 n, vec3 rd, vec3 lightDir) {
+  float diff = clamp(dot(n, lightDir) * 0.85 + 0.12, 0.0, 1.0);
+  vec3 h = normalize(lightDir - rd);
+  float spec = pow(clamp(dot(n, h), 0.0, 1.0), 64.0);
+  return clamp(diff * 0.92 + spec * 0.18, 0.0, 1.0);
+}
+
+float sceneStone(vec2 uv, float time, vec2 pointer) {
+  vec3 ro = vec3(0.35 + pointer.x * 0.12, 0.95, 3.9);
+  vec3 target = vec3(0.0, 0.12, -0.15);
+  vec3 rd = normalize(cam(ro, target) * vec3(uv, 1.45));
+  vec3 lightDir = normalize(vec3(-0.55, 0.78, 0.22));
+  vec3 center = vec3(-0.05, 0.02, -0.2);
+  vec3 rad = vec3(0.78, 0.34, 0.58);
+
+  float best = 1e9;
+  float luma = skyLuma(rd);
+
+  float tS;
+  vec3 nS;
+  if (sphereHit(ro, rd, center, rad, tS, nS)) {
+    best = tS;
+    luma = stoneShade(nS, rd, lightDir);
+    if ((ro + rd * tS).y < 0.0) luma *= 0.45;
+  }
+
+  if (rd.y < -0.001) {
+    float tW = -ro.y / rd.y;
+    if (tW > 0.0 && tW < best) {
+      vec3 p = ro + rd * tW;
+      float radRing = length(p.xz - center.xz);
+      float rings = sin(radRing * 14.0 - time * 1.7) * exp(-radRing * 0.35);
+      float chop = sin(p.x * 5.5 + time * 0.6) * sin(p.z * 4.5 - time * 0.45);
+      vec3 n = normalize(vec3(rings * 0.85 + chop * 0.12, 1.0, rings * 0.45));
+      vec3 rdR = reflect(rd, n);
+      float refl = skyLuma(rdR);
+      float tR;
+      vec3 nR;
+      if (sphereHit(p + n * 0.02, rdR, center, rad, tR, nR)) {
+        refl = stoneShade(nR, rdR, lightDir) * 0.85;
+      }
+      float fres = pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 3.0);
+      float water = mix(0.03, refl, 0.18 + fres * 0.82);
+      vec2 e = (p.xz - center.xz) / rad.xz;
+      float foam = exp(-pow(length(e) - 1.0, 2.0) * 28.0);
+      water = max(water, foam * 0.75);
+      float fade = exp(-tW * 0.18);
+      luma = mix(0.04, water, fade);
+    }
+  }
+  luma *= smoothstep(1.25, 0.35, length(uv * vec2(0.85, 1.0)));
+  return luma;
+}
+
+float sdCapsule(vec3 p, vec3 a, vec3 b, float r) {
+  vec3 pa = p - a;
+  vec3 ba = b - a;
+  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h) - r;
+}
+
+float sdEllipsoid(vec3 p, vec3 r) {
+  float k0 = length(p / r);
+  float k1 = length(p / (r * r));
+  return k0 * (k0 - 1.0) / max(k1, 1e-4);
+}
+
+float figureMap(vec3 p) {
+  float head = length(p - vec3(0.0, 1.62, 0.0)) - 0.20;
+  float neck = sdCapsule(p, vec3(0.0, 1.38, 0.0), vec3(0.0, 1.52, 0.0), 0.07);
+  float torso = sdCapsule(p, vec3(0.0, 0.78, 0.0), vec3(0.0, 1.38, 0.0), 0.20);
+  float robe = sdEllipsoid(p - vec3(0.0, 0.62, 0.04), vec3(0.40, 0.62, 0.28));
+  float arm = sdCapsule(p, vec3(0.16, 1.22, 0.06), vec3(0.62, 1.48, 0.18), 0.055);
+  float hand = length(p - vec3(0.68, 1.52, 0.20)) - 0.07;
+  return min(min(min(head, neck), min(torso, robe)), min(arm, hand));
+}
+
+float boatMap(vec3 p);
+
+float sceneMarch(vec3 ro, vec3 rd, float scene) {
+  float t = 0.02;
+  for (int i = 0; i < 72; i++) {
+    vec3 p = ro + rd * t;
+    float d = scene < 1.5 ? figureMap(p) : boatMap(p);
+    if (d < 0.002) return t;
+    t += d;
+    if (t > 8.0) break;
+  }
+  return -1.0;
+}
+
+vec3 mapNormal(vec3 p, float scene) {
+  vec2 e = vec2(0.0025, 0.0);
+  float dx = (scene < 1.5 ? figureMap(p + e.xyy) : boatMap(p + e.xyy))
+           - (scene < 1.5 ? figureMap(p - e.xyy) : boatMap(p - e.xyy));
+  float dy = (scene < 1.5 ? figureMap(p + e.yxy) : boatMap(p + e.yxy))
+           - (scene < 1.5 ? figureMap(p - e.yxy) : boatMap(p - e.yxy));
+  float dz = (scene < 1.5 ? figureMap(p + e.yyx) : boatMap(p + e.yyx))
+           - (scene < 1.5 ? figureMap(p - e.yyx) : boatMap(p - e.yyx));
+  return normalize(vec3(dx, dy, dz));
+}
+
+float shadeForm(vec3 n, vec3 rd, vec3 lightDir) {
+  float diff = clamp(dot(n, lightDir) * 0.78 + 0.24, 0.0, 1.0);
+  vec3 h = normalize(lightDir - rd);
+  float spec = pow(clamp(dot(n, h), 0.0, 1.0), 36.0);
+  float rim = pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 2.0);
+  return clamp(diff + spec * 0.42 + rim * 0.22, 0.0, 1.0);
+}
+
+float sceneFigure(vec2 uv, vec2 pointer) {
+  vec3 ro = vec3(1.55 + pointer.x * 0.1, 1.45, 4.5);
+  vec3 target = vec3(0.15, 1.2, 0.0);
+  vec3 rd = normalize(cam(ro, target) * vec3(uv, 1.25));
+  vec3 lightDir = normalize(vec3(-0.65 + pointer.x * 0.2, 0.72, 0.40));
+  float bg = mix(0.16, 0.025, smoothstep(-0.15, 0.85, uv.y));
+  bg *= smoothstep(1.15, 0.2, length(uv * vec2(1.1, 0.8) - vec2(0.1, -0.15)));
+  float luma = bg;
+
+  if (rd.y < -0.02) {
+    float tG = (0.0 - ro.y) / rd.y;
+    if (tG > 0.0) {
+      vec3 p = ro + rd * tG;
+      float pool = exp(-length(p.xz) * 0.85);
+      luma = mix(0.02, 0.20, pool) * clamp(dot(vec3(0.0, 1.0, 0.0), lightDir) + 0.35, 0.0, 1.0);
+    }
+  }
+
+  float t = sceneMarch(ro, rd, 1.0);
+  if (t > 0.0) {
+    bool groundFirst = false;
+    if (rd.y < -0.02) {
+      float tG = -ro.y / rd.y;
+      groundFirst = tG > 0.0 && tG < t;
+    }
+    if (!groundFirst) {
+      vec3 p = ro + rd * t;
+      vec3 n = mapNormal(p, 1.0);
+      luma = shadeForm(n, rd, lightDir);
+    }
+  }
+  return luma;
+}
+
+vec3 boatRot(vec3 p) {
+  float a = -0.55;
+  float c = cos(a);
+  float s = sin(a);
+  p -= vec3(0.05, 0.0, 0.0);
+  return vec3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
+}
+
+float boatMap(vec3 p) {
+  vec3 q = boatRot(p);
+  float hull = sdEllipsoid(q - vec3(0.0, 0.16, 0.0), vec3(0.42, 0.20, 1.05));
+  hull = max(hull, q.y - 0.22);
+  vec3 g = q - vec3(0.05, 0.40, 0.78);
+  float body = sdEllipsoid(g, vec3(0.09, 0.045, 0.16));
+  float wingL = sdEllipsoid(g - vec3(-0.13, 0.035, -0.02), vec3(0.14, 0.012, 0.045));
+  float wingR = sdEllipsoid(g - vec3(0.11, 0.03, 0.0), vec3(0.12, 0.01, 0.04));
+  float beak = sdCapsule(q, vec3(0.05, 0.40, 0.92), vec3(0.05, 0.39, 1.05), 0.012);
+  return min(hull, min(min(body, beak), min(wingL, wingR)));
+}
+
+float sceneBoat(vec2 uv, float time, vec2 pointer) {
+  vec3 ro = vec3(2.9 + pointer.x * 0.08, 0.36, 1.25);
+  vec3 target = vec3(0.05, 0.16, 0.1);
+  vec3 rd = normalize(cam(ro, target) * vec3(uv, 1.4));
+  vec3 lightDir = normalize(vec3(0.7, 0.62, 0.25));
+  float luma = skyLuma(rd) * 0.85;
+  float best = 1e9;
+
+  float t = sceneMarch(ro, rd, 2.0);
+  if (t > 0.0) {
+    best = t;
+    vec3 p = ro + rd * t;
+    vec3 n = mapNormal(p, 2.0);
+    luma = shadeForm(n, rd, lightDir);
+    if (p.y < 0.02) luma *= 0.55;
+  }
+
+  if (rd.y < -0.001) {
+    float tW = -ro.y / rd.y;
+    if (tW > 0.0 && tW < best) {
+      vec3 p = ro + rd * tW;
+      vec2 c = vec2(0.05, 0.1);
+      float radRing = length(p.xz - c);
+      float rings = sin(radRing * 16.0 - time * 1.5) * exp(-radRing * 0.45);
+      float chop = sin(p.x * 4.0 + time * 0.5) * 0.5;
+      vec3 n = normalize(vec3((p.x - c.x) / max(radRing, 0.001) * rings * 0.4, 1.0, chop * 0.05));
+      vec3 rdR = reflect(rd, n);
+      float fres = pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 3.0);
+      float water = mix(0.05, skyLuma(rdR), 0.22 + fres * 0.7);
+      luma = mix(0.035, water, exp(-tW * 0.16));
+    }
+  }
+  luma *= smoothstep(1.2, 0.4, length(uv * vec2(0.8, 1.0)));
+  return luma;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+  float scene = uScene + 1.0;
+  float luma;
+  if (uScene < 0.5) luma = sceneStone(uv, uTime, uPointer);
+  else if (uScene < 1.5) luma = sceneFigure(uv, uPointer);
+  else luma = sceneBoat(uv, uTime, uPointer);
+  fragColor = vec4(paint(luma, gl_FragCoord.xy, scene), 1.0);
+}
+`;
+
+const canvas = document.getElementById("c");
+const stage = document.getElementById("stage");
+const err = document.getElementById("err");
+const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+if (!gl) {
+  err.hidden = false;
+  err.textContent = "This browser has no WebGL2.";
+}
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    throw new Error(gl.getShaderInfoLog(s));
+  }
+  return s;
+}
+
+let program;
+let loc = {};
+try {
+  program = gl.createProgram();
+  gl.attachShader(program, compile(gl.VERTEX_SHADER, vert));
+  gl.attachShader(program, compile(gl.FRAGMENT_SHADER, frag));
+  gl.bindAttribLocation(program, 0, "a");
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    throw new Error(gl.getProgramInfoLog(program));
+  }
+  gl.useProgram(program);
+  for (const name of ["uRes", "uTime", "uScene", "uPitch", "uLevels", "uDither", "uPointer"]) {
+    loc[name] = gl.getUniformLocation(program, name);
+  }
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+} catch (e) {
+  err.hidden = false;
+  err.textContent = String(e.message || e);
+}
+
+let index = Math.max(0, SCENES.findIndex((s) => s.key === (new URLSearchParams(location.search).get("variant") || "A").toUpperCase()));
+if (index < 0) index = 0;
+let ditherOn = true;
+const pointer = { x: 0, y: 0 };
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const t0 = performance.now();
+
+function fit() {
+  const maxW = Math.min(window.innerWidth, 440);
+  const maxH = window.innerHeight;
+  let h = maxH;
+  let w = h * 9 / 19.5;
+  if (w > maxW) {
+    w = maxW;
+    h = w * 19.5 / 9;
+  }
+  stage.style.width = w + "px";
+  stage.style.height = h + "px";
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const pw = Math.round(w * dpr);
+  const ph = Math.round(h * dpr);
+  if (canvas.width !== pw || canvas.height !== ph) {
+    canvas.width = pw;
+    canvas.height = ph;
+  }
+}
+
+function show() {
+  const scene = SCENES[index];
+  document.getElementById("label").textContent = scene.key + " · " + scene.name;
+  document.getElementById("headline").textContent = scene.headline;
+  document.getElementById("sub").textContent = scene.sub;
+  const pitch = document.getElementById("pitch").value;
+  const levels = document.getElementById("levels").value;
+  document.getElementById("state").textContent =
+    "Prototype · " + scene.key + " · " + (ditherOn ? "dots " + pitch + "px" : "smooth") + " · " + levels + " inks";
+  document.getElementById("mode").textContent = ditherOn ? "Dots" : "Smooth";
+  document.getElementById("mode").classList.toggle("off", !ditherOn);
+  const url = new URL(location.href);
+  url.searchParams.set("variant", scene.key);
+  history.replaceState(null, "", url);
+}
+
+function step(dir) {
+  index = (index + dir + SCENES.length) % SCENES.length;
+  show();
+}
+
+document.getElementById("prev").onclick = () => step(-1);
+document.getElementById("next").onclick = () => step(1);
+document.getElementById("mode").onclick = () => { ditherOn = !ditherOn; show(); };
+document.getElementById("pitch").oninput = show;
+document.getElementById("levels").oninput = show;
+addEventListener("keydown", (e) => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA") return;
+  if (e.key === "ArrowLeft") step(-1);
+  if (e.key === "ArrowRight") step(1);
+});
+stage.addEventListener("pointermove", (e) => {
+  const r = stage.getBoundingClientRect();
+  pointer.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+  pointer.y = ((e.clientY - r.top) / r.height) * 2 - 1;
+});
+
+function frame(now) {
+  fit();
+  if (program) {
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.uniform2f(loc.uRes, canvas.width, canvas.height);
+    gl.uniform1f(loc.uTime, reduce ? 0 : (now - t0) / 1000);
+    gl.uniform1f(loc.uScene, index);
+    gl.uniform1f(loc.uPitch, Number(document.getElementById("pitch").value));
+    gl.uniform1f(loc.uLevels, Number(document.getElementById("levels").value));
+    gl.uniform1f(loc.uDither, ditherOn ? 1 : 0);
+    gl.uniform2f(loc.uPointer, pointer.x, pointer.y);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  requestAnimationFrame(frame);
+}
+show();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
