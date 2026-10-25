@@ -81,6 +81,7 @@ struct ConversationSessionView: View {
     var body: some View {
         ZStack {
             SpeechScreenBackground()
+            AmbientBackdrop(place: ambientPlace)
 
             if showsFailure {
                 failureView
@@ -121,6 +122,7 @@ struct ConversationSessionView: View {
                 .padding(.top, 12)
             }
         }
+        .preferredColorScheme(ambientPlace == .off ? nil : .dark)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: phase)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .navigationTitle("")
