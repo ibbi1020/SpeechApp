@@ -28,14 +28,14 @@ struct CeremonyStepTests {
         #expect(Ceremony.previous(before: .speak) == nil)
     }
 
-    @Test("breathing paces six a minute, four in and six out")
+    @Test("breathing is one cycle, six a minute, four in and six out")
     func pacing() {
         #expect(BreathPacing.cycle == 10)
         #expect(BreathPacing.rate == 6)
         #expect(BreathPacing.inhale == 4)
         #expect(BreathPacing.exhale == 6)
-        #expect(BreathPacing.cycles == 2)
-        #expect(BreathPacing.total == 20)
+        #expect(BreathPacing.cycles == 1)
+        #expect(BreathPacing.total == 10)
         #expect(BreathPacing.settle == 3)
     }
 
@@ -66,7 +66,7 @@ struct CeremonyStepTests {
         #expect(CeremonyCopy.breatheLine.lowercased().contains("deep") == false)
         #expect(CeremonyCopy.breatheIn == "Breathe in")
         #expect(CeremonyCopy.breatheOut == "Breathe out")
-        #expect(CeremonyCopy.breatheRate == "Two breaths")
+        #expect(CeremonyCopy.breatheRate == "One breath")
     }
 
     @Test("copy never tells the user to relax or calm down")
@@ -101,7 +101,7 @@ struct CeremonyControlTests {
     private let open = ConversationBudgetSnapshot(limit: 20, used: 3, month: "2026-10")
     private let spent = ConversationBudgetSnapshot(limit: 20, used: 20, month: "2026-10")
 
-    @Test("a cancelled breath does not count as two breaths")
+    @Test("a cancelled breath does not count as finished")
     func cancelledBreathIsNotDone() async {
         let task = Task { await BreathRun.finished() }
         task.cancel()
@@ -179,17 +179,27 @@ struct CeremonyControlTests {
         #expect(CeremonyCopy.roomClear == "Quieter now. Go ahead.")
     }
 
-    @Test("the siren waits for Ready, then the exercise's own start title")
+    @Test("humming names the mouth, the tap, and the glide")
+    func hummingCopy() {
+        #expect(VocalClip.hum.explain == "Hum on \u{201C}mmm\u{201D}, lips closed.")
+        #expect(VocalClip.hum.line == "Lips closed, up then down.")
+        #expect(CeremonyCopy.humBreath == "A sound plays when you tap. Breathe in, then let your voice go up and down with it.")
+        #expect(VocalClip.hum.explain.lowercased().contains("match") == false)
+        #expect(VocalClip.hum.line.lowercased().contains("along") == false)
+        #expect(CeremonyCopy.humWaiting.lowercased().contains("listen") == false)
+    }
+
+    @Test("the siren waits for Play the sound, then the exercise's own start title")
     func hum() {
         let explain = CeremonyControls.control(step: .hum, chosen: .reading, budget: open)
-        #expect(explain.title == "Ready")
+        #expect(explain.title == "Play the sound")
         #expect(explain.isEnabled)
         #expect(explain.advance == .armHum)
 
         let playing = CeremonyControls.control(
             step: .hum, chosen: .reading, budget: open, humPhase: .playing
         )
-        #expect(playing.title == "Listen")
+        #expect(playing.title == "Playing")
         #expect(playing.isEnabled == false)
 
         let ready = CeremonyControls.control(
