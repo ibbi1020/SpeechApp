@@ -71,6 +71,7 @@ struct ReadingSessionView: View {
                     Color.black.opacity(fogWashOpacity)
                         .allowsHitTesting(false)
                 }
+                .pauseVeil(isPaused)
                 .accessibilityHidden(isFogged)
                 .allowsHitTesting(!isFogged)
                 .safeAreaBar(edge: .bottom, spacing: 0) {

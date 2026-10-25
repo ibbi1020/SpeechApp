@@ -188,12 +188,9 @@ struct MonologueSessionView: View {
     @ViewBuilder
     private func sessionContent(_ session: MonologueSession) -> some View {
         let live = session.phase == .taking || session.phase == .paused
-        sessionCanvas(session)
-            .blur(radius: fogBlurRadius)
-            .overlay {
-                Color.black.opacity(fogWashOpacity)
-                    .allowsHitTesting(false)
-            }
+        // The veil stays mounted for the whole take, including resume. Leaving
+        // the take removes it, so "Paused" does not fade out over the notes page.
+        veiledPage(session, live: live)
             .accessibilityHidden(isFogged || showLeaveConfirm)
             .allowsHitTesting(!isFogged && !showLeaveConfirm)
             .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: session.phase)
@@ -203,6 +200,21 @@ struct MonologueSessionView: View {
                     .accessibilityHidden(showLeaveConfirm)
                     .allowsHitTesting(!showLeaveConfirm)
             }
+    }
+
+    @ViewBuilder
+    private func veiledPage(_ session: MonologueSession, live: Bool) -> some View {
+        let page = sessionCanvas(session)
+            .blur(radius: fogBlurRadius)
+            .overlay {
+                Color.black.opacity(fogWashOpacity)
+                    .allowsHitTesting(false)
+            }
+        if live {
+            page.pauseVeil(session.phase == .paused)
+        } else {
+            page
+        }
     }
 
     @ViewBuilder
@@ -396,21 +408,12 @@ struct MonologueSessionView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            VStack(spacing: 20) {
-                MonologueCountdown(
-                    session: session,
-                    reduceMotion: reduceMotion,
-                    size: clockSize
-                )
-                .equatable()
-
-                if session.phase == .paused {
-                    Text("Paused.")
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity)
+            MonologueCountdown(
+                session: session,
+                reduceMotion: reduceMotion,
+                size: clockSize
+            )
+            .equatable()
         }
         .padding(.horizontal, SpeechSpacing.page)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

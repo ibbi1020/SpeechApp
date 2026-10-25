@@ -81,20 +81,24 @@ struct ConversationSessionView: View {
     var body: some View {
         ZStack {
             SpeechScreenBackground()
-            AmbientBackdrop(place: ambientPlace)
 
             if showsFailure {
+                AmbientBackdrop(place: ambientPlace)
                 failureView
             } else {
-                liveCanvas
-                    .safeAreaBar(edge: .bottom, spacing: 0) {
-                        bottomChrome
-                    }
-                    .accessibilityHidden(showStopConfirm)
-                    .allowsHitTesting(!showStopConfirm)
-                    // The stop card does not sit on a flat scrim: the conversation
-                    // behind it blurs and dims as one layer.
-                    .blurBackdrop(showStopConfirm)
+                // The place picture is inside the veil so pause blurs it with the
+                // rest of the exercise. Bars added after the veil stay sharp.
+                AmbientBackdrop(place: ambientPlace)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .pauseVeil(isPaused)
+                .safeAreaBar(edge: .bottom, spacing: 0) {
+                    bottomChrome
+                }
+                .accessibilityHidden(showStopConfirm)
+                .allowsHitTesting(!showStopConfirm)
+                // The stop card does not sit on a flat scrim: the conversation
+                // behind it blurs and dims as one layer.
+                .blurBackdrop(showStopConfirm)
             }
 
             if showStopConfirm {
@@ -195,20 +199,6 @@ struct ConversationSessionView: View {
             }
             tearDownIfLeaving()
         }
-    }
-
-    private var liveCanvas: some View {
-        ZStack {
-            if isPaused {
-                Text("Paused — still here.")
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-            }
-        }
-        .padding(.horizontal, SpeechSpacing.page)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var voiceButton: some View {
