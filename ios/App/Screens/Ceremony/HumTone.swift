@@ -27,7 +27,7 @@ final class HumTone {
     static let highHz: Double = 392
 
     /// Opens the microphone. Safe to call more than once. The played note uses
-    /// the same engine. Voice processing stays off: it learns a held hum and,
+    /// the same engine. The voice unit stays off: it learns a held hum and,
     /// a few seconds in, takes the hum out of the meter with the speaker.
     func listen() async {
         _ = await prepare()
@@ -59,6 +59,8 @@ final class HumTone {
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else { return false }
         wire(format)
 
+        RawMicrophone.silenceVoiceProcessing(engine)
+        try? RawMicrophone.useMeasurementMode(AVAudioSession.sharedInstance())
         let input = engine.inputNode
         let hardware = input.outputFormat(forBus: 0)
         guard hardware.sampleRate > 0, hardware.channelCount > 0 else { return false }
@@ -85,6 +87,7 @@ final class HumTone {
         engine.prepare()
         do {
             try engine.start()
+            try? RawMicrophone.useMeasurementMode(AVAudioSession.sharedInstance())
             return true
         } catch {
             return false
@@ -100,11 +103,13 @@ final class HumTone {
         do {
             // Voice processing takes the speaker out of the mic. A held hum matches
             // that speaker, so once the canceller settles it takes the hum out too
-            // and the field sinks back to rest. Measurement mode skips that.
+            // and the field sinks back to rest. Measurement mode is the supported
+            // way to skip that. Bluetooth HFP is a speech route and does the same
+            // thing inside the headset, so it stays off.
             try session.setCategory(
                 .playAndRecord,
                 mode: .measurement,
-                options: [.defaultToSpeaker, .allowBluetoothHFP]
+                options: [.defaultToSpeaker]
             )
             if #available(iOS 27, *) {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -122,6 +127,7 @@ final class HumTone {
             // The receiver is too quiet to hear in a room. This forces the
             // loudspeaker after the session is on.
             try session.overrideOutputAudioPort(.speaker)
+            RawMicrophone.lockBuiltInCapsule(session)
             return true
         } catch {
             return false
