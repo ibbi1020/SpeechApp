@@ -5,7 +5,14 @@ import UIKit
 /// A full line fades while the next line is already up, so speech is not held
 /// for the fade. The row slides as one piece.
 struct SpeechSubtitle: View {
+    /// Quiet type on a flat screen. Full white type when a picture is behind the line.
+    enum Legibility: Equatable {
+        case quiet
+        case caption
+    }
+
     let text: String
+    var legibility: Legibility = .quiet
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: SpeechReading.textStyle) private var fontSize: CGFloat = SpeechReading.size
@@ -28,7 +35,21 @@ struct SpeechSubtitle: View {
     }
     /// The line uses this share of the width the section offers. 0.85 is 15% narrower.
     private static let widthFraction: CGFloat = 0.85
-    private static let inkOpacity = 0.62
+
+    /// Quiet type stays faint. A caption on a picture is full white.
+    private var inkOpacity: Double {
+        legibility == .caption ? 1 : 0.62
+    }
+
+    private var inkColor: Color {
+        switch legibility {
+        case .quiet:
+            Color.primary.opacity(0.62)
+        case .caption:
+            Color.white
+        }
+    }
+
     private static let enterBlur: CGFloat = 14
     private static let enterDuration = 0.45
     private static let fadeDuration = 0.2
@@ -36,11 +57,15 @@ struct SpeechSubtitle: View {
     private static let pageTurnDuration = 0.12
 
     private var subtitleFont: Font {
-        SpeechReading.font(size: fontSize)
+        SpeechReading.font(
+            size: fontSize,
+            weight: legibility == .caption ? .semibold : .regular
+        )
     }
 
     private var lineHeight: CGFloat {
-        SpeechReading.uiFont(size: fontSize).lineHeight
+        let weight: UIFont.Weight = legibility == .caption ? .semibold : .regular
+        return SpeechReading.uiFont(size: fontSize, weight: weight).lineHeight
     }
 
     private var spokenLine: String {
@@ -86,6 +111,9 @@ struct SpeechSubtitle: View {
             apply(text: newText, animated: true)
         }
         .onChange(of: availableWidth) { _, _ in
+            apply(text: text, animated: false)
+        }
+        .onChange(of: legibility) { _, _ in
             apply(text: text, animated: false)
         }
     }
@@ -159,7 +187,7 @@ struct SpeechSubtitle: View {
                 Token(
                     surface: surface,
                     blur: entering ? Self.enterBlur : 0,
-                    opacity: entering ? 0 : Self.inkOpacity
+                    opacity: entering ? 0 : inkOpacity
                 )
             )
         }
@@ -232,7 +260,7 @@ struct SpeechSubtitle: View {
             makeTokens(
                 from: page,
                 blur: entering ? Self.enterBlur : 0,
-                opacity: entering ? 0 : Self.inkOpacity
+                opacity: entering ? 0 : inkOpacity
             ),
             animated: false
         )
@@ -269,7 +297,7 @@ struct SpeechSubtitle: View {
                 if page.isEmpty || pageStart + page.count >= sourceWords.count { break }
                 pageStart += page.count
             }
-            commit(makeTokens(from: fittedPage(), blur: 0, opacity: Self.inkOpacity), animated: false)
+            commit(makeTokens(from: fittedPage(), blur: 0, opacity: inkOpacity), animated: false)
             return
         }
 
@@ -290,7 +318,7 @@ struct SpeechSubtitle: View {
             tokens = makeTokens(from: incoming, blur: Self.enterBlur, opacity: 0)
         }
         withAnimation(.easeOut(duration: Self.pageTurnDuration)) {
-            setAllTokens(blur: 0, opacity: Self.inkOpacity)
+            setAllTokens(blur: 0, opacity: inkOpacity)
             outgoingOpacity = 0
             outgoingBlur = Self.enterBlur
         }
@@ -339,11 +367,11 @@ struct SpeechSubtitle: View {
             outgoing = []
             outgoingOpacity = 0
             outgoingBlur = 0
-            commit(makeTokens(from: next, blur: 0, opacity: Self.inkOpacity), animated: false)
+            commit(makeTokens(from: next, blur: 0, opacity: inkOpacity), animated: false)
             if animated, reduceMotion {
                 setAllTokens(opacity: 0)
                 withAnimation(.easeOut(duration: Self.fadeDuration)) {
-                    setAllTokens(opacity: Self.inkOpacity)
+                    setAllTokens(opacity: inkOpacity)
                 }
             }
             return
@@ -360,7 +388,7 @@ struct SpeechSubtitle: View {
             tokens = makeTokens(from: next, blur: Self.enterBlur, opacity: 0)
         }
         withAnimation(.easeOut(duration: Self.pageTurnDuration)) {
-            setAllTokens(blur: 0, opacity: Self.inkOpacity)
+            setAllTokens(blur: 0, opacity: inkOpacity)
             outgoingOpacity = 0
             outgoingBlur = Self.enterBlur
         }
@@ -398,7 +426,7 @@ struct SpeechSubtitle: View {
         withAnimation(.easeOut(duration: duration)) {
             for index in tokens.indices where index >= startIndex {
                 tokens[index].blur = 0
-                tokens[index].opacity = Self.inkOpacity
+                tokens[index].opacity = inkOpacity
             }
         }
     }
@@ -445,7 +473,7 @@ struct SpeechSubtitle: View {
 
     private func resting(_ source: [Token]) -> [Token] {
         source.map { token in
-            Token(id: token.id, surface: token.surface, blur: 0, opacity: Self.inkOpacity)
+            Token(id: token.id, surface: token.surface, blur: 0, opacity: inkOpacity)
         }
     }
 
@@ -454,7 +482,7 @@ struct SpeechSubtitle: View {
             ForEach(lineTokens) { token in
                 Text(token.surface)
                     .font(subtitleFont)
-                    .foregroundStyle(.primary.opacity(Self.inkOpacity))
+                    .foregroundStyle(inkColor)
                     .opacity(token.opacity)
                     .blur(radius: token.blur)
             }
@@ -502,7 +530,8 @@ struct SpeechSubtitle: View {
     }
 
     private func measure(_ string: String) -> CGFloat {
-        let font = SpeechReading.uiFont(size: fontSize)
+        let weight: UIFont.Weight = legibility == .caption ? .semibold : .regular
+        let font = SpeechReading.uiFont(size: fontSize, weight: weight)
         return (string as NSString).size(withAttributes: [.font: font]).width
     }
 

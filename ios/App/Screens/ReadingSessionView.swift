@@ -90,6 +90,7 @@ struct ReadingSessionView: View {
                     dismiss()
                 }
             }
+            .speechOwnCircle()
         }
         .background(SpeechEdgeSwipe())
         .background {

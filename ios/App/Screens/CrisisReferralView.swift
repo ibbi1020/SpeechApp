@@ -46,6 +46,7 @@ struct CrisisReferralView: View {
                     goHome()
                 }
             }
+            .speechOwnCircle()
         }
         .speechBottomBlur()
         .speechBarChrome()

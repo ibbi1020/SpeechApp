@@ -115,12 +115,14 @@ struct MonologueSessionView: View {
                     handleBack()
                 }
             }
+            .speechOwnCircle()
             if session?.phase == .planning || session?.phase == .between {
                 ToolbarItem(placement: .topBarTrailing) {
                     SpeechBarButton(systemName: "waveform", label: "Gallery") {
                         model.showGallery()
                     }
                 }
+                .speechOwnCircle()
             }
         }
         .background {
