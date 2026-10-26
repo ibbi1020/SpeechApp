@@ -1,8 +1,8 @@
 import SpeechAppKit
 import SwiftUI
 
-/// Explain first, including the breath. The voice starts only after Ready, then runs
-/// ten seconds, which is short enough to hold in one breath.
+/// Explain first, including the breath. The sound starts only after they tap,
+/// then runs ten seconds, which is short enough to hold in one breath.
 struct VocalStep: View {
     var clip: VocalClip
     var phase: HumPhase
@@ -51,6 +51,7 @@ struct VocalStep: View {
             Text(CeremonyCopy.humBreath)
                 .ceremonyType(.body)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

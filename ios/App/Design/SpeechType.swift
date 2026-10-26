@@ -156,6 +156,7 @@ private struct SpeechPageTitle: ViewModifier {
                         dismiss()
                     }
                 }
+                .speechOwnCircle()
             }
             .background {
                 SpeechBarFonts(dynamicTypeSize: dynamicTypeSize)

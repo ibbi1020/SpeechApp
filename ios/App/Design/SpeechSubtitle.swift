@@ -1,10 +1,18 @@
 import SwiftUI
 import UIKit
 
-/// Live caption above the speech orb. One line at a time. When the line is full,
-/// it fades out and the next line appears. The fade is the only wait.
+/// Live caption above the speech orb. One line at a time.
+/// A full line fades while the next line is already up, so speech is not held
+/// for the fade. The row slides as one piece.
 struct SpeechSubtitle: View {
+    /// Quiet type on a flat screen. Full white type when a picture is behind the line.
+    enum Legibility: Equatable {
+        case quiet
+        case caption
+    }
+
     let text: String
+    var legibility: Legibility = .quiet
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: SpeechReading.textStyle) private var fontSize: CGFloat = SpeechReading.size
@@ -15,23 +23,49 @@ struct SpeechSubtitle: View {
     @State private var sourceWords: [String] = []
     @State private var pageStart = 0
     @State private var isPaging = false
+    /// Horizontal slide for the whole row. One value, so the words stay locked together.
+    @State private var lineShift: CGFloat = 0
+    @State private var outgoing: [Token] = []
+    @State private var outgoingOpacity: Double = 0
+    @State private var outgoingBlur: CGFloat = 0
+    @State private var turnID = 0
 
     private var wordGap: CGFloat {
         SpeechReading.scaledGap(SpeechReading.wordGap, size: fontSize)
     }
     /// The line uses this share of the width the section offers. 0.85 is 15% narrower.
     private static let widthFraction: CGFloat = 0.85
-    private static let inkOpacity = 0.62
+
+    /// Quiet type stays faint. A caption on a picture is full white.
+    private var inkOpacity: Double {
+        legibility == .caption ? 1 : 0.62
+    }
+
+    private var inkColor: Color {
+        switch legibility {
+        case .quiet:
+            Color.primary.opacity(0.62)
+        case .caption:
+            Color.white
+        }
+    }
+
     private static let enterBlur: CGFloat = 14
     private static let enterDuration = 0.45
     private static let fadeDuration = 0.2
+    /// Crossfade when a line fills. Short enough that the next line is not already full.
+    private static let pageTurnDuration = 0.12
 
     private var subtitleFont: Font {
-        SpeechReading.font(size: fontSize)
+        SpeechReading.font(
+            size: fontSize,
+            weight: legibility == .caption ? .semibold : .regular
+        )
     }
 
     private var lineHeight: CGFloat {
-        SpeechReading.uiFont(size: fontSize).lineHeight
+        let weight: UIFont.Weight = legibility == .caption ? .semibold : .regular
+        return SpeechReading.uiFont(size: fontSize, weight: weight).lineHeight
     }
 
     private var spokenLine: String {
@@ -45,15 +79,16 @@ struct SpeechSubtitle: View {
     }
 
     private var line: some View {
-        HStack(spacing: wordGap) {
-            ForEach(tokens) { token in
-                Text(token.surface)
-                    .font(subtitleFont)
-                    .foregroundStyle(.primary.opacity(Self.inkOpacity))
-                    .opacity(token.opacity)
-                    .blur(radius: token.blur)
-                    .offset(x: token.shiftX)
-            }
+        ZStack {
+            wordRow(outgoing)
+                .blur(radius: outgoingBlur)
+                .opacity(outgoingOpacity)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .accessibilityHidden(true)
+            wordRow(tokens)
+                .geometryGroup()
+                .offset(x: lineShift)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
         .frame(maxWidth: .infinity)
         .frame(height: lineHeight)
@@ -78,17 +113,24 @@ struct SpeechSubtitle: View {
         .onChange(of: availableWidth) { _, _ in
             apply(text: text, animated: false)
         }
+        .onChange(of: legibility) { _, _ in
+            apply(text: text, animated: false)
+        }
     }
 
     // MARK: - Diff
 
     private func apply(text: String, animated: Bool) {
+        if !animated {
+            dropOutgoing()
+        }
+
         let next = Self.splitWords(text)
 
         if next.isEmpty {
             sourceWords = []
             pageStart = 0
-            isPaging = false
+            dropOutgoing()
             clear(animated: animated)
             return
         }
@@ -98,13 +140,17 @@ struct SpeechSubtitle: View {
         if !extends {
             sourceWords = next
             pageStart = 0
-            isPaging = false
+            dropOutgoing()
             reveal(animated: animated && !tokens.isEmpty, replace: !tokens.isEmpty)
             return
         }
 
         sourceWords = next
-        if isPaging { return }
+        if isPaging {
+            // The old line is fading. Keep painting words onto the line already on screen.
+            syncVisiblePage(animated: animated)
+            return
+        }
 
         let page = fittedPage()
         let showing = tokens.map(\.surface)
@@ -121,7 +167,7 @@ struct SpeechSubtitle: View {
                 appendWords(additions, onto: tokens, animated: animated && !showing.isEmpty)
             }
             if overflow {
-                beginPageTurn(animated: true)
+                beginPageTurn(animated: animated)
             }
             return
         }
@@ -135,29 +181,46 @@ struct SpeechSubtitle: View {
 
         var working = existing
         let growth = width(of: additions, leadingGap: !working.isEmpty)
-        if animated, !reduceMotion, !working.isEmpty, growth > 0 {
-            for index in working.indices {
-                working[index].shiftX = growth / 2
-            }
-        }
-
         let entering = animated && !reduceMotion
         for surface in additions {
             working.append(
                 Token(
                     surface: surface,
                     blur: entering ? Self.enterBlur : 0,
-                    opacity: entering ? 0 : Self.inkOpacity,
-                    shiftX: 0
+                    opacity: entering ? 0 : inkOpacity
                 )
             )
         }
 
         let additionStart = working.count - additions.count
         commit(working, animated: false)
+        if entering, !existing.isEmpty, growth > 0 {
+            slideLine(by: growth)
+        }
 
         if animated {
             settleEntrance(from: additionStart)
+        }
+    }
+
+    /// The centered row jumps when a word lands. Shift the whole row by half that
+    /// growth, then ease it back, so every word glides together.
+    private func slideLine(by growth: CGFloat) {
+        var snap = Transaction()
+        snap.disablesAnimations = true
+        withTransaction(snap) {
+            lineShift += growth / 2
+        }
+        withAnimation(SpeechMotion.settle) {
+            lineShift = 0
+        }
+    }
+
+    private func cancelSlide() {
+        var snap = Transaction()
+        snap.disablesAnimations = true
+        withTransaction(snap) {
+            lineShift = 0
         }
     }
 
@@ -191,12 +254,13 @@ struct SpeechSubtitle: View {
             replaceAll(with: page, animated: true)
             return
         }
+        cancelSlide()
         let entering = animated && !reduceMotion
         commit(
             makeTokens(
                 from: page,
                 blur: entering ? Self.enterBlur : 0,
-                opacity: entering ? 0 : Self.inkOpacity
+                opacity: entering ? 0 : inkOpacity
             ),
             animated: false
         )
@@ -205,31 +269,73 @@ struct SpeechSubtitle: View {
         }
     }
 
+    /// Words that arrive while the previous line is fading, painted onto the line already up.
+    private func syncVisiblePage(animated: Bool) {
+        let page = fittedPage()
+        let showing = tokens.map(\.surface)
+        if page == showing { return }
+        if showing.isEmpty || page.starts(with: showing) {
+            appendWords(
+                Array(page.dropFirst(showing.count)),
+                onto: tokens,
+                animated: animated && !showing.isEmpty
+            )
+            return
+        }
+        presentPage(animated: false, replace: false)
+    }
+
     private func beginPageTurn(animated: Bool) {
         guard !isPaging else { return }
         let leaving = fittedPage()
         guard !leaving.isEmpty, pageStart + leaving.count < sourceWords.count else { return }
-        isPaging = true
-        let gate = bumpGeneration()
-
-        let finish: @MainActor @Sendable () -> Void = {
-            pageStart += leaving.count
-            commit([], animated: false)
-            isPaging = false
-            reveal(animated: animated, replace: false)
-        }
 
         if !animated || reduceMotion {
-            finish()
+            cancelSlide()
+            while true {
+                let page = fittedPage()
+                if page.isEmpty || pageStart + page.count >= sourceWords.count { break }
+                pageStart += page.count
+            }
+            commit(makeTokens(from: fittedPage(), blur: 0, opacity: inkOpacity), animated: false)
             return
         }
 
-        fadeOutAll(blur: Self.enterBlur, duration: Self.enterDuration)
-        scheduleIfCurrent(gate: gate, after: Self.enterDuration, finish)
+        let snapshot = resting(tokens)
+        pageStart += leaving.count
+        let incoming = fittedPage()
+        isPaging = true
+        let gate = bumpTurn()
+        _ = bumpGeneration()
+        cancelSlide()
+
+        var snap = Transaction()
+        snap.disablesAnimations = true
+        withTransaction(snap) {
+            outgoing = snapshot
+            outgoingOpacity = 1
+            outgoingBlur = 0
+            tokens = makeTokens(from: incoming, blur: Self.enterBlur, opacity: 0)
+        }
+        withAnimation(.easeOut(duration: Self.pageTurnDuration)) {
+            setAllTokens(blur: 0, opacity: inkOpacity)
+            outgoingOpacity = 0
+            outgoingBlur = Self.enterBlur
+        }
+        scheduleTurn(gate: gate, after: Self.pageTurnDuration) {
+            outgoing = []
+            outgoingOpacity = 0
+            outgoingBlur = 0
+            isPaging = false
+            let page = fittedPage()
+            if !page.isEmpty, pageStart + page.count < sourceWords.count {
+                beginPageTurn(animated: true)
+            }
+        }
     }
 
-    /// Show the current page. When that page is already full, the next fade starts
-    /// once this line is visible. There is no hold before the fade and no blank gap after it.
+    /// Show the current page. A page that is already full turns once it has been drawn.
+    /// The turn itself does not wait out the word entrance.
     private func reveal(animated: Bool, replace: Bool) {
         let page = fittedPage()
         guard !page.isEmpty else {
@@ -243,42 +349,53 @@ struct SpeechSubtitle: View {
             return
         }
 
-        let turnAnimated = animated && !reduceMotion
-        presentPage(animated: turnAnimated, replace: false)
+        presentPage(animated: false, replace: false)
+        let delay: TimeInterval = animated && !reduceMotion ? Self.pageTurnDuration : 0
         let gate = generation
-        // The entrance fade is the wait. Starting the next turn in this same update
-        // would fade the line out before it had been drawn.
-        let delay: TimeInterval = turnAnimated ? Self.enterDuration : 0
         scheduleIfCurrent(gate: gate, after: delay) {
-            beginPageTurn(animated: turnAnimated)
+            beginPageTurn(animated: animated)
         }
     }
 
     private func replaceAll(with next: [String], animated: Bool) {
-        let gate = bumpGeneration()
+        _ = bumpGeneration()
+        let gate = bumpTurn()
+        isPaging = false
 
         if !animated || reduceMotion {
-            commit(makeTokens(from: next, blur: 0, opacity: Self.inkOpacity), animated: false)
+            cancelSlide()
+            outgoing = []
+            outgoingOpacity = 0
+            outgoingBlur = 0
+            commit(makeTokens(from: next, blur: 0, opacity: inkOpacity), animated: false)
             if animated, reduceMotion {
                 setAllTokens(opacity: 0)
                 withAnimation(.easeOut(duration: Self.fadeDuration)) {
-                    setAllTokens(opacity: Self.inkOpacity)
+                    setAllTokens(opacity: inkOpacity)
                 }
             }
             return
         }
 
-        fadeOutAll(blur: Self.enterBlur, duration: Self.enterDuration)
-
-        let incoming = next
-        scheduleIfCurrent(gate: gate, after: Self.enterDuration) {
-            commit(
-                makeTokens(from: incoming, blur: Self.enterBlur, opacity: 0),
-                animated: false
-            )
-            withAnimation(.easeOut(duration: Self.enterDuration)) {
-                setAllTokens(blur: 0, opacity: Self.inkOpacity)
-            }
+        let snapshot = resting(tokens)
+        cancelSlide()
+        var snap = Transaction()
+        snap.disablesAnimations = true
+        withTransaction(snap) {
+            outgoing = snapshot
+            outgoingOpacity = 1
+            outgoingBlur = 0
+            tokens = makeTokens(from: next, blur: Self.enterBlur, opacity: 0)
+        }
+        withAnimation(.easeOut(duration: Self.pageTurnDuration)) {
+            setAllTokens(blur: 0, opacity: inkOpacity)
+            outgoingOpacity = 0
+            outgoingBlur = Self.enterBlur
+        }
+        scheduleTurn(gate: gate, after: Self.pageTurnDuration) {
+            outgoing = []
+            outgoingOpacity = 0
+            outgoingBlur = 0
         }
     }
 
@@ -305,22 +422,11 @@ struct SpeechSubtitle: View {
     }
 
     private func settleEntrance(from startIndex: Int) {
-        if reduceMotion {
-            withAnimation(.easeOut(duration: Self.fadeDuration)) {
-                setAllTokens(blur: 0, opacity: Self.inkOpacity, shiftX: 0)
-            }
-            return
-        }
-
-        withAnimation(SpeechMotion.settle) {
-            for index in tokens.indices where index < startIndex {
-                tokens[index].shiftX = 0
-            }
-        }
-        withAnimation(.easeOut(duration: Self.enterDuration)) {
+        let duration = reduceMotion ? Self.fadeDuration : Self.enterDuration
+        withAnimation(.easeOut(duration: duration)) {
             for index in tokens.indices where index >= startIndex {
                 tokens[index].blur = 0
-                tokens[index].opacity = Self.inkOpacity
+                tokens[index].opacity = inkOpacity
             }
         }
     }
@@ -341,8 +447,51 @@ struct SpeechSubtitle: View {
         }
     }
 
+    @discardableResult
+    private func bumpTurn() -> Int {
+        turnID += 1
+        return turnID
+    }
+
+    private func scheduleTurn(gate: Int, after delay: TimeInterval, _ work: @MainActor @escaping () -> Void) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(delay))
+            guard gate == turnID else { return }
+            work()
+        }
+    }
+
+    /// Drop a line that is fading out. Cancels the turn so it cannot fire later.
+    private func dropOutgoing() {
+        _ = bumpTurn()
+        isPaging = false
+        outgoing = []
+        outgoingOpacity = 0
+        outgoingBlur = 0
+        cancelSlide()
+    }
+
+    private func resting(_ source: [Token]) -> [Token] {
+        source.map { token in
+            Token(id: token.id, surface: token.surface, blur: 0, opacity: inkOpacity)
+        }
+    }
+
+    private func wordRow(_ lineTokens: [Token]) -> some View {
+        HStack(spacing: wordGap) {
+            ForEach(lineTokens) { token in
+                Text(token.surface)
+                    .font(subtitleFont)
+                    .foregroundStyle(inkColor)
+                    .opacity(token.opacity)
+                    .blur(radius: token.blur)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
     private func makeTokens(from surfaces: [String], blur: CGFloat, opacity: Double) -> [Token] {
-        surfaces.map { Token(surface: $0, blur: blur, opacity: opacity, shiftX: 0) }
+        surfaces.map { Token(surface: $0, blur: blur, opacity: opacity) }
     }
 
     private func commit(_ next: [Token], animated: Bool) {
@@ -363,13 +512,11 @@ struct SpeechSubtitle: View {
 
     private func setAllTokens(
         blur: CGFloat? = nil,
-        opacity: Double? = nil,
-        shiftX: CGFloat? = nil
+        opacity: Double? = nil
     ) {
         for index in tokens.indices {
             if let blur { tokens[index].blur = blur }
             if let opacity { tokens[index].opacity = opacity }
-            if let shiftX { tokens[index].shiftX = shiftX }
         }
     }
 
@@ -383,7 +530,8 @@ struct SpeechSubtitle: View {
     }
 
     private func measure(_ string: String) -> CGFloat {
-        let font = SpeechReading.uiFont(size: fontSize)
+        let weight: UIFont.Weight = legibility == .caption ? .semibold : .regular
+        let font = SpeechReading.uiFont(size: fontSize, weight: weight)
         return (string as NSString).size(withAttributes: [.font: font]).width
     }
 
@@ -426,19 +574,16 @@ private struct Token: Identifiable, Equatable {
     var surface: String
     var blur: CGFloat
     var opacity: Double
-    var shiftX: CGFloat
 
     init(
         id: UUID = UUID(),
         surface: String,
         blur: CGFloat,
-        opacity: Double,
-        shiftX: CGFloat
+        opacity: Double
     ) {
         self.id = id
         self.surface = surface
         self.blur = blur
         self.opacity = opacity
-        self.shiftX = shiftX
     }
 }

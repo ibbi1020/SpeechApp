@@ -31,6 +31,8 @@ final class AppModel {
 
     init() {
         TakeRetention.discardTakesLeftFromLastLaunch()
+        sitting = Self.loadSitting()
+        closeExerciseLeftFromLastLaunch()
     }
 
     var hostedFormat: HostedFormat = .conversation
@@ -64,6 +66,15 @@ final class AppModel {
     /// Sessions in the last 7 days. Filled when the ceremony begins.
     var weeklyCounts = WeeklyPracticeCounts()
 
+    /// Set when a ceremony finishes. Later exercises do not move its clock.
+    private var sitting = PracticeSitting()
+
+    /// Breath and hum run when this sitting is closed. Read at the tap, so a
+    /// half hour that ends while the exercise step is on screen is honored.
+    var runsGrounding: Bool {
+        sitting.needsGrounding(at: Date())
+    }
+
     var isInCeremony: Bool { entry == .ceremony }
 
     /// Home opens the gallery full screen. The sheet clears this after it opens.
@@ -81,10 +92,12 @@ final class AppModel {
     func selectPassage(_ passage: Passage) {
         currentPassage = passage
         noteBegun()
+        noteExerciseStarted()
         route = .reading
     }
 
     func finish(report: SessionReport, recordingID: UUID? = nil) {
+        noteExerciseEnded()
         ledger.record(report: report)
         StruggleLedgerStore.save(ledger)
         route = .report(report, recordingID: recordingID)
@@ -95,6 +108,7 @@ final class AppModel {
         possibleMinorFlag: Bool = false,
         recordingID: UUID? = nil
     ) {
+        noteExerciseEnded()
         notePossibleMinorIfNeeded(possibleMinorFlag)
         if report.kind == .crisis {
             route = .crisis
@@ -104,6 +118,7 @@ final class AppModel {
     }
 
     func presentCrisis(possibleMinorFlag: Bool = false) {
+        noteExerciseEnded()
         notePossibleMinorIfNeeded(possibleMinorFlag)
         route = .crisis
     }
@@ -119,14 +134,17 @@ final class AppModel {
             currentPassage = NextPassagePicker.pick(catalog: catalog, ledger: ledger)
         }
         noteBegun()
+        noteExerciseStarted()
         route = .reading
     }
 
     func chooseAnotherPassage() {
+        noteExerciseEnded()
         route = .library
     }
 
     func goHome() {
+        noteExerciseEnded()
         entry = .home
         route = .home
     }
@@ -161,10 +179,15 @@ final class AppModel {
         }
     }
 
-    /// The hum step is the only place a ceremony opens an exercise.
+    /// Opens the chosen exercise. The hum does this after a grounding. The
+    /// exercise step does it when this sitting is already open.
     func finishCeremony() {
         let kind = chosenKind ?? .conversation
         if kind == .conversation, budget.startEnabled == false { return }
+        if runsGrounding {
+            sitting = sitting.opened(at: Date())
+            saveSitting()
+        }
         start(kind)
     }
 
@@ -178,6 +201,7 @@ final class AppModel {
     /// Popping a pushed screen lands back on the root. The ceremony, if that's
     /// where the session started, is still the root's state.
     func dismissToEntry() {
+        noteExerciseEnded()
         route = .home
         guard entry == .ceremony else { return }
         ceremonyStep = Ceremony.first
@@ -211,6 +235,7 @@ final class AppModel {
 
     func startMonologue() {
         noteBegun()
+        noteExerciseStarted()
         route = .monologue
     }
 
@@ -220,6 +245,7 @@ final class AppModel {
         regimenID: UUID? = nil,
         topic: String = ""
     ) {
+        noteExerciseEnded()
         notePossibleMinorIfNeeded(possibleMinorFlag)
         if report.kind == .crisis {
             route = .crisis
@@ -237,7 +263,14 @@ final class AppModel {
     func startConversation() {
         guard budget.startEnabled else { return }
         noteBegun()
+        noteExerciseStarted()
         route = .conversation
+    }
+
+    /// The app went to the background. A later cold launch treats an exercise
+    /// that was still open as having ended here.
+    func rememberBackground() {
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.backgroundedKey)
     }
 
     private func notePossibleMinorIfNeeded(_ flagged: Bool) {
@@ -252,5 +285,60 @@ final class AppModel {
     private static func currentCalendarMonth(now: Date = .now, calendar: Calendar = .current) -> String {
         let parts = calendar.dateComponents([.year, .month], from: now)
         return String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 0)
+    }
+
+    private static let sittingStartedKey = "ceremony.sitting.startedAt"
+    private static let exerciseStartedKey = "ceremony.sitting.exerciseStartedAt"
+    private static let exerciseEndedKey = "ceremony.sitting.exerciseEndedAt"
+    private static let backgroundedKey = "ceremony.sitting.backgroundedAt"
+
+    private func noteExerciseStarted() {
+        sitting = sitting.startedExercise(at: Date())
+        saveSitting()
+    }
+
+    private func noteExerciseEnded() {
+        let next = sitting.endedExercise(at: Date())
+        guard next != sitting else { return }
+        sitting = next
+        saveSitting()
+    }
+
+    /// A killed launch comes back on Home with the exercise still marked open.
+    /// Close it at the moment the app last backgrounded.
+    private func closeExerciseLeftFromLastLaunch() {
+        guard let exerciseStartedAt = sitting.exerciseStartedAt else { return }
+        if let exerciseEndedAt = sitting.exerciseEndedAt, exerciseEndedAt >= exerciseStartedAt { return }
+        let ended = Self.storedDate(Self.backgroundedKey) ?? exerciseStartedAt
+        sitting = sitting.endedExercise(at: ended)
+        saveSitting()
+    }
+
+    private func saveSitting() {
+        Self.store(sitting.startedAt, key: Self.sittingStartedKey)
+        Self.store(sitting.exerciseStartedAt, key: Self.exerciseStartedKey)
+        Self.store(sitting.exerciseEndedAt, key: Self.exerciseEndedKey)
+    }
+
+    private static func loadSitting() -> PracticeSitting {
+        PracticeSitting(
+            startedAt: storedDate(sittingStartedKey),
+            exerciseStartedAt: storedDate(exerciseStartedKey),
+            exerciseEndedAt: storedDate(exerciseEndedKey)
+        )
+    }
+
+    private static func storedDate(_ key: String) -> Date? {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: key) != nil else { return nil }
+        return Date(timeIntervalSince1970: defaults.double(forKey: key))
+    }
+
+    private static func store(_ date: Date?, key: String) {
+        if let date {
+            UserDefaults.standard.set(date.timeIntervalSince1970, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 }

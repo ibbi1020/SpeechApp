@@ -22,6 +22,9 @@ packages:
   SwiftUI-Flow:
     url: https://github.com/tevelee/SwiftUI-Flow
     from: 3.0.0
+  Lottie:
+    url: https://github.com/airbnb/lottie-ios
+    from: 4.5.0
 targets:
   SpeechApp:
     type: application
@@ -30,8 +33,14 @@ targets:
       - path: App
         excludes:
           - "Resources/Ambient/**"
+          - "Resources/ConfettiFalling.lottie"
+          - "Resources/ConfettiFalling.license.txt"
           - "XAISecrets.plist"
       - path: App/Resources/Ambient
+        buildPhase: resources
+      - path: App/Resources/ConfettiFalling.lottie
+        buildPhase: resources
+      - path: App/Resources/ConfettiFalling.license.txt
         buildPhase: resources
       - path: Shared
       - path: ../font/InstrumentSerif-Regular.ttf
@@ -61,6 +70,8 @@ targets:
         product: DSWaveformImageViews
       - package: SwiftUI-Flow
         product: Flow
+      - package: Lottie
+        product: Lottie
       - target: SpeechAppWidget
         embed: true
     info:
@@ -68,7 +79,7 @@ targets:
       properties:
         CFBundleDisplayName: Orator
         CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "4"
+        CFBundleVersion: "5"
         # Bonjour name of this Mac. Stays valid when the DHCP address changes.
         # Phone and Mac have to be on the same Wi-Fi. Do not put a 192.168 address here.
         # CI/TestFlight: no mint server. Empty = skip budget POSTs (see MintClient.makeIfConfigured).
@@ -91,7 +102,7 @@ targets:
           - InstrumentSerif-Regular.ttf
         UILaunchScreen:
           UIColorName: LaunchBackground
-          UIImageName: LaunchMark
+          UIImageName: OratorMark
           UIImageRespectsSafeAreaInsets: false
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -127,7 +138,7 @@ targets:
       properties:
         CFBundleDisplayName: Orator
         CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "4"
+        CFBundleVersion: "5"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 schemes:

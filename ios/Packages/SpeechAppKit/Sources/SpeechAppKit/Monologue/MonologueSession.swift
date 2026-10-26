@@ -30,8 +30,8 @@ public final class MonologueSession {
 
     public var betweenCopy: String {
         switch takes.last?.index {
-        case 1: return "Three minutes."
-        case 2: return "Two minutes."
+        case 1: return "Two minutes."
+        case 2: return "Three minutes."
         default: return ""
         }
     }

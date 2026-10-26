@@ -1,7 +1,7 @@
 import SpeechAppKit
 import SwiftUI
 
-/// Paced breathing at six breaths a minute, four seconds in and six out, three times.
+/// Paced breathing at six breaths a minute, four seconds in and six out, twice.
 ///
 /// The circle is the pacer: it grows for the whole inhale and shrinks for the whole
 /// exhale, so nobody has to read a number to know where they are. It stays off screen
@@ -64,7 +64,7 @@ struct BreatheStep: View {
         var hidden = Transaction()
         hidden.disablesAnimations = true
         withTransaction(hidden) { showCircle = false }
-        // A cancelled run stops here. It must not report the breaths as finished.
+        // A cancelled run stops here. It must not report the breath as finished.
         guard await BreathRun.wait(BreathPacing.settle) else { return }
         // Under Reduce Motion the circle holds at one steady size for the whole run.
         // Snapping it large and small every few seconds would be a slow oscillation,

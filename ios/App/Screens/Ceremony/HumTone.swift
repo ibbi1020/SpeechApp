@@ -26,18 +26,6 @@ final class HumTone {
     static let lowHz: Double = 196
     static let highHz: Double = 392
 
-    private nonisolated static let lastClipKey = "ceremony.vocalClip.last"
-
-    /// Walks to the next exercise each time the ceremony runs, so the same one does
-    /// not come up twice in a row.
-    nonisolated static func rotate() -> VocalClip {
-        let defaults = UserDefaults.standard
-        let previous = defaults.string(forKey: lastClipKey).flatMap(VocalClip.init(rawValue:))
-        let clip = VocalClip.next(after: previous)
-        defaults.set(clip.rawValue, forKey: lastClipKey)
-        return clip
-    }
-
     /// Opens the microphone. Safe to call more than once. The played note uses
     /// the same engine. Voice processing stays off: it learns a held hum and,
     /// a few seconds in, takes the hum out of the meter with the speaker.

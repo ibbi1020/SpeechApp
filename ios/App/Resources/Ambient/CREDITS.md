@@ -1,5 +1,7 @@
 # Ambient beds
 
+Pictures sit next to the sounds and use the same file stem. They are local art, not part of the recordings below.
+
 Each file is an 8 second excerpt of a CC0 recording, converted to 24 kHz mono.
 CC0 does not require credit. The names are here so the source stays findable.
 No file is sold as a treatment for speaking anxiety.

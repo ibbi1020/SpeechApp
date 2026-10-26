@@ -12,6 +12,10 @@ struct GallerySheet: View {
     var containerHeight: CGFloat
 
     @Environment(AppModel.self) private var model
+    /// How open this sheet is, so Progress can close when Gallery comes forward.
+    @Binding var lift: CGFloat
+    /// How open Progress is. Crossing into view closes this sheet.
+    var otherLift: CGFloat
 
     static let peek: CGFloat = 88
 
@@ -70,6 +74,14 @@ struct GallerySheet: View {
             Button("Cancel", role: .cancel) {}
         }
         .task { reload() }
+        .onChange(of: displayed, initial: true) { _, value in
+            lift = value
+        }
+        .onChange(of: otherLift) { old, new in
+            guard new > 0.05, old <= 0.05 else { return }
+            guard displayed > 0.02 || isDragging else { return }
+            settle(open: false)
+        }
         .onAppear {
             keepEnabled = RecordingsService.keepRecordings
             consumeGalleryRequest()
@@ -79,10 +91,19 @@ struct GallerySheet: View {
         }
     }
 
-    init(topInset: CGFloat, bottomInset: CGFloat, containerHeight: CGFloat, startOpen: Bool = false) {
+    init(
+        topInset: CGFloat,
+        bottomInset: CGFloat,
+        containerHeight: CGFloat,
+        lift: Binding<CGFloat>,
+        otherLift: CGFloat,
+        startOpen: Bool = false
+    ) {
         self.topInset = topInset
         self.bottomInset = bottomInset
         self.containerHeight = containerHeight
+        _lift = lift
+        self.otherLift = otherLift
         if startOpen {
             _progress = State(initialValue: 1)
             _committedFullScreen = State(initialValue: true)
@@ -338,7 +359,11 @@ struct GallerySheet: View {
                     .font(.system(size: 15))
                     .foregroundStyle(.secondary)
                     .padding(.top, 6)
-                    .padding(.bottom, 18)
+                    .padding(.bottom, item.reportLines.isEmpty || item.takes.isEmpty ? 18 : SpeechSpacing.related)
+                if !item.takes.isEmpty {
+                    FeedbackStatList(rows: FeedbackStatRows.stored(item.reportLines))
+                        .padding(.bottom, item.reportLines.isEmpty ? 0 : 18)
+                }
                 TakeReviewSection(manifest: item, saveError: item.saveError)
             }
             .padding(.horizontal, 16)

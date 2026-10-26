@@ -214,6 +214,179 @@ extension View {
     }
 }
 
+// MARK: - Pause veil
+
+extension View {
+    /// Blur this exercise and lay a rising gray wash over it while it is paused.
+    ///
+    /// The blur and the wash run together. The pause mark fades in only after both
+    /// have finished. The wash does not take taps.
+    ///
+    /// Put bars and buttons on *after* this modifier. Blur wraps the view it is
+    /// applied to, so chrome added afterwards stays sharp and receives the taps.
+    func pauseVeil(_ isPaused: Bool) -> some View {
+        modifier(PauseVeil(isPaused: isPaused))
+    }
+}
+
+/// Exercise content pushed back for pause: blurred, then covered by a wash that
+/// climbs from the bottom. The mark is a separate step so it does not appear
+/// while the wash is still moving.
+private struct PauseVeil: ViewModifier {
+    var isPaused: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @State private var veil: CGFloat = 0
+    @State private var showsMark = false
+    @State private var generation = 0
+
+    private var blurRadius: CGFloat {
+        guard !reduceMotion, !reduceTransparency else { return 0 }
+        return veil * PauseVeilMotion.blurRadius
+    }
+
+    private var veilAnimation: Animation {
+        .easeOut(duration: reduceMotion ? BlurMotion.reducedFade : PauseVeilMotion.veil)
+    }
+
+    private var markAnimation: Animation {
+        .easeOut(duration: reduceMotion ? BlurMotion.reducedFade : PauseVeilMotion.mark)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: blurRadius)
+            .overlay {
+                ZStack {
+                    PauseWash(
+                        progress: veil,
+                        reduceMotion: reduceMotion,
+                        bottomOpacity: reduceTransparency
+                            ? PauseVeilMotion.opaqueWashOpacity
+                            : PauseVeilMotion.washOpacity
+                    )
+                    if showsMark {
+                        PauseMark()
+                            .transition(.opacity)
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+            // Tied to `veil` and `showsMark`, not the exercise phase. A spring on
+            // the screen would otherwise climb the wash on the phase's curve and
+            // bring the mark in at the same time.
+            .animation(veilAnimation, value: veil)
+            .animation(markAnimation, value: showsMark)
+            .onAppear { settle(isPaused, animated: false) }
+            .onChange(of: isPaused) { _, paused in
+                settle(paused, animated: true)
+            }
+    }
+
+    /// `animated` is false when the screen appears already paused, so a rotation
+    /// does not replay the climb.
+    private func settle(_ paused: Bool, animated: Bool) {
+        generation += 1
+        let gate = generation
+
+        guard animated else {
+            var snap = Transaction()
+            snap.disablesAnimations = true
+            withTransaction(snap) {
+                veil = paused ? 1 : 0
+                showsMark = paused
+            }
+            return
+        }
+
+        if paused {
+            withAnimation(veilAnimation) {
+                veil = 1
+            } completion: {
+                guard gate == generation else { return }
+                withAnimation(markAnimation) {
+                    showsMark = true
+                }
+            }
+        } else if showsMark {
+            withAnimation(markAnimation) {
+                showsMark = false
+            } completion: {
+                guard gate == generation else { return }
+                withAnimation(veilAnimation) {
+                    veil = 0
+                }
+            }
+        } else {
+            withAnimation(veilAnimation) {
+                veil = 0
+            }
+        }
+    }
+}
+
+/// Gray wash, clear at its top edge and darkest at the bottom of the screen.
+///
+/// The gradient is always drawn at full height. What changes is a soft mask that
+/// uncovers it from the bottom. Growing the gradient's own frame squishes the
+/// fade into a thin strip, so the body reads as a slab until the last moment.
+/// Reduce Motion fades the full wash in place. The climb is the motion that
+/// setting exists to avoid.
+struct PauseWash: View {
+    var progress: CGFloat
+    var reduceMotion: Bool
+    var bottomOpacity: Double
+
+    var body: some View {
+        let pigment = Color(white: PauseVeilMotion.washWhite)
+        let revealProgress = reduceMotion ? 1 : progress
+        GeometryReader { geo in
+            let reach = geo.size.height * PauseVeilMotion.reach
+            LinearGradient(
+                stops: PauseVeilMotion.stops(bottomOpacity: bottomOpacity).map { stop in
+                    Gradient.Stop(color: pigment.opacity(stop.opacity), location: stop.location)
+                },
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: reach)
+            .mask {
+                LinearGradient(
+                    stops: PauseVeilMotion.revealStops(progress: revealProgress).map { stop in
+                        Gradient.Stop(color: .white.opacity(stop.opacity), location: stop.location)
+                    },
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .opacity(reduceMotion ? progress : 1)
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+    }
+}
+
+/// White filled pause glyph, with a gray word under it. Both sit in the center.
+private struct PauseMark: View {
+    @ScaledMetric(relativeTo: .title) private var iconSize: CGFloat = 60
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "pause.fill")
+                .font(.system(size: iconSize, weight: .bold))
+                .foregroundStyle(.white)
+                .accessibilityHidden(true)
+            Text("Paused")
+                .font(.title3.weight(.medium))
+                .foregroundStyle(Color(white: PauseVeilMotion.labelWhite))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Paused")
+    }
+}
+
 /// The roll has to be a modifier so the animation is attached to the text
 /// whose value changed. Putting it on a parent animates the wrong thing.
 private struct DigitRoll<Value: Equatable>: ViewModifier {

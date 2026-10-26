@@ -17,7 +17,7 @@ struct MonologueReportTests {
         #expect(!report.lines.contains(where: { $0.label == "Turns" }))
     }
 
-    @Test("one 90s take under a 4 min ceiling is still thin (need two counting takes)")
+    @Test("one counting take is still thin (need two counting takes)")
     func leftoverStillNeedsTwo() {
         let report = MonologueReportBuilder.build(
             takes: [

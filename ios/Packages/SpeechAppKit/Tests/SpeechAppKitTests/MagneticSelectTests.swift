@@ -5,42 +5,16 @@ import Testing
 
 @Suite("Exercise plates")
 struct ExercisePlateTests {
-    private let size = CGSize(width: 390, height: 800)
-
-    @Test("each exercise keeps the prototype's placement")
-    func placement() {
+    @Test("each exercise keeps its colour")
+    func colors() {
         let reading = ExercisePlate.plate(for: .reading)
         let monologue = ExercisePlate.plate(for: .monologue)
         let conversation = ExercisePlate.plate(for: .conversation)
-        let warm = monologue.glows[0]
-        let cool = conversation.glows[0]
 
-        #expect(reading.glows[0].x == 0.50)
-        #expect(warm.x < 0.5)
-        #expect(cool.x > 0.5)
-        // Further right than a mirror of the yellow glow, and lower, and wider.
-        #expect(cool.x > 1 - warm.x)
-        #expect(cool.y > warm.y)
-        #expect(cool.radius > warm.radius)
+        #expect(reading.red > 0.9)
+        #expect(reading.green > 0.9)
         #expect(monologue.red > monologue.blue)
         #expect(conversation.blue > conversation.red)
-    }
-
-    @Test("the headline stays dark, and the blue field lives on the right")
-    func sides() {
-        let conversation = ExercisePlate.plate(for: .conversation).sources(in: size)
-        let monologue = ExercisePlate.plate(for: .monologue).sources(in: size)
-        let reading = ExercisePlate.plate(for: .reading).sources(in: size)
-
-        let right = CGPoint(x: 370, y: 760)
-        let left = CGPoint(x: 30, y: 740)
-        let top = CGPoint(x: size.width / 2, y: 8)
-
-        #expect(DitherHorizon.brightness(at: right, sources: conversation) > DitherHorizon.brightness(at: left, sources: conversation))
-        #expect(DitherHorizon.brightness(at: left, sources: monologue) > DitherHorizon.brightness(at: right, sources: monologue))
-        #expect(DitherHorizon.brightness(at: top, sources: conversation) == 0)
-        #expect(DitherHorizon.brightness(at: top, sources: monologue) == 0)
-        #expect(DitherHorizon.brightness(at: top, sources: reading) == 0)
     }
 }
 

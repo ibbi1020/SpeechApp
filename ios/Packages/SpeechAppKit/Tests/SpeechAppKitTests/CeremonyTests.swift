@@ -28,7 +28,7 @@ struct CeremonyStepTests {
         #expect(Ceremony.previous(before: .speak) == nil)
     }
 
-    @Test("breathing paces six a minute, four in and six out")
+    @Test("breathing is two cycles, six a minute, four in and six out")
     func pacing() {
         #expect(BreathPacing.cycle == 10)
         #expect(BreathPacing.rate == 6)
@@ -42,6 +42,13 @@ struct CeremonyStepTests {
     @Test("the voice runs ten seconds, short enough to hold in one breath")
     func vocalLength() {
         #expect(VocalClip.seconds == 10)
+    }
+
+    @Test("the ceremony voice is the closed-lip hum")
+    func ceremonyVoice() {
+        #expect(VocalClip.ceremony == .hum)
+        #expect(VocalClip.ceremony.isFluctuating == false)
+        #expect(VocalClip.ceremony.explain == "Hum on \u{201C}mmm\u{201D}, lips closed.")
     }
 
     @Test("clips rotate through both families and wrap")
@@ -101,7 +108,7 @@ struct CeremonyControlTests {
     private let open = ConversationBudgetSnapshot(limit: 20, used: 3, month: "2026-10")
     private let spent = ConversationBudgetSnapshot(limit: 20, used: 20, month: "2026-10")
 
-    @Test("a cancelled breath does not count as two breaths")
+    @Test("a cancelled breath does not count as finished")
     func cancelledBreathIsNotDone() async {
         let task = Task { await BreathRun.finished() }
         task.cancel()
@@ -141,6 +148,13 @@ struct CeremonyControlTests {
         #expect(openControl.isEnabled)
         #expect(openControl.advance == .step)
 
+        let straight = CeremonyControls.control(
+            step: .exercise, chosen: .reading, budget: open, roomReady: true, grounding: false
+        )
+        #expect(straight.title == "Choose a passage")
+        #expect(straight.isEnabled)
+        #expect(straight.advance == .start(.reading))
+
         let spentControl = CeremonyControls.control(
             step: .exercise, chosen: .conversation, budget: spent, roomReady: true
         )
@@ -174,22 +188,36 @@ struct CeremonyControlTests {
         #expect(quiet.isEnabled)
         #expect(quiet.advance == .step)
 
+        let carry = CeremonyControls.roomWarning(warning: false, then: .start(.monologue))
+        #expect(carry.title == "Continue")
+        #expect(carry.advance == .start(.monologue))
+
         #expect(CeremonyCopy.roomLoud == "This room is loud.")
         #expect(CeremonyCopy.roomLoudDetail == "It will get into what you say.")
         #expect(CeremonyCopy.roomClear == "Quieter now. Go ahead.")
     }
 
-    @Test("the siren waits for Ready, then the exercise's own start title")
+    @Test("humming names the mouth, the tap, and the glide")
+    func hummingCopy() {
+        #expect(VocalClip.hum.explain == "Hum on \u{201C}mmm\u{201D}, lips closed.")
+        #expect(VocalClip.hum.line == "Lips closed, up then down.")
+        #expect(CeremonyCopy.humBreath == "A sound plays when you tap. Breathe in, then let your voice go up and down with it.")
+        #expect(VocalClip.hum.explain.lowercased().contains("match") == false)
+        #expect(VocalClip.hum.line.lowercased().contains("along") == false)
+        #expect(CeremonyCopy.humWaiting.lowercased().contains("listen") == false)
+    }
+
+    @Test("the siren waits for Play the sound, then the exercise's own start title")
     func hum() {
         let explain = CeremonyControls.control(step: .hum, chosen: .reading, budget: open)
-        #expect(explain.title == "Ready")
+        #expect(explain.title == "Play the sound")
         #expect(explain.isEnabled)
         #expect(explain.advance == .armHum)
 
         let playing = CeremonyControls.control(
             step: .hum, chosen: .reading, budget: open, humPhase: .playing
         )
-        #expect(playing.title == "Listen")
+        #expect(playing.title == "Playing")
         #expect(playing.isEnabled == false)
 
         let ready = CeremonyControls.control(
@@ -212,6 +240,70 @@ struct CeremonyControlTests {
             let control = CeremonyControls.control(step: step, chosen: .reading, budget: open)
             #expect(control.isEnabled == false)
         }
+    }
+}
+
+@Suite("Practice sitting")
+struct PracticeSittingTests {
+    private let start = Date(timeIntervalSince1970: 1_000_000)
+
+    @Test("someone with no sitting is grounded")
+    func fresh() {
+        #expect(PracticeSitting().needsGrounding(at: start))
+    }
+
+    @Test("the half hour after a ceremony skips grounding")
+    func window() {
+        let sitting = PracticeSitting().opened(at: start)
+        #expect(sitting.needsGrounding(at: start.addingTimeInterval(29 * 60)) == false)
+        #expect(sitting.needsGrounding(at: start.addingTimeInterval(30 * 60)))
+    }
+
+    @Test("a later exercise does not restart the half hour")
+    func noReset() {
+        let sitting = PracticeSitting()
+            .opened(at: start)
+            .startedExercise(at: start.addingTimeInterval(25 * 60))
+        #expect(sitting.startedAt == start)
+        #expect(sitting.needsGrounding(at: start.addingTimeInterval(26 * 60)) == false)
+        #expect(sitting.needsGrounding(at: start.addingTimeInterval(31 * 60)))
+    }
+
+    @Test("an exercise still going at the half hour carries ten minutes past its end")
+    func carry() {
+        let ended = start.addingTimeInterval(40 * 60)
+        let sitting = PracticeSitting()
+            .opened(at: start)
+            .startedExercise(at: start.addingTimeInterval(20 * 60))
+            .endedExercise(at: ended)
+        #expect(sitting.needsGrounding(at: ended.addingTimeInterval(9 * 60)) == false)
+        #expect(sitting.needsGrounding(at: ended.addingTimeInterval(10 * 60)))
+    }
+
+    @Test("an exercise that finished inside the half hour does not carry past it")
+    func noCarry() {
+        let sitting = PracticeSitting()
+            .opened(at: start)
+            .startedExercise(at: start)
+            .endedExercise(at: start.addingTimeInterval(10 * 60))
+        #expect(sitting.needsGrounding(at: start.addingTimeInterval(31 * 60)))
+    }
+
+    @Test("ending an exercise that never started changes nothing")
+    func endWithoutStart() {
+        let sitting = PracticeSitting().opened(at: start).endedExercise(at: start.addingTimeInterval(5 * 60))
+        #expect(sitting.exerciseEndedAt == nil)
+    }
+
+    @Test("a second end does not move the first")
+    func endOnce() {
+        let ended = start.addingTimeInterval(40 * 60)
+        let sitting = PracticeSitting()
+            .opened(at: start)
+            .startedExercise(at: start)
+            .endedExercise(at: ended)
+            .endedExercise(at: ended.addingTimeInterval(15 * 60))
+        #expect(sitting.exerciseEndedAt == ended)
     }
 }
 

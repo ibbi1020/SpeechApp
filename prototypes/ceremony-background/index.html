@@ -238,7 +238,7 @@ const STEPS = {
   home:     { gain: 0.30, dither: 1, rim: 0, cta: "Begin",    sub: null },
   exercise: { gain: 0.52, dither: 1, rim: 0, cta: "This one", sub: null },
   breathe:  { gain: 0.64, dither: 1, rim: 1, cta: "Done",     sub: "Follow the circle. It grows as you breathe in." },
-  hum:      { gain: 0.88, dither: 1, rim: 0, cta: "Ready",    sub: "Take a breath first." },
+  hum:      { gain: 0.88, dither: 1, rim: 0, cta: "Play the sound", sub: "A sound plays when you tap. Breathe in, then let your voice go up and down with it." },
 };
 
 const state = {
@@ -516,7 +516,7 @@ function headingFor() {
     case "home":     return "Find your voice";
     case "exercise": return FORMATS[state.format].line;
     case "breathe":  return breathPhaseLabel();
-    case "hum":      return "Match the note with a hum.";
+    case "hum":      return "Hum on \u201Cmmm\u201D, lips closed.";
   }
 }
 

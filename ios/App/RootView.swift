@@ -3,12 +3,18 @@ import SpeechAppKit
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         SplashContainer {
             navigation
         }
         .preferredColorScheme(.dark)
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                model.rememberBackground()
+            }
+        }
     }
 
     private var navigation: some View {

@@ -45,8 +45,8 @@ public enum CeremonyCopy {
     public static let breatheIn = "Breathe in"
     public static let breatheOut = "Breathe out"
     public static let breatheButton = "Done"
-    /// What they just did. The pace is still six a minute, four in and six out, but
-    /// that number here reads as if the exercise was six breaths. It is two.
+    /// What they just did. The pace is still six a minute, four in and six out.
+    /// Naming that rate here would read as six breaths. It is two.
     public static let breatheRate = "Two breaths"
 
     public static let exerciseButton = "This one"
@@ -59,20 +59,21 @@ public enum CeremonyCopy {
     public static let roomContinue = "Continue"
     public static let roomContinueAnyway = "Continue anyway"
 
-    /// Shown before any sound plays. The breath cue lives here, where it is support
-    /// for holding a note, not a technique for nerves.
-    public static let humReady = "Ready"
-    public static let humWaiting = "Listen"
-    public static let humBreath = "Take a breath first."
+    /// Shown before any sound plays. The breath is air for the glide, not a cue
+    /// for nerves. "Ready" did not say that a tap starts the sound. "Listen" told
+    /// people to stay quiet on the same screen that asked them to use their voice.
+    public static let humReady = "Play the sound"
+    public static let humWaiting = "Playing"
+    public static let humBreath = "A sound plays when you tap. Breathe in, then let your voice go up and down with it."
 }
 
 /// Paced breathing at the resonance-frequency target.
 ///
 /// Six breaths a minute is the standard target and 4 + 6 is the protocol used in the
 /// literature, though the ratio itself is not established: 1:2 and 1:1 produced no
-/// measurable HRV difference at this rate. Two cycles is a deliberate shortening to
-/// fit the ceremony. The shortest *tested* dose is five minutes, so the length is
-/// inference and the pacing is not. See docs/scoping-entry-ritual.md.
+/// measurable HRV difference at this rate. Two cycles, because this step runs once
+/// per sitting rather than before every exercise. The shortest *tested* dose is five
+/// minutes, so the length is inference and the pacing is not. See docs/scoping-entry-ritual.md.
 public enum BreathPacing {
     /// Still, before the first inhale. Landing on a screen already mid-breath means
     /// missing that breath.
@@ -91,7 +92,7 @@ public enum BreathPacing {
 ///
 /// SwiftUI often starts this task, cancels it, and starts it again as the step
 /// appears. `Task.sleep` throws as soon as the task is cancelled. Treating that
-/// as a finished wait would skip the two breaths and turn Done on.
+/// as a finished wait would skip the breath and turn Done on.
 public enum BreathRun {
     /// Waits for one part of the breath.
     /// False when the wait is cut short, so a cancelled run is not finished.
@@ -104,7 +105,7 @@ public enum BreathRun {
         return Task.isCancelled == false
     }
 
-    /// Settle, then every inhale and exhale. True means both breaths finished.
+    /// Settle, then the inhale and the exhale. True means that breath finished.
     public static func finished() async -> Bool {
         guard await wait(BreathPacing.settle) else { return false }
         for _ in 0 ..< BreathPacing.cycles {
@@ -135,28 +136,36 @@ public enum VocalClip: String, Equatable, Sendable, CaseIterable {
         }
     }
 
+    /// Shown while the sound plays. The mouth, and that the pitch moves.
+    /// "Along" and "sing it back" never said whether to wait, copy, or join in.
     public var line: String {
         switch self {
-        case .hum: "Hum along."
-        case .nasal: "Sing it back on \u{201C}ng\u{201D}."
-        case .lipTrill: "Buzz your lips along."
-        case .tongueTrill: "Roll your tongue along."
+        case .hum: "Lips closed, up then down."
+        case .nasal: "Stay on \u{201C}ng\u{201D}, up then down."
+        case .lipTrill: "Lips buzzing, up then down."
+        case .tongueTrill: "Tongue rolling, up then down."
         }
     }
 
+    /// Shown before the sound. The mouth only. The glide and the tap live on
+    /// `CeremonyCopy.humBreath`, because nothing is playing yet to match.
     public var explain: String {
         switch self {
-        case .hum: "Match the note with a hum."
-        case .nasal: "Match the note on an \u{201C}ng\u{201D}, like the end of \u{201C}sing\u{201D}."
-        case .lipTrill: "Match the note with your lips buzzing, like \u{201C}brrr\u{201D}."
-        case .tongueTrill: "Match the note with a rolled tongue, like \u{201C}rrrr\u{201D}."
+        case .hum: "Hum on \u{201C}mmm\u{201D}, lips closed."
+        case .nasal: "Hold \u{201C}ng\u{201D}, like the end of \u{201C}sing\u{201D}."
+        case .lipTrill: "Buzz your lips, like \u{201C}brrr\u{201D}."
+        case .tongueTrill: "Roll your tongue, like \u{201C}rrrr\u{201D}."
         }
     }
 
     /// Ten seconds. Twenty ran people out of breath.
     public static let seconds: Double = 10
 
-    /// Walks the list so the exercise differs run to run.
+    /// The ceremony hum. Closed lips are something people can do. The other clips
+    /// stay defined for the player, and the ceremony does not rotate to them.
+    public static let ceremony: VocalClip = .hum
+
+    /// Walks the list so a caller can vary the exercise. The ceremony does not.
     public static func next(after previous: VocalClip?) -> VocalClip {
         guard let previous, let index = allCases.firstIndex(of: previous) else {
             return allCases[0]
@@ -194,15 +203,15 @@ public struct CeremonyControl: Equatable, Sendable {
 }
 
 public enum CeremonyControls {
-    /// The pinned button for one step. A spent conversation month is stopped here,
-    /// before the hum, so the user is not walked to a control that cannot start.
     /// The pinned button while the loud-room warning is up. Copy follows the
     /// button band, which has hysteresis. The field color does not.
-    public static func roomWarning(warning: Bool) -> CeremonyControl {
+    /// `then` is where Continue goes. A sitting that is already open starts the
+    /// exercise. A new sitting walks on to the breath.
+    public static func roomWarning(warning: Bool, then advance: CeremonyAdvance = .step) -> CeremonyControl {
         CeremonyControl(
             title: warning ? CeremonyCopy.roomContinueAnyway : CeremonyCopy.roomContinue,
             isEnabled: true,
-            advance: .step
+            advance: advance
         )
     }
 
@@ -212,8 +221,11 @@ public enum CeremonyControls {
         budget: ConversationBudgetSnapshot,
         breatheDone: Bool = false,
         humPhase: HumPhase = .explain,
-        roomReady: Bool = false
+        roomReady: Bool = false,
+        grounding: Bool = true
     ) -> CeremonyControl {
+        // A spent conversation month is stopped here, before the hum, so the
+        // user is not walked to a control that cannot start.
         switch step {
         case .breathe:
             return CeremonyControl(
@@ -225,6 +237,14 @@ public enum CeremonyControls {
             if chosen == .conversation, budget.startEnabled == false {
                 let blocked = PracticeFormat.startControl(for: .conversation, budget: budget)
                 return CeremonyControl(title: blocked.title, isEnabled: false, advance: .step)
+            }
+            if grounding == false {
+                let start = PracticeFormat.startControl(for: chosen, budget: budget)
+                return CeremonyControl(
+                    title: start.title,
+                    isEnabled: roomReady && start.isEnabled,
+                    advance: .start(chosen)
+                )
             }
             return CeremonyControl(
                 title: CeremonyCopy.exerciseButton,

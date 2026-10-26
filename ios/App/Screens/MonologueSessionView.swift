@@ -47,6 +47,7 @@ struct MonologueSessionView: View {
     @State private var finishedTakes: [MonologueRecordingPipeline.FinishedTake] = []
     @State private var finalizeTask: Task<Void, Never>?
     @State private var isFinalizingAudio = false
+    @State private var didStartReportSave = false
     @State private var saveErrorMessage: String?
 
     /// Fog the notes page while the microphone starts. The take clock stays stopped until it ends.
@@ -114,12 +115,14 @@ struct MonologueSessionView: View {
                     handleBack()
                 }
             }
+            .speechOwnCircle()
             if session?.phase == .planning || session?.phase == .between {
                 ToolbarItem(placement: .topBarTrailing) {
                     SpeechBarButton(systemName: "waveform", label: "Gallery") {
                         model.showGallery()
                     }
                 }
+                .speechOwnCircle()
             }
         }
         .background {
@@ -135,16 +138,13 @@ struct MonologueSessionView: View {
                 await session?.tick()
                 if wasTaking, let session, session.phase != .taking {
                     // Ceiling hit — same as Done for this take.
-                    if session.phase == .between || session.phase == .report {
+                    if session.phase == .between {
                         await captureTakeAudio(session)
-                        if session.phase == .report || session.phase == .crisis {
-                            await persistRegimenIfNeeded(session)
-                            await stopListen()
-                            routeIfFinished()
-                        } else {
-                            await stopListen()
-                            // Between takes: listening restarts on next I’m ready.
-                        }
+                        await stopListen()
+                    } else if session.phase == .report {
+                        await stopListen()
+                        beginReportSave(session)
+                        routeIfFinished()
                     } else if session.phase == .crisis {
                         await handleCrisis(session)
                     }
@@ -190,12 +190,9 @@ struct MonologueSessionView: View {
     @ViewBuilder
     private func sessionContent(_ session: MonologueSession) -> some View {
         let live = session.phase == .taking || session.phase == .paused
-        sessionCanvas(session)
-            .blur(radius: fogBlurRadius)
-            .overlay {
-                Color.black.opacity(fogWashOpacity)
-                    .allowsHitTesting(false)
-            }
+        // The veil stays mounted for the whole take, including resume. Leaving
+        // the take removes it, so "Paused" does not fade out over the notes page.
+        veiledPage(session, live: live)
             .accessibilityHidden(isFogged || showLeaveConfirm)
             .allowsHitTesting(!isFogged && !showLeaveConfirm)
             .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: session.phase)
@@ -205,6 +202,21 @@ struct MonologueSessionView: View {
                     .accessibilityHidden(showLeaveConfirm)
                     .allowsHitTesting(!showLeaveConfirm)
             }
+    }
+
+    @ViewBuilder
+    private func veiledPage(_ session: MonologueSession, live: Bool) -> some View {
+        let page = sessionCanvas(session)
+            .blur(radius: fogBlurRadius)
+            .overlay {
+                Color.black.opacity(fogWashOpacity)
+                    .allowsHitTesting(false)
+            }
+        if live {
+            page.pauseVeil(session.phase == .paused)
+        } else {
+            page
+        }
     }
 
     @ViewBuilder
@@ -281,7 +293,7 @@ struct MonologueSessionView: View {
             Text("\(minutes)")
                 .font(.system(size: stageDurationSize, weight: .semibold))
                 .monospacedDigit()
-                .digitRoll(minutes, countsDown: true, reduceMotion: reduceMotion)
+                .digitRoll(minutes, countsDown: false, reduceMotion: reduceMotion)
             Text(minutes == 1 ? "minute" : "minutes")
                 .speechType(.h3)
                 .foregroundStyle(.secondary)
@@ -398,21 +410,12 @@ struct MonologueSessionView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            VStack(spacing: 20) {
-                MonologueCountdown(
-                    session: session,
-                    reduceMotion: reduceMotion,
-                    size: clockSize
-                )
-                .equatable()
-
-                if session.phase == .paused {
-                    Text("Paused.")
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity)
+            MonologueCountdown(
+                session: session,
+                reduceMotion: reduceMotion,
+                size: clockSize
+            )
+            .equatable()
         }
         .padding(.horizontal, SpeechSpacing.page)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -745,13 +748,12 @@ struct MonologueSessionView: View {
         guard !didRouteFinish, let session else { return }
         if session.phase == .report || session.phase == .crisis, let report = session.report {
             didRouteFinish = true
-            let kept = RecordingsService.keepRecordings
-            let id: UUID? = if report.kind == .crisis {
+            // The id is passed only once a save is actually running. Keep-on with
+            // no audio must not sit on the ring waiting for a file that will not appear.
+            let id: UUID? = if report.kind == .crisis || !didStartReportSave {
                 nil
-            } else if kept || !finishedTakes.isEmpty {
-                regimenID
             } else {
-                nil
+                regimenID
             }
             model.finishMonologue(
                 report: report,
@@ -762,7 +764,9 @@ struct MonologueSessionView: View {
         }
     }
 
-    /// Done / leave: stop mic, snapshot the take, finalize audio, then route.
+    /// Done / leave: stop mic, snapshot the take, then route.
+    /// The take that opens the report saves in the background so the ring is on screen.
+    /// Earlier takes still finish here, between takes.
     private func finishCurrentTake(_ session: MonologueSession, leaving: Bool = false) async {
         await stopListen()
         if leaving {
@@ -774,11 +778,12 @@ struct MonologueSessionView: View {
             await handleCrisis(session)
             return
         }
-        await captureTakeAudio(session)
-        if session.phase == .report || leaving {
-            await persistRegimenIfNeeded(session)
+        if session.phase == .report {
+            beginReportSave(session)
+            routeIfFinished()
+            return
         }
-        routeIfFinished()
+        await captureTakeAudio(session)
     }
 
     private func handleCrisis(_ session: MonologueSession) async {
@@ -826,36 +831,99 @@ struct MonologueSessionView: View {
         }
     }
 
-    private func persistRegimenIfNeeded(_ session: MonologueSession) async {
+    /// Starts the last take's save, then returns. The report ring follows that work.
+    private func beginReportSave(_ session: MonologueSession) {
+        guard !didStartReportSave else { return }
         guard let report = session.report, report.kind != .crisis else { return }
+        let rawURL = takeRecorder.stop()
+        let earlier = finishedTakes
+        let last = session.takes.last
+        let lastNeedsFinalize = rawURL != nil
+            && last.map { take in
+                !take.words.isEmpty && !earlier.contains { $0.index == take.index }
+            } == true
         let kept = RecordingsService.keepRecordings
-        do {
-            if !finishedTakes.isEmpty {
-                // Keep the takes that did save. One failed take must not wipe the others.
-                _ = try MonologueRecordingPipeline.save(
-                    regimenID: regimenID,
-                    topic: session.prompt,
-                    report: report,
-                    finishedTakes: finishedTakes,
-                    inLibrary: kept
-                )
-            } else if kept, let saveErrorMessage {
-                try MonologueRecordingPipeline.saveFailurePlaceholder(
-                    regimenID: regimenID,
-                    topic: session.prompt,
-                    report: report,
-                    saveError: saveErrorMessage
-                )
-            }
-        } catch RecordingStoreError.diskFull where kept {
-            try? MonologueRecordingPipeline.saveDiskFullPlaceholder(
-                regimenID: regimenID,
-                topic: session.prompt,
-                report: report
-            )
-        } catch {
-            // Report still shows; player will be empty.
+        let hasSomething = lastNeedsFinalize || !earlier.isEmpty || (kept && saveErrorMessage != nil)
+        guard hasSomething else {
+            if let rawURL { try? FileManager.default.removeItem(at: rawURL) }
+            return
         }
+        didStartReportSave = true
+        let id = regimenID
+        let topic = session.prompt
+        let failure = saveErrorMessage
+        let duration = last?.wallSeconds ?? earlier.map(\.durationSeconds).max() ?? 0
+        SaveProgressBoard.begin(
+            id: id,
+            durationSeconds: duration,
+            willClean: SaveProgress.needsCleaning(
+                durationSeconds: duration,
+                runsOnSimulator: SaveProgressBoard.runsOnSimulator
+            ),
+            includesTranscription: false
+        )
+        Task { @MainActor in
+            await Self.finishReportSave(
+                id: id,
+                rawURL: rawURL,
+                last: last,
+                lastNeedsFinalize: lastNeedsFinalize,
+                earlier: earlier,
+                report: report,
+                topic: topic,
+                inLibrary: kept,
+                saveError: failure
+            )
+        }
+    }
+
+    /// Finalize the take that opened the report, then write the manifest. Outlives the session screen.
+    private static func finishReportSave(
+        id: UUID,
+        rawURL: URL?,
+        last: MonologueTake?,
+        lastNeedsFinalize: Bool,
+        earlier: [MonologueRecordingPipeline.FinishedTake],
+        report: MonologueReport,
+        topic: String,
+        inLibrary: Bool,
+        saveError: String?
+    ) async {
+        defer { SaveProgressBoard.markFinished(id: id) }
+        var takes = earlier
+        var failure = saveError
+        if lastNeedsFinalize, let rawURL, let last {
+            do {
+                let (url, _) = try await TakeFinalizer.finalizeWithReport(rawCAF: rawURL) { step, fraction in
+                    SaveProgressBoard.update(id: id, step, fraction)
+                }
+                takes.append(
+                    MonologueRecordingPipeline.FinishedTake(
+                        index: last.index,
+                        durationSeconds: last.wallSeconds,
+                        words: last.words,
+                        audioURL: url
+                    )
+                )
+            } catch TakeFinalizerError.empty {
+                try? FileManager.default.removeItem(at: rawURL)
+            } catch {
+                failure = (error as? RecordingStoreError) == .diskFull
+                    ? UserFacingFailure.diskFull
+                    : UserFacingFailure.nothingToPlay
+                try? FileManager.default.removeItem(at: rawURL)
+            }
+        }
+        SaveProgressBoard.update(id: id, .writing, 0)
+        MonologueRecordingPipeline.persist(
+            regimenID: id,
+            topic: topic,
+            report: report,
+            finishedTakes: takes,
+            inLibrary: inLibrary,
+            saveError: failure,
+            onWriting: { SaveProgressBoard.update(id: id, .writing, $0) }
+        )
     }
 
     /// Drops the keyboard on this frame. A normal resign waits out the countdown
@@ -918,6 +986,10 @@ private struct MonologueCountdown: View, Equatable {
 
     private func spokenRemaining(_ t: TimeInterval) -> String {
         let total = max(0, Int(t.rounded()))
-        return "\(total / 60) minutes \(total % 60) seconds remaining"
+        let minutes = total / 60
+        let seconds = total % 60
+        let minuteWord = minutes == 1 ? "minute" : "minutes"
+        let secondWord = seconds == 1 ? "second" : "seconds"
+        return "\(minutes) \(minuteWord) \(seconds) \(secondWord) remaining"
     }
 }

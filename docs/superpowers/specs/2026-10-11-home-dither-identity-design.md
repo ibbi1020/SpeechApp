@@ -64,7 +64,7 @@ three rows; they are not cards.
 | Order | Heading | Line | Figure |
 | --- | --- | --- | --- |
 | 1 | Reading | Read a passage aloud. Hear every sound. | Seated scholar reading from a scroll |
-| 2 | Monologue | One topic, three takes, less time each. | Lone orator, arm extended, mid-word |
+| 2 | Monologue | One topic, three takes, a minute longer each. | Lone orator, arm extended, mid-word |
 | 3 | Conversation | Fifteen minutes with a partner. No script. | Two figures in dialogue, as equals |
 
 The line is capped at 60% of the screen width so it never runs over the figure.

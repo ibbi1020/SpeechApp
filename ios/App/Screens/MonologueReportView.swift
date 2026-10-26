@@ -7,11 +7,14 @@ struct MonologueReportView: View {
     let report: MonologueReport
     let regimenID: UUID?
     var topic: String = ""
-    /// The gallery keeps the profile lines. The report after a talk does not.
+    /// The gallery lists every saved line. The report after a talk lists the last take only.
     var showsLines: Bool = false
 
     @State private var offersSave = false
     @State private var keptThisTake = false
+    @State private var showCeremony = false
+    @State private var didCelebrate = false
+    @State private var ceremonyBlur: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -26,11 +29,23 @@ struct MonologueReportView: View {
             } actions: {
                 actions
             }
+            .blur(radius: ceremonyBlur)
+            .accessibilityHidden(showCeremony)
+
+            if showCeremony, !showsLines {
+                PerfectTakeCeremony(contentBlur: $ceremonyBlur) {
+                    showCeremony = false
+                }
+            }
         }
         .speechPageTitle("Your talk")
-        .speechBottomBlur(bar: false)
         .onAppear {
             offersSave = !showsLines && regimenID != nil && !RecordingsService.keepRecordings
+        }
+        .onChange(of: regimenID) { _, _ in
+            didCelebrate = false
+            showCeremony = false
+            ceremonyBlur = 0
         }
         .onDisappear {
             guard offersSave, !keptThisTake, let regimenID else { return }
@@ -56,22 +71,30 @@ struct MonologueReportView: View {
             }
 
             feedback
-                .padding(.top, SpeechSpacing.section)
+                .padding(.top, topic.isEmpty && report.comparison.isEmpty ? 0 : SpeechSpacing.section)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     @ViewBuilder
     private var feedback: some View {
         if let regimenID {
-            RecordingReviewLoader(recordingID: regimenID)
+            RecordingReviewLoader(
+                recordingID: regimenID,
+                stats: FeedbackStatRows.talkAfterExercise(report),
+                showsPerfectLine: report.kind != .crisis,
+                celebratesCleanTake: report.kind != .crisis,
+                onCleanTake: beginCeremony
+            )
         } else {
-            FeedbackPreparing(message: "This take didn't come through.", showsSpinner: false)
+            FeedbackPreparing(message: "This take didn't come through.")
         }
     }
 
     private var libraryContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            linesCard
+            FeedbackStatList(rows: FeedbackStatRows.stored(report.lines))
 
             if report.kind == .thin {
                 Text("Too little speech to score the rest.")
@@ -90,8 +113,11 @@ struct MonologueReportView: View {
             }
 
             if regimenID != nil {
-                RecordingReviewLoader(recordingID: regimenID)
-                    .padding(.top, SpeechSpacing.section)
+                RecordingReviewLoader(
+                    recordingID: regimenID,
+                    showsPerfectLine: report.kind != .crisis
+                )
+                .padding(.top, SpeechSpacing.section)
             }
         }
     }
@@ -107,26 +133,10 @@ struct MonologueReportView: View {
         }
     }
 
-    private var linesCard: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            ForEach(Array(report.lines.enumerated()), id: \.offset) { _, line in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(line.label)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Text(line.value)
-                        .font(.title2.weight(.semibold))
-                        .monospacedDigit()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
+    private func beginCeremony() {
+        guard !didCelebrate else { return }
+        didCelebrate = true
+        showCeremony = true
     }
 
     private func goHome() {

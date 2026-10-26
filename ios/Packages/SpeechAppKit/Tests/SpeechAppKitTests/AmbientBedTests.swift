@@ -4,6 +4,14 @@ import Testing
 
 @Suite("Ambient bed")
 struct AmbientBedTests {
+    @Test("each place's picture uses the same name as its sound")
+    func pictureMatchesTheSound() {
+        #expect(AmbientPlace.off.imageName == nil)
+        for place in AmbientPlace.allCases where place != .off {
+            #expect(place.imageName == place.resourceName)
+        }
+    }
+
     @Test("off stays stopped while the partner is live")
     func offStaysStopped() {
         #expect(AmbientBedPolicy.command(place: .off, phase: .talking) == .stop)

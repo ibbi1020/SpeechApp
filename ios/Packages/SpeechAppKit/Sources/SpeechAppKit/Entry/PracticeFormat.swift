@@ -37,7 +37,7 @@ public struct PracticeFormat: Identifiable, Equatable, Sendable {
         PracticeFormat(
             kind: .monologue,
             title: "Monologue",
-            line: "One topic, three takes, less time each."
+            line: "One topic, three takes, a minute longer each."
         ),
         PracticeFormat(
             kind: .conversation,

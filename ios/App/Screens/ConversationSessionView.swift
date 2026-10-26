@@ -69,6 +69,11 @@ struct ConversationSessionView: View {
         phase.showsPauseButton
     }
 
+    /// A place picture is behind the controls. Glass would disappear into it.
+    private var overPicture: Bool {
+        ambientPlace != .off
+    }
+
     private var orbPhase: VoiceOrb.Phase {
         .conversation(
             phase: phase,
@@ -83,17 +88,22 @@ struct ConversationSessionView: View {
             SpeechScreenBackground()
 
             if showsFailure {
+                AmbientBackdrop(place: ambientPlace)
                 failureView
             } else {
-                liveCanvas
-                    .safeAreaBar(edge: .bottom, spacing: 0) {
-                        bottomChrome
-                    }
-                    .accessibilityHidden(showStopConfirm)
-                    .allowsHitTesting(!showStopConfirm)
-                    // The stop card does not sit on a flat scrim: the conversation
-                    // behind it blurs and dims as one layer.
-                    .blurBackdrop(showStopConfirm)
+                // The place picture is inside the veil so pause blurs it with the
+                // rest of the exercise. Bars added after the veil stay sharp.
+                AmbientBackdrop(place: ambientPlace)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .pauseVeil(isPaused)
+                .safeAreaBar(edge: .bottom, spacing: 0) {
+                    bottomChrome
+                }
+                .accessibilityHidden(showStopConfirm)
+                .allowsHitTesting(!showStopConfirm)
+                // The stop card does not sit on a flat scrim: the conversation
+                // behind it blurs and dims as one layer.
+                .blurBackdrop(showStopConfirm)
             }
 
             if showStopConfirm {
@@ -112,15 +122,18 @@ struct ConversationSessionView: View {
         }
         .overlay(alignment: .topTrailing) {
             if showsControls && !showStopConfirm {
-                VStack(alignment: .trailing, spacing: 12) {
-                    ambientMenu
-                    voiceButton
-                    AIPartnerBadge()
+                GlassEffectContainer(spacing: 12) {
+                    VStack(alignment: .trailing, spacing: 12) {
+                        ambientMenu
+                        voiceButton
+                        AIPartnerBadge(overPicture: overPicture)
+                    }
                 }
                 .padding(.trailing, 16)
                 .padding(.top, 12)
             }
         }
+        .preferredColorScheme(ambientPlace == .off ? nil : .dark)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: phase)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : SpeechMotion.settle, value: showStopConfirm)
         .navigationTitle("")
@@ -131,10 +144,18 @@ struct ConversationSessionView: View {
         .navigationSubtitle("\(model.budget.label) used this month")
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                SpeechBarButton(systemName: "chevron.left", label: "Back") {
+                Button {
                     dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
                 }
+                .buttonStyle(ConversationControlStyle(
+                    diameter: SpeechIconCircleStyle.gallery,
+                    overPicture: overPicture
+                ))
+                .accessibilityLabel("Back")
             }
+            .speechOwnCircle()
         }
         .toolbar(showStopConfirm || showsFailure ? .hidden : .automatic, for: .navigationBar)
         .background {
@@ -195,27 +216,16 @@ struct ConversationSessionView: View {
         }
     }
 
-    private var liveCanvas: some View {
-        ZStack {
-            if isPaused {
-                Text("Paused — still here.")
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-            }
-        }
-        .padding(.horizontal, SpeechSpacing.page)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     private var voiceButton: some View {
         Button {
             showVoicePicker = true
         } label: {
             Image(systemName: "music.note")
         }
-        .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.standard))
+        .buttonStyle(ConversationControlStyle(
+            diameter: SpeechIconCircleStyle.standard,
+            overPicture: overPicture
+        ))
         .accessibilityLabel("Voice")
         .accessibilityValue(PartnerVoice.named(voiceID)?.name ?? voiceID)
     }
@@ -262,7 +272,10 @@ struct ConversationSessionView: View {
 
     private var liveControlRow: some View {
         VStack(spacing: 4) {
-            SpeechSubtitle(text: session?.subtitleLine ?? "")
+            SpeechSubtitle(
+                text: session?.subtitleLine ?? "",
+                legibility: overPicture ? .caption : .quiet
+            )
             conversationOrbBar
         }
     }
@@ -284,7 +297,10 @@ struct ConversationSessionView: View {
         } label: {
             Image(systemName: ambientPlace == .off ? "speaker.slash" : "speaker.wave.2")
         }
-        .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.standard))
+        .buttonStyle(ConversationControlStyle(
+            diameter: SpeechIconCircleStyle.standard,
+            overPicture: overPicture
+        ))
         .accessibilityLabel("Background")
         .accessibilityValue(ambientPlace.title)
     }
@@ -332,7 +348,10 @@ struct ConversationSessionView: View {
             } label: {
                 Image(systemName: isPaused ? "play.fill" : "pause.fill")
             }
-            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session))
+            .buttonStyle(ConversationControlStyle(
+                diameter: SpeechIconCircleStyle.session,
+                overPicture: overPicture
+            ))
             .opacity(showPauseControl ? 1 : 0)
             .allowsHitTesting(showPauseControl)
             .accessibilityHidden(!showPauseControl)

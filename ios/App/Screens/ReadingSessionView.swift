@@ -71,6 +71,7 @@ struct ReadingSessionView: View {
                     Color.black.opacity(fogWashOpacity)
                         .allowsHitTesting(false)
                 }
+                .pauseVeil(isPaused)
                 .accessibilityHidden(isFogged)
                 .allowsHitTesting(!isFogged)
                 .safeAreaBar(edge: .bottom, spacing: 0) {
@@ -89,6 +90,7 @@ struct ReadingSessionView: View {
                     dismiss()
                 }
             }
+            .speechOwnCircle()
         }
         .background(SpeechEdgeSwipe())
         .background {
@@ -234,17 +236,15 @@ struct ReadingSessionView: View {
             .accessibilityHidden(isPreparing)
             .accessibilityLabel(isPaused ? "Resume" : "Pause")
         } trailing: {
-            Button {
+            ReadingDoneControl(
+                expanded: session?.offersDone == true && !isPreparing,
+                enabled: !isPreparing && !isFinishing
+            ) {
                 Task { await stopSession() }
-            } label: {
-                Image(systemName: "checkmark")
             }
-            .buttonStyle(SpeechIconCircleStyle(diameter: SpeechIconCircleStyle.session, fill: .red))
-            .disabled(isPreparing || isFinishing)
             .opacity(isPreparing ? 0 : 1)
             .allowsHitTesting(!isPreparing)
             .accessibilityHidden(isPreparing)
-            .accessibilityLabel("Done")
         }
         .opacity(isFinishing ? 0.7 : 1)
     }
@@ -326,12 +326,13 @@ struct ReadingSessionView: View {
         guard let session else { return }
         let report = await session.stop()
         session.onRecordedChunk = nil
-        let recordingID = await saveRecording(session: session, report: report)
+        let recordingID = saveRecording(session: session, report: report)
         model.finish(report: report, recordingID: recordingID)
     }
 
     /// Starts saving the take for listen-back and returns its id when there is audio.
-    private func saveRecording(session: ReadingSession, report: SessionReport) async -> UUID? {
+    /// The score is already on `report`. Unhinted words finish in the background, under the ring.
+    private func saveRecording(session: ReadingSession, report: SessionReport) -> UUID? {
         guard let recorder = takeRecorder else { return nil }
         takeRecorder = nil
         guard let rawURL = recorder.stop() else { return nil }
@@ -341,32 +342,46 @@ struct ReadingSessionView: View {
             return nil
         }
         let id = UUID()
-        // Unhinted words show what was really said; the hinted live words are the fallback.
-        var words = await feedbackTranscriber?.finish() ?? []
+        let fallback = session.spokenWords
+        let transcriber = feedbackTranscriber
         feedbackTranscriber = nil
-        if words.isEmpty { words = session.spokenWords }
-        SingleTakeRecording.finalizeAndSave(
-            rawURL: rawURL,
-            content: .init(
-                id: id,
-                format: .reading,
-                topic: passage.title,
-                lines: [
-                    .init(label: "Words read", value: "\(report.matchCount) of \(report.scriptWordCount)"),
-                    .init(label: "Time", value: Self.timeLabel(report.durationSeconds)),
-                ],
-                words: words,
+        let readingPassage = passage
+        let inLibrary = RecordingsService.keepRecordings
+        SaveProgressBoard.begin(
+            id: id,
+            durationSeconds: duration,
+            willClean: SaveProgress.needsCleaning(
                 durationSeconds: duration,
-                markers: ReadingMarkers.build(passage: passage, words: words, durationSeconds: duration),
-                inLibrary: RecordingsService.keepRecordings
-            )
+                runsOnSimulator: SaveProgressBoard.runsOnSimulator
+            ),
+            includesTranscription: transcriber != nil
         )
+        Task { @MainActor in
+            // Unhinted words show what was really said; the hinted live words are the fallback.
+            var words = fallback
+            if let transcriber {
+                SaveProgressBoard.update(id: id, .catchingWords, 0)
+                let heard = await transcriber.finish()
+                if !heard.isEmpty { words = heard }
+                SaveProgressBoard.update(id: id, .catchingWords, 1)
+            }
+            await SingleTakeRecording.finalizeAndSave(
+                rawURL: rawURL,
+                content: .init(
+                    id: id,
+                    format: .reading,
+                    topic: readingPassage.title,
+                    lines: FeedbackStatRows.reading(report).map {
+                        MonologueReport.Line(label: $0.label, value: $0.value)
+                    },
+                    words: words,
+                    durationSeconds: duration,
+                    markers: ReadingMarkers.build(passage: readingPassage, words: words, durationSeconds: duration),
+                    inLibrary: inLibrary
+                )
+            )
+        }
         return id
-    }
-
-    private static func timeLabel(_ seconds: TimeInterval) -> String {
-        let total = max(0, Int(seconds.rounded()))
-        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     #if os(iOS)
@@ -431,6 +446,81 @@ private struct WordLineTops: PreferenceKey {
 
     static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
         value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
+/// Blue Done control. The word's own width is what widens the capsule.
+/// The checkmark stays on the left.
+private struct ReadingDoneControl: View {
+    var expanded: Bool
+    var enabled: Bool
+    var action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Laid-out width of "Done", including the space after it.
+    @State private var labelWidth: CGFloat = 0
+
+    private var side: CGFloat { SpeechIconCircleStyle.session }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 0) {
+                Image(systemName: "checkmark")
+                    .frame(width: side, height: side)
+                    .accessibilityHidden(true)
+                doneLabel
+            }
+            .font(.body.weight(.semibold))
+            .foregroundStyle(Color.white)
+            .background(Color.blue, in: Capsule())
+            .background(alignment: .leading) { labelMeasure }
+            .animation(reduceMotion ? nil : SpeechMotion.settle, value: expanded)
+        }
+        .buttonStyle(ReadingDonePressStyle())
+        .disabled(!enabled)
+        .accessibilityLabel("Done")
+        .sensoryFeedback(.impact(flexibility: .soft), trigger: expanded) { _, now in
+            now
+        }
+    }
+
+    /// Width animates from nothing to the word. The capsule follows that width,
+    /// and the clip keeps the glyphs inside the growing edge.
+    private var doneLabel: some View {
+        Text("Done")
+            .padding(.trailing, 18)
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(width: expanded && labelWidth > 0 ? labelWidth : 0, alignment: .leading)
+            .clipped()
+            .accessibilityHidden(true)
+    }
+
+    private var labelMeasure: some View {
+        Text("Done")
+            .font(.body.weight(.semibold))
+            .padding(.trailing, 18)
+            .fixedSize()
+            .hidden()
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { _, newWidth in
+                guard newWidth > 0, labelWidth != newWidth else { return }
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    labelWidth = newWidth
+                }
+            }
+    }
+}
+
+private struct ReadingDonePressStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1, anchor: .leading)
+            .animation(SpeechMotion.press, value: configuration.isPressed)
     }
 }
 

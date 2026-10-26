@@ -1,6 +1,9 @@
 import Foundation
 import SpeechAppKit
 
+/// The person left the report without Save. The manifest must not be written.
+struct DiscardedTake: Error {}
+
 /// Builds a saved regimen from finished takes + the fluency report.
 @MainActor
 enum MonologueRecordingPipeline {
@@ -11,16 +14,65 @@ enum MonologueRecordingPipeline {
         let audioURL: URL
     }
 
+    /// Writes every take that did save. One failed take must not wipe the others.
+    /// Leaving without Save deletes the folder instead of writing a manifest.
+    static func persist(
+        regimenID: UUID,
+        topic: String,
+        report: MonologueReport,
+        finishedTakes: [FinishedTake],
+        inLibrary: Bool,
+        saveError: String?,
+        onWriting: ((Double) -> Void)? = nil
+    ) {
+        do {
+            if TakeRetention.isDiscarded(regimenID) {
+                try? RecordingsService.store.delete(id: regimenID)
+                return
+            }
+            if !finishedTakes.isEmpty {
+                _ = try save(
+                    regimenID: regimenID,
+                    topic: topic,
+                    report: report,
+                    finishedTakes: finishedTakes,
+                    inLibrary: inLibrary,
+                    onWriting: onWriting
+                )
+            } else if inLibrary, let saveError {
+                try saveFailurePlaceholder(
+                    regimenID: regimenID,
+                    topic: topic,
+                    report: report,
+                    saveError: saveError
+                )
+            }
+        } catch is DiscardedTake {
+            return
+        } catch RecordingStoreError.diskFull where inLibrary {
+            try? saveDiskFullPlaceholder(
+                regimenID: regimenID,
+                topic: topic,
+                report: report
+            )
+        } catch {
+            // Report still shows; the player stays empty until a manifest exists.
+        }
+    }
+
     static func save(
         regimenID: UUID,
         topic: String,
         report: MonologueReport,
         finishedTakes: [FinishedTake],
         inLibrary: Bool = true,
-        store: RecordingStore = RecordingsService.store
+        store: RecordingStore = RecordingsService.store,
+        onWriting: ((Double) -> Void)? = nil
     ) throws -> RecordingManifest {
         var takeEntries: [RecordingManifest.Take] = []
-        for finished in finishedTakes {
+        let total = Double(finishedTakes.count)
+        onWriting?(0)
+        for (offset, finished) in finishedTakes.enumerated() {
             let fileName = "take-\(finished.index).m4a"
             _ = try store.storeAudio(regimenID: regimenID, from: finished.audioURL, fileName: fileName)
             let markers = ReviewMarkers.build(
@@ -37,6 +89,14 @@ enum MonologueRecordingPipeline {
                 )
             )
             try? FileManager.default.removeItem(at: finished.audioURL)
+            if total > 0 {
+                onWriting?(Double(offset + 1) / total)
+            }
+        }
+
+        if TakeRetention.isDiscarded(regimenID) {
+            try? store.delete(id: regimenID)
+            throw DiscardedTake()
         }
 
         let manifest = RecordingManifest(
@@ -75,6 +135,10 @@ enum MonologueRecordingPipeline {
         saveError: String,
         store: RecordingStore = RecordingsService.store
     ) throws {
+        if TakeRetention.isDiscarded(regimenID) {
+            try? store.delete(id: regimenID)
+            throw DiscardedTake()
+        }
         let manifest = RecordingManifest(
             id: regimenID,
             format: .monologue,

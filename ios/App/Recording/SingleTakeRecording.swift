@@ -25,59 +25,64 @@ enum SingleTakeRecording {
         content: Content,
         partnerSpans: [PartnerAudioSpan] = [],
         store: RecordingStore = RecordingsService.store
-    ) {
-        Task { @MainActor in
-            do {
-                let (finalURL, report) = try await TakeFinalizer.finalizeWithReport(
-                    rawCAF: rawURL,
-                    partnerSpans: partnerSpans
-                )
-                log.info(
-                    "\(content.format.rawValue, privacy: .public) take saved: denoise=\(report.usedDenoise) gain=\(report.gain) outputPeak=\(report.outputPeak) markers=\(content.markers.count)"
-                )
-                let fileName = "take-1.m4a"
-                _ = try store.storeAudio(regimenID: content.id, from: finalURL, fileName: fileName)
-                try? FileManager.default.removeItem(at: finalURL)
-                if TakeRetention.isDiscarded(content.id) {
-                    try? store.delete(id: content.id)
-                    return
+    ) async {
+        // The report keeps watching until this returns. Leaving the report must not cancel it.
+        defer { SaveProgressBoard.markFinished(id: content.id) }
+        do {
+            let (finalURL, report) = try await TakeFinalizer.finalizeWithReport(
+                rawCAF: rawURL,
+                partnerSpans: partnerSpans,
+                onProgress: { step, fraction in
+                    SaveProgressBoard.update(id: content.id, step, fraction)
                 }
-                try store.save(RecordingManifest(
-                    id: content.id,
-                    format: content.format,
-                    topic: content.topic,
-                    reportLines: content.lines,
-                    comparison: "",
-                    takes: [
-                        RecordingManifest.Take(
-                            index: 1,
-                            durationSeconds: content.durationSeconds,
-                            audioFileName: fileName,
-                            words: content.words,
-                            markers: content.markers,
-                            partnerTurns: content.partnerTurns
-                        ),
-                    ],
-                    inLibrary: TakeRetention.wantsLibrary(content.id) || content.inLibrary
-                ))
-            } catch {
-                log.error("save failed: \(error.localizedDescription, privacy: .public)")
-                try? FileManager.default.removeItem(at: rawURL)
-                if TakeRetention.isDiscarded(content.id) { return }
-                let outOfSpace = (error as? RecordingStoreError) == .diskFull
-                try? store.save(RecordingManifest(
-                    id: content.id,
-                    format: content.format,
-                    topic: content.topic,
-                    reportLines: content.lines,
-                    comparison: "",
-                    takes: [],
-                    saveError: outOfSpace
-                        ? UserFacingFailure.diskFull
-                        : UserFacingFailure.nothingToPlay,
-                    inLibrary: TakeRetention.wantsLibrary(content.id) || content.inLibrary
-                ))
+            )
+            log.info(
+                "\(content.format.rawValue, privacy: .public) take saved: denoise=\(report.usedDenoise) gain=\(report.gain) outputPeak=\(report.outputPeak) markers=\(content.markers.count)"
+            )
+            SaveProgressBoard.update(id: content.id, .writing, 0)
+            let fileName = "take-1.m4a"
+            _ = try store.storeAudio(regimenID: content.id, from: finalURL, fileName: fileName)
+            try? FileManager.default.removeItem(at: finalURL)
+            if TakeRetention.isDiscarded(content.id) {
+                try? store.delete(id: content.id)
+                return
             }
+            try store.save(RecordingManifest(
+                id: content.id,
+                format: content.format,
+                topic: content.topic,
+                reportLines: content.lines,
+                comparison: "",
+                takes: [
+                    RecordingManifest.Take(
+                        index: 1,
+                        durationSeconds: content.durationSeconds,
+                        audioFileName: fileName,
+                        words: content.words,
+                        markers: content.markers,
+                        partnerTurns: content.partnerTurns
+                    ),
+                ],
+                inLibrary: TakeRetention.wantsLibrary(content.id) || content.inLibrary
+            ))
+            SaveProgressBoard.update(id: content.id, .writing, 1)
+        } catch {
+            log.error("save failed: \(error.localizedDescription, privacy: .public)")
+            try? FileManager.default.removeItem(at: rawURL)
+            if TakeRetention.isDiscarded(content.id) { return }
+            let outOfSpace = (error as? RecordingStoreError) == .diskFull
+            try? store.save(RecordingManifest(
+                id: content.id,
+                format: content.format,
+                topic: content.topic,
+                reportLines: content.lines,
+                comparison: "",
+                takes: [],
+                saveError: outOfSpace
+                    ? UserFacingFailure.diskFull
+                    : UserFacingFailure.nothingToPlay,
+                inLibrary: TakeRetention.wantsLibrary(content.id) || content.inLibrary
+            ))
         }
     }
 }

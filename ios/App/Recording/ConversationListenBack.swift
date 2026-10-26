@@ -138,10 +138,21 @@ final class ConversationListenBack {
             )
         }
         let transcriber = transcriber
+        SaveProgressBoard.begin(
+            id: id,
+            durationSeconds: duration,
+            willClean: SaveProgress.needsCleaning(
+                durationSeconds: duration,
+                runsOnSimulator: SaveProgressBoard.runsOnSimulator
+            ),
+            includesTranscription: true
+        )
         Task { @MainActor in
+            SaveProgressBoard.update(id: id, .catchingWords, 0)
             let heard = await transcriber.finish()
+            SaveProgressBoard.update(id: id, .catchingWords, 1)
             let words = ConversationMarkers.userWords(heard, partnerTurns: turns)
-            SingleTakeRecording.finalizeAndSave(
+            await SingleTakeRecording.finalizeAndSave(
                 rawURL: rawURL,
                 content: .init(
                     id: id,

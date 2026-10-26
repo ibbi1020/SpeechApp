@@ -12,11 +12,11 @@ Use these names in conversation and new writing. Numbers (`Format 1/2/3`) are al
 |---|---|---|---|
 | **Reading** | Format 1 | Reads a known short passage aloud (connected sentences, not isolated word drills) | Pronunciation / diagnosis. Only format where phoneme-level scoring is technically honest, because the target script is known. |
 | **Conversation** | Format 2 | 15 min rehearsal with an opinionated AI partner (English only) | The product’s target behavior: spontaneous, interactive speech. v1 partner speaks open / wrap only; code-switch and filler asides stay report-only until eval. Report after they stop. |
-| **Monologue** | Format 3 | Familiar topic, optional notes, then three takes under 4 → 3 → 2 min ceilings | Utterance fluency on a repeated monologue. Named-index profile (take 1 vs take 3), not a letter grade. |
+| **Monologue** | Format 3 | Familiar topic, optional notes, then three takes under 1 → 2 → 3 min ceilings | Utterance fluency on a repeated monologue. Named-index profile (take 1 vs take 3), not a letter grade. |
 
 **Reading is not “open-vocabulary speech.”** The passage is connected prose (that is the “open reading” people mean in conversation), but the app knows every word in advance. That closed script is the whole point.
 
-**Conversation is the product MVP** in `docs/product-spec.md`. Reading is the diagnostic / drill loop. Monologue v1 is the 4/3/2 regimen in the app — not a 5–15 min one-shot talk. Design: `docs/superpowers/specs/2026-09-24-monologue-format-design.md`.
+**Conversation is the product MVP** in `docs/product-spec.md`. Reading is the diagnostic / drill loop. Monologue is three takes on one topic, growing **1 → 2 → 3** minutes — not a 5–15 min one-shot talk, and not the original 4 → 3 → 2 ceilings. Design: `docs/superpowers/specs/2026-09-24-monologue-format-design.md`.
 
 ---
 

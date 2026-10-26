@@ -19,7 +19,7 @@ struct MonologuePhonationTests {
 
     @Test("paused clock is already excluded from wall by the caller")
     func leftoverCeilingStillValid() {
-        // 90s talk under a 240s ceiling still has a ratio.
+        // A take that ends before the ceiling still has a ratio.
         #expect(MonologuePhonation.ratio(spoken: 70, wall: 90) == 70.0 / 90.0)
     }
 }

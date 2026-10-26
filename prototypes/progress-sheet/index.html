@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<!--
+PROTOTYPE. Throwaway. Not the app.
+
+Progress. The picture is the claim.
+A "Placeholder" tag means we do not save the history that picture needs.
+Untagged pictures use the reading ledger already on disk.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Progress prototype</title>
+<style>
+  :root {
+    --ink: #f5f5f7;
+    --muted: rgba(245, 245, 247, 0.58);
+    --faint: rgba(245, 245, 247, 0.36);
+    --line: rgba(255, 255, 255, 0.12);
+    --phone-w: 390px;
+    --phone-h: 844px;
+    --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: #1c1c1e;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif;
+    min-height: 100%;
+  }
+  .stage {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 16px 48px;
+  }
+  .legend {
+    width: var(--phone-w);
+    margin: 16px 0 0;
+    color: var(--faint);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .phone {
+    width: var(--phone-w);
+    height: var(--phone-h);
+    background: #000;
+    border-radius: 48px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    flex: none;
+  }
+  .status {
+    position: absolute;
+    z-index: 6;
+    top: 16px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  .home {
+    position: absolute;
+    inset: 0;
+    padding: 72px 24px 186px;
+    display: flex;
+    flex-direction: column;
+  }
+  .home h1 {
+    margin: 0;
+    font-size: 40px;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+  }
+  .home .grow { flex: 1; }
+  .begin {
+    width: 100%;
+    height: 50px;
+    border: 0;
+    border-radius: 999px;
+    background: #fff;
+    color: #000;
+    font: 600 17px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  .gallery {
+    position: absolute;
+    z-index: 3;
+    left: 10px;
+    right: 10px;
+    bottom: 0;
+    height: 64px;
+    border-radius: 32px 32px 40px 40px;
+    background: #141416;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 8px;
+  }
+  .gallery strong { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .gallery span { color: var(--muted); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .sheet {
+    position: absolute;
+    z-index: 2;
+    left: 10px;
+    right: 10px;
+    top: 0;
+    height: 100%;
+    background: #000;
+    border-radius: 32px 32px 40px 40px;
+    display: flex;
+    flex-direction: column;
+    will-change: transform;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+  .sheet.anim { transition: transform 520ms var(--ease), border-radius 520ms var(--ease), left 520ms var(--ease), right 520ms var(--ease); }
+  .sheet header {
+    flex: none;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 0 16px 10px;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+  .sheet header:active { cursor: grabbing; }
+  .sheet header h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+  .sheet.open header h2 { font-size: 28px; letter-spacing: -0.025em; }
+  .peek-fact {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    padding-bottom: 1px;
+  }
+  .titles { display: flex; align-items: flex-end; gap: 8px; flex: 1; min-width: 0; }
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    cursor: pointer;
+    flex: none;
+  }
+  .icon-btn[hidden] { display: none; }
+  .icon-btn svg { width: 14px; height: 14px; display: block; }
+  .body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0 20px 12px;
+  }
+  .sheet:not(.open) .body { visibility: hidden; }
+  .month-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 2px 0 8px;
+  }
+  .month-row h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .month-row h3 span { color: var(--faint); margin-left: 4px; font-weight: 500; }
+  .month-row .tag { margin-left: 10px; }
+  .chevrons { display: flex; margin-left: auto; }
+  .chev {
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+  .chev:disabled { color: rgba(255, 255, 255, 0.22); cursor: default; }
+  .chev svg { width: 14px; height: 14px; }
+  .wdays, .grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .wdays span {
+    text-align: center;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--faint);
+    padding-bottom: 6px;
+  }
+  .cell { height: 32px; display: grid; place-items: center; }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.32);
+    display: grid;
+    place-items: center;
+  }
+  .dot.future { background: rgba(255, 255, 255, 0.08); }
+  .dot.done { width: 16px; height: 16px; background: #fff; }
+  .dot.today { box-shadow: 0 0 0 2px #000, 0 0 0 3px rgba(255, 255, 255, 0.85); }
+  .dot svg { width: 10px; height: 10px; display: block; }
+  .fighead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 16px;
+    flex: none;
+  }
+  .claim {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    color: var(--ink);
+  }
+  .tag {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--faint);
+    flex: none;
+  }
+  .insights {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin-top: 42px;
+  }
+  .reel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .reel::-webkit-scrollbar { display: none; }
+  .page {
+    flex: 0 0 100%;
+    width: 100%;
+    min-height: 0;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    display: flex;
+    flex-direction: column;
+  }
+  .stage-visual { flex: none; min-height: 0; }
+  .figure { display: block; width: 100%; height: auto; margin: 0; }
+  .caption {
+    flex: none;
+    margin: 14px 0 0;
+    max-width: 34em;
+    font-size: 13px;
+    line-height: 1.35;
+    color: var(--muted);
+  }
+  .bars {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 18px;
+    align-items: center;
+    padding-top: 6px;
+  }
+  .bar-row { display: contents; }
+  .bar-row b {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .gauge {
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .gauge span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #fff;
+  }
+  .gauge.medium span { background: rgba(255, 255, 255, 0.38); }
+  .bar-scale, .bar-unit { grid-column: 2; }
+  .bar-scale {
+    display: flex;
+    justify-content: space-between;
+    margin-top: -6px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: rgba(245, 245, 247, 0.55);
+  }
+  .bar-unit {
+    margin-top: -12px;
+    font-size: 11px;
+    color: rgba(245, 245, 247, 0.55);
+  }
+  .pager {
+    flex: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 0 0;
+  }
+  .pager button {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 99px;
+    background: transparent;
+    cursor: pointer;
+    position: relative;
+  }
+  .pager button::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 5px;
+    height: 5px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.28);
+    transform: translate(-50%, -50%);
+  }
+  .pager button[aria-current="true"]::after { width: 14px; background: #fff; }
+  .trace { stroke-dasharray: 1200; stroke-dashoffset: 1200; }
+  .rise {
+    transform-box: fill-box;
+    transform-origin: center bottom;
+    transform: scaleY(0);
+  }
+  .pop { opacity: 0; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes rise {
+    from { transform: scaleY(0); }
+    to { transform: scaleY(1); }
+  }
+  @keyframes pop {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sheet.anim { transition: none; }
+    .trace { stroke-dashoffset: 0; animation: none; }
+    .rise { transform: none; animation: none; }
+    .pop { opacity: 1; animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="phone" id="phone">
+    <div class="status">9:41</div>
+    <div class="home">
+      <h1>Speak with poise</h1>
+      <div class="grow"></div>
+      <button class="begin" type="button" tabindex="-1">Begin</button>
+    </div>
+    <div class="gallery" aria-hidden="true">
+      <strong>Gallery</strong>
+      <span>12</span>
+    </div>
+    <section class="sheet open" id="sheet" aria-label="Progress">
+      <header id="grab">
+        <div class="titles">
+          <h2>Progress</h2>
+        </div>
+        <button class="icon-btn" id="close" type="button" aria-label="Close">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 3.2 12.8 12.8M12.8 3.2 3.2 12.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="body" id="body"></div>
+    </section>
+  </div>
+  <p class="legend">Placeholder means that picture needs a history the app does not save. Untagged rows are the reading ledger: sounds, skipped words, and the last 10 reading rates.</p>
+</div>
+<script>
+const START = "2026-08-12";
+const TODAY = "2026-10-26";
+const FIRST = { y: 2026, m: 8 };
+const LAST = { y: 2026, m: 10 };
+const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+const practiced = new Set([
+  "2026-08-12", "2026-08-14", "2026-08-16", "2026-08-18", "2026-08-22", "2026-08-27", "2026-08-29",
+  "2026-09-02", "2026-09-03", "2026-09-08", "2026-09-11", "2026-09-16", "2026-09-19", "2026-09-22", "2026-09-28",
+  "2026-10-02", "2026-10-05", "2026-10-08", "2026-10-09", "2026-10-11", "2026-10-14", "2026-10-19", "2026-10-22", "2026-10-24", "2026-10-26"
+]);
+
+const turnSeries = [8.8, 10.2, 11, 15.6, 23.5, 23.3, 28.3, 31];
+const talks = [
+  [9, 7, 6],
+  [8, 5, 4],
+  [7, 4, 3],
+  [6, 4, 3],
+  [5, 3, 2],
+  [4, 3, 2]
+];
+const paceWeeks = [
+  { label: "Aug 10", low: 118, mid: 151, high: 186 },
+  { label: "Aug 17", low: 128, mid: 149, high: 174 },
+  { label: "Aug 24", low: 134, mid: 150, high: 168 },
+  { label: "Sep 1", low: 138, mid: 152, high: 166 },
+  { label: "Sep 14", low: 141, mid: 150, high: 160 },
+  { label: "Sep 28", low: 144, mid: 151, high: 158 },
+  { label: "Oct 6", low: 145, mid: 150, high: 156 },
+  { label: "Oct 19", low: 146, mid: 150, high: 154 }
+];
+const phones = [
+  { symbol: "ɪ", band: "high", count: 6 },
+  { symbol: "i", band: "high", count: 4 },
+  { symbol: "l", band: "medium", count: 9 }
+];
+const skips = [
+  { word: "ship", count: 4 },
+  { word: "river", count: 3 },
+  { word: "light", count: 2 }
+];
+const readingRates = [142, 158, 149, 163, 151, 147, 155, 150, 152, 149];
+
+const state = { sheet: 1, y: 2026, m: 10, page: 0 };
+const phone = document.getElementById("phone");
+const sheet = document.getElementById("sheet");
+const grab = document.getElementById("grab");
+const scroller = document.getElementById("body");
+const closeBtn = document.getElementById("close");
+
+function pad(n) { return String(n).padStart(2, "0"); }
+function iso(y, m, d) { return y + "-" + pad(m) + "-" + pad(d); }
+function utc(value) {
+  const [y, m, d] = value.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+function daysIn(y, m) { return new Date(Date.UTC(y, m, 0)).getUTCDate(); }
+function check() {
+  return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8.3 6.4 11.4 12.8 4.6" fill="none" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+function chevron(dir) {
+  const d = dir === "left" ? "M10 3.2 5.2 8 10 12.8" : "M6 3.2 10.8 8 6 12.8";
+  return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="' + d + '" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+function head(label, placeholder) {
+  return '<div class="fighead"><p class="claim">' + label + "</p>" + (placeholder ? '<span class="tag">Placeholder</span>' : "") + "</div>";
+}
+function columnChart(rows, key, yMax, yTicks, unit) {
+  const box = plot(220, 0, yMax, yTicks, unit);
+  const plotW = box.w - box.left - box.right;
+  const slot = plotW / rows.length;
+  const barW = 56;
+  const base = box.y(0);
+  const bars = rows.map((row, i) => {
+    const cx = box.left + slot * i + slot / 2;
+    const top = box.y(row.count);
+    return { row: row, cx: cx, top: top, x: cx - barW / 2, h: Math.max(4, base - top) };
+  });
+  let grid = '<text x="' + box.left + '" y="13" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">' + unit + "</text>";
+  yTicks.forEach((tick) => {
+    const yy = box.y(tick);
+    grid += '<text x="' + (box.left - 6) + '" y="' + (yy + 3).toFixed(1) + '" text-anchor="end" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">' + tick + "</text>";
+    let cursor = box.left;
+    const end = box.w - box.right;
+    const cuts = bars.map((bar) => [bar.x - 10, bar.x + barW + 10]).sort((a, b) => a[0] - b[0]);
+    cuts.forEach((cut) => {
+      const stop = Math.min(cut[0], end);
+      if (stop - cursor > 2) {
+        grid += '<line x1="' + cursor.toFixed(1) + '" y1="' + yy.toFixed(1) + '" x2="' + stop.toFixed(1) + '" y2="' + yy.toFixed(1) + '" stroke="rgba(255,255,255,0.10)"/>';
+      }
+      cursor = Math.max(cursor, cut[1]);
+    });
+    if (end - cursor > 2) {
+      grid += '<line x1="' + cursor.toFixed(1) + '" y1="' + yy.toFixed(1) + '" x2="' + end.toFixed(1) + '" y2="' + yy.toFixed(1) + '" stroke="rgba(255,255,255,0.10)"/>';
+    }
+  });
+  let marks = "";
+  bars.forEach((bar, i) => {
+    const x = bar.x;
+    const top = bar.top;
+    const h = bar.h;
+    const r = Math.min(7, h / 2, barW / 2);
+    const path = "M" + x.toFixed(1) + " " + base.toFixed(1)
+      + "L" + x.toFixed(1) + " " + (top + r).toFixed(1)
+      + "Q" + x.toFixed(1) + " " + top.toFixed(1) + " " + (x + r).toFixed(1) + " " + top.toFixed(1)
+      + "L" + (x + barW - r).toFixed(1) + " " + top.toFixed(1)
+      + "Q" + (x + barW).toFixed(1) + " " + top.toFixed(1) + " " + (x + barW).toFixed(1) + " " + (top + r).toFixed(1)
+      + "L" + (x + barW).toFixed(1) + " " + base.toFixed(1) + "Z";
+    const gray = bar.row.band === "medium";
+    const at = i * 90;
+    marks += '<path class="rise" data-at="' + at + '" d="' + path + '" fill="' + (gray ? "rgba(255,255,255,0.42)" : "#fff") + '"/>';
+    marks += '<text class="pop" data-at="' + (at + 380) + '" x="' + bar.cx.toFixed(1) + '" y="' + (top + 18).toFixed(1) + '" text-anchor="middle" fill="' + (gray ? "#fff" : "#000") + '" font-size="13" font-weight="600" font-family="' + AXIS + '">' + bar.row.count + "</text>";
+    marks += '<text class="pop" data-at="' + at + '" x="' + bar.cx.toFixed(1) + '" y="' + (box.h - 8) + '" text-anchor="middle" fill="#f5f5f7" font-size="15" font-weight="600" font-family="' + AXIS + '">' + bar.row[key] + "</text>";
+  });
+  return '<svg class="figure" viewBox="0 0 ' + box.w + " " + box.h + '" role="img" aria-label="' + unit + '">' + grid + marks + "</svg>";
+}
+
+const AXIS = "-apple-system, BlinkMacSystemFont, sans-serif";
+const AXIS_INK = "rgba(245,245,247,0.55)";
+
+function plot(h, yMin, yMax, yTicks, unit) {
+  const w = 350;
+  const gutter = 30;
+  const right = 6;
+  const top = 22;
+  const bottom = 28;
+  const y = (v) => top + (1 - (v - yMin) / (yMax - yMin)) * (h - top - bottom);
+  let grid = '<text x="' + gutter + '" y="13" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">' + unit + "</text>";
+  yTicks.forEach((tick) => {
+    const yy = y(tick);
+    grid += '<line x1="' + gutter + '" y1="' + yy.toFixed(1) + '" x2="' + (w - right) + '" y2="' + yy.toFixed(1) + '" stroke="rgba(255,255,255,0.10)"/>';
+    grid += '<text x="' + (gutter - 6) + '" y="' + (yy + 3).toFixed(1) + '" text-anchor="end" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">' + tick + "</text>";
+  });
+  return { w: w, h: h, left: gutter, right: right, top: top, bottom: bottom, y: y, grid: grid };
+}
+
+function insight(label, placeholder, visual, caption) {
+  return '<article class="page">' + head(label, placeholder) + '<div class="stage-visual">' + visual + '</div><p class="caption">' + caption + '</p></article>';
+}
+
+function shiftMonth(delta) {
+  let m = state.m + delta;
+  let y = state.y;
+  if (m < 1) { m = 12; y -= 1; }
+  if (m > 12) { m = 1; y += 1; }
+  if (y < FIRST.y || (y === FIRST.y && m < FIRST.m)) return;
+  if (y > LAST.y || (y === LAST.y && m > LAST.m)) return;
+  state.y = y;
+  state.m = m;
+  render();
+}
+
+function calendarHTML() {
+  const y = state.y;
+  const m = state.m;
+  const start = utc(START);
+  const today = utc(TODAY);
+  const lead = utc(iso(y, m, 1)).getUTCDay();
+  const count = daysIn(y, m);
+  const atFirst = y === FIRST.y && m === FIRST.m;
+  const atLast = y === LAST.y && m === LAST.m;
+  let cells = "";
+  for (let i = 0; i < lead; i++) cells += '<div class="cell"></div>';
+  for (let day = 1; day <= count; day++) {
+    const id = iso(y, m, day);
+    const date = utc(id);
+    if (date < start) {
+      cells += '<div class="cell"></div>';
+      continue;
+    }
+    const done = practiced.has(id);
+    const future = date > today;
+    const cls = ["dot", done ? "done" : "", future ? "future" : "", id === TODAY ? "today" : ""].filter(Boolean).join(" ");
+    cells += '<div class="cell"><div class="' + cls + '">' + (done ? check() : "") + "</div></div>";
+  }
+  return ''
+    + '<div class="month-row"><h3>' + monthNames[m - 1] + " <span>" + y + "</span></h3>"
+    + '<span class="tag">Placeholder</span>'
+    + '<div class="chevrons">'
+    + '<button class="chev" type="button" data-shift="-1" aria-label="Previous month"' + (atFirst ? " disabled" : "") + ">" + chevron("left") + "</button>"
+    + '<button class="chev" type="button" data-shift="1" aria-label="Next month"' + (atLast ? " disabled" : "") + ">" + chevron("right") + "</button>"
+    + "</div></div>"
+    + '<div class="wdays" aria-hidden="true"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>'
+    + '<div class="grid" id="cal">' + cells + "</div>";
+}
+
+function turnChart() {
+  const box = plot(220, 0, 40, [0, 10, 20, 30, 40], "seconds");
+  const n = turnSeries.length;
+  const x = (i) => box.left + (i / (n - 1)) * (box.w - box.left - box.right);
+  const d = turnSeries.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + box.y(v).toFixed(1)).join(" ");
+  const dots = turnSeries.map((v, i) => '<circle class="pop" data-at="' + Math.round((i / (n - 1)) * 680) + '" cx="' + x(i).toFixed(1) + '" cy="' + box.y(v).toFixed(1) + '" r="3.2" fill="#fff"/>').join("");
+  const callouts = [
+    { i: 0, dx: 8, dy: 16, anchor: "start", at: 40 },
+    { i: n - 1, dx: -8, dy: -10, anchor: "end", at: 680 }
+  ].map((mark) => {
+    const label = Math.round(turnSeries[mark.i]) + "s";
+    return '<text class="pop" data-at="' + mark.at + '" x="' + (x(mark.i) + mark.dx).toFixed(1) + '" y="' + (box.y(turnSeries[mark.i]) + mark.dy).toFixed(1) + '" text-anchor="' + mark.anchor + '" fill="#f5f5f7" font-size="12" font-weight="600" font-family="' + AXIS + '">' + label + "</text>";
+  }).join("");
+  const axis = '<text x="' + x(0).toFixed(1) + '" y="' + (box.h - 6) + '" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">Earliest</text>'
+    + '<text x="' + x(n - 1).toFixed(1) + '" y="' + (box.h - 6) + '" text-anchor="end" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">Latest</text>';
+  return '<svg class="figure" viewBox="0 0 ' + box.w + " " + box.h + '" role="img" aria-label="Seconds in a turn, from the earliest conversation to the latest">' + box.grid + '<path class="trace" d="' + d + '" fill="none" stroke="#fff" stroke-width="1.5"/>' + dots + callouts + axis + "</svg>";
+}
+
+function gapChart() {
+  const box = plot(230, 0, 10, [0, 5, 10], "gaps");
+  const x = (i) => box.left + (i / 2) * (box.w - box.left - box.right);
+  let lines = "";
+  talks.forEach((gaps, index) => {
+    const last = index === talks.length - 1;
+    const opacity = last ? 1 : 0.16 + (index / (talks.length - 1)) * 0.22;
+    const pts = gaps.map((g, i) => x(i).toFixed(1) + "," + box.y(g).toFixed(1)).join(" ");
+    lines += '<polyline class="trace" data-at="' + (index * 70) + '" points="' + pts + '" fill="none" stroke="#fff" stroke-opacity="' + opacity.toFixed(2) + '" stroke-width="' + (last ? 2 : 1.25) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+    if (last) {
+      const start = index * 70;
+      gaps.forEach((g, i) => {
+        lines += '<circle class="pop" data-at="' + (start + Math.round((i / 2) * 640)) + '" cx="' + x(i).toFixed(1) + '" cy="' + box.y(g).toFixed(1) + '" r="3" fill="#fff"/>';
+      });
+    }
+  });
+  const labels = ["1 min", "2 min", "3 min"].map((label, i) => {
+    const anchor = i === 0 ? "start" : i === 2 ? "end" : "middle";
+    return '<text x="' + x(i).toFixed(1) + '" y="' + (box.h - 6) + '" text-anchor="' + anchor + '" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">' + label + "</text>";
+  }).join("");
+  return '<svg class="figure" viewBox="0 0 ' + box.w + " " + box.h + '" role="img" aria-label="Long gaps from a 1 minute take to a 3 minute take. The bright line is the latest talk.">' + box.grid + lines + labels + "</svg>";
+}
+
+function readingChart() {
+  const box = plot(220, 120, 180, [120, 140, 160, 180], "syl/min");
+  const n = readingRates.length;
+  const x = (i) => box.left + (i / (n - 1)) * (box.w - box.left - box.right);
+  const d = readingRates.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + box.y(v).toFixed(1)).join(" ");
+  const dots = readingRates.map((v, i) => '<circle class="pop" data-at="' + Math.round((i / (n - 1)) * 680) + '" cx="' + x(i).toFixed(1) + '" cy="' + box.y(v).toFixed(1) + '" r="3.2" fill="#fff"/>').join("");
+  const axis = '<text x="' + x(0).toFixed(1) + '" y="' + (box.h - 6) + '" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">Oldest</text>'
+    + '<text x="' + x(n - 1).toFixed(1) + '" y="' + (box.h - 6) + '" text-anchor="end" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">Newest</text>';
+  return '<svg class="figure" viewBox="0 0 ' + box.w + " " + box.h + '" role="img" aria-label="Last 10 reading speeds, in syllables per minute">' + box.grid + '<path class="trace" d="' + d + '" fill="none" stroke="#fff" stroke-width="1.5"/>' + dots + axis + "</svg>";
+}
+
+function paceChart() {
+  const w = 350;
+  const h = 250;
+  const left = 52;
+  const right = 8;
+  const top = 8;
+  const bottom = 36;
+  const yMin = 110;
+  const yMax = 190;
+  const x = (v) => left + ((v - yMin) / (yMax - yMin)) * (w - left - right);
+  const ticks = [110, 150, 190];
+  let grid = "";
+  ticks.forEach((tick) => {
+    const xx = x(tick);
+    grid += '<line x1="' + xx.toFixed(1) + '" y1="' + top + '" x2="' + xx.toFixed(1) + '" y2="' + (h - bottom) + '" stroke="rgba(255,255,255,0.10)"/>';
+    grid += '<text x="' + xx.toFixed(1) + '" y="' + (h - 18) + '" text-anchor="middle" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">' + tick + "</text>";
+  });
+  grid += '<text x="' + (w / 2) + '" y="' + (h - 4) + '" text-anchor="middle" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">syl/min</text>';
+  const row = (h - top - bottom) / paceWeeks.length;
+  let rows = "";
+  paceWeeks.forEach((week, i) => {
+    const y = top + row * i + row / 2;
+    rows += '<text x="0" y="' + (y + 3) + '" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">' + week.label + "</text>";
+    const at = i * 45;
+    rows += '<line class="trace" data-at="' + at + '" x1="' + x(week.low).toFixed(1) + '" y1="' + y.toFixed(1) + '" x2="' + x(week.high).toFixed(1) + '" y2="' + y.toFixed(1) + '" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>';
+    rows += '<circle class="pop" data-at="' + (at + 280) + '" cx="' + x(week.mid).toFixed(1) + '" cy="' + y.toFixed(1) + '" r="2.8" fill="#000" stroke="#fff" stroke-width="1.5"/>';
+  });
+  return '<svg class="figure" viewBox="0 0 ' + w + " " + h + '" role="img" aria-label="Weekly pace in syllables per minute. Each line runs from the slowest session to the fastest. The dot is the middle.">' + grid + rows + "</svg>";
+}
+
+function screenHTML() {
+  const pages = [
+    insight("Turns got longer", true, turnChart(), "Seconds you spoke in a turn, from your earliest saved conversation to the latest."),
+    insight("Fewer long silences", true, gapChart(), "Long silences in each saved talk, from the first take to the last."),
+    insight("Sounds you miss", false, columnChart(phones, "symbol", 9, [0, 3, 6, 9], "misses"), "How many times you missed each sound."),
+    insight("Words you skip", false, columnChart(skips, "word", 4, [0, 2, 4], "skips"), "How many times you skipped each word while reading."),
+    insight("Reading speed", false, readingChart(), "Your last 10 reading speeds, in syllables per minute."),
+    insight("Pace got steadier", true, paceChart(), "Each week's pace, from the slowest session to the fastest, in syllables per minute.")
+  ];
+  const dots = pages.map((_, index) => {
+    return '<button type="button" data-page="' + index + '" aria-label="Insight ' + (index + 1) + '"' + (index === 0 ? ' aria-current="true"' : "") + "></button>";
+  }).join("");
+  return '<div id="calendar"></div><div class="insights"><div class="reel" id="reel">' + pages.join("") + '</div><div class="pager">' + dots + "</div></div>";
+}
+
+function layout(animate) {
+  const closed = phone.clientHeight - (88 + 64 + 10);
+  const y = closed * (1 - state.sheet);
+  sheet.classList.toggle("anim", !!animate);
+  sheet.classList.toggle("open", state.sheet > 0.85);
+  sheet.style.transform = "translateY(" + y + "px)";
+  sheet.style.zIndex = state.sheet > 0.04 ? "4" : "2";
+  sheet.style.left = state.sheet > 0.92 ? "0px" : "10px";
+  sheet.style.right = state.sheet > 0.92 ? "0px" : "10px";
+  sheet.style.borderRadius = state.sheet > 0.92 ? "0px" : "32px";
+  grab.style.paddingTop = (22 + 36 * state.sheet) + "px";
+  grab.style.height = state.sheet > 0.85 ? "auto" : "88px";
+  closeBtn.hidden = state.sheet < 0.7;
+}
+
+function render() {
+  if (!scroller.querySelector("#reel")) {
+    scroller.innerHTML = screenHTML();
+    const reel = scroller.querySelector("#reel");
+    const pages = [...reel.querySelectorAll(".page")];
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const ease = "cubic-bezier(0.32, 0.72, 0, 1)";
+    let shown = -1;
+    const arm = (page) => {
+      page.querySelectorAll(".trace").forEach((el) => {
+        const len = el.getTotalLength();
+        el.style.strokeDasharray = String(len);
+        el.style.strokeDashoffset = reduceMotion ? "0" : String(len);
+        el.style.animation = "none";
+      });
+      page.querySelectorAll(".rise").forEach((el) => {
+        el.style.animation = "none";
+        el.style.transform = reduceMotion ? "none" : "scaleY(0)";
+      });
+      page.querySelectorAll(".pop").forEach((el) => {
+        el.style.animation = "none";
+        el.style.opacity = reduceMotion ? "1" : "0";
+      });
+    };
+    const play = (page) => {
+      if (reduceMotion) {
+        arm(page);
+        return;
+      }
+      const traces = [...page.querySelectorAll(".trace")];
+      const rises = [...page.querySelectorAll(".rise")];
+      const pops = [...page.querySelectorAll(".pop")];
+      traces.forEach((el) => {
+        const len = el.getTotalLength();
+        el.style.strokeDasharray = String(len);
+        el.style.strokeDashoffset = String(len);
+        el.style.animation = "none";
+      });
+      rises.forEach((el) => {
+        el.style.transform = "scaleY(0)";
+        el.style.animation = "none";
+      });
+      pops.forEach((el) => {
+        el.style.opacity = "0";
+        el.style.animation = "none";
+      });
+      page.getBoundingClientRect();
+      traces.forEach((el) => {
+        el.style.animation = "draw 760ms " + ease + " " + (el.dataset.at || 0) + "ms forwards";
+      });
+      rises.forEach((el) => {
+        el.style.animation = "rise 640ms " + ease + " " + (el.dataset.at || 0) + "ms forwards";
+      });
+      pops.forEach((el) => {
+        el.style.animation = "pop 240ms ease " + (el.dataset.at || 0) + "ms forwards";
+      });
+    };
+    const show = (index) => {
+      if (index === shown) return;
+      shown = index;
+      play(pages[index]);
+    };
+    const rest = () => {
+      pages.forEach((page, i) => { if (i !== shown) arm(page); });
+    };
+    pages.forEach(arm);
+    let settle = 0;
+    const sync = () => {
+      const width = reel.clientWidth || 1;
+      const index = Math.round(reel.scrollLeft / width);
+      state.page = index;
+      scroller.querySelectorAll("[data-page]").forEach((dot) => {
+        dot.setAttribute("aria-current", Number(dot.dataset.page) === index ? "true" : "false");
+      });
+      show(index);
+      clearTimeout(settle);
+      settle = setTimeout(rest, 240);
+    };
+    reel.addEventListener("scroll", sync, { passive: true });
+    reel.addEventListener("scrollend", rest);
+    requestAnimationFrame(() => show(0));
+    scroller.querySelectorAll("[data-page]").forEach((dot) => {
+      dot.addEventListener("click", () => {
+        const left = Number(dot.dataset.page) * reel.clientWidth;
+        state.page = Number(dot.dataset.page);
+        reel.scrollTo({ left: left, behavior: "smooth" });
+      });
+    });
+  }
+  const calendar = scroller.querySelector("#calendar");
+  calendar.innerHTML = calendarHTML();
+  calendar.querySelectorAll("[data-shift]").forEach((button) => {
+    button.addEventListener("click", () => shiftMonth(Number(button.dataset.shift)));
+  });
+  const cal = calendar.querySelector("#cal");
+  let swipe = null;
+  cal.addEventListener("pointerdown", (event) => { swipe = { x: event.clientX, y: event.clientY }; });
+  cal.addEventListener("pointerup", (event) => {
+    if (!swipe) return;
+    const dx = event.clientX - swipe.x;
+    const dy = event.clientY - swipe.y;
+    if (Math.abs(dx) > 36 && Math.abs(dx) > Math.abs(dy)) shiftMonth(dx < 0 ? 1 : -1);
+    swipe = null;
+  });
+  layout(false);
+}
+
+closeBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+  state.sheet = 0;
+  layout(true);
+});
+
+let pulling = null;
+grab.addEventListener("pointerdown", (event) => {
+  if (event.target.closest("#close")) return;
+  pulling = { y: event.clientY, start: state.sheet };
+  grab.setPointerCapture(event.pointerId);
+});
+grab.addEventListener("pointermove", (event) => {
+  if (!pulling) return;
+  const travel = phone.clientHeight - (88 + 64 + 10);
+  state.sheet = Math.min(1, Math.max(0, pulling.start - (event.clientY - pulling.y) / travel));
+  layout(false);
+});
+grab.addEventListener("pointerup", (event) => {
+  if (!pulling) return;
+  const dy = event.clientY - pulling.y;
+  if (Math.abs(dy) < 8) state.sheet = pulling.start > 0.5 ? 0 : 1;
+  else state.sheet = state.sheet > 0.45 ? 1 : 0;
+  pulling = null;
+  layout(true);
+});
+
+render();
+</script>
+</body>
+</html>

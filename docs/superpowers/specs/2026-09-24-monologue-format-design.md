@@ -1,5 +1,7 @@
 # Monologue (Format 3) — hybrid 4/3/2 regimen
 
+**Shipped ladder (2026-10-26):** takes grow **1 → 2 → 3** minutes. The 4 → 3 → 2 ceilings in this document are the original lock. People were not starting a four-minute talk, so take 1 is one minute and each next take is one minute longer, on the same notes. `docs/formats.md` wins where this file still says 4 → 3 → 2.
+
 **Date:** 2026-09-24  
 **Status:** Locked for v1 product understanding. Not a build spec.  
 **Canonical name:** Monologue. Alias: Format 3.

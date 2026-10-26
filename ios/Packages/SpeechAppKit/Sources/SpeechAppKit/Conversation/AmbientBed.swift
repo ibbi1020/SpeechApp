@@ -24,6 +24,9 @@ public enum AmbientPlace: String, CaseIterable, Sendable, Equatable {
         }
     }
 
+    /// Picture bundled next to the sound. Same stem. Off has none.
+    public var imageName: String? { resourceName }
+
     public var title: String {
         switch self {
         case .off: "Off"

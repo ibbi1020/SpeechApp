@@ -9,25 +9,43 @@ struct SessionReportView: View {
 
     @State private var offersSave = false
     @State private var keptThisTake = false
+    @State private var showCeremony = false
+    @State private var didCelebrate = false
+    @State private var ceremonyBlur: CGFloat = 0
 
     var body: some View {
         ZStack {
             SpeechScreenBackground()
 
             FeedbackPageScroll {
-                header
-                    .padding(.bottom, SpeechSpacing.section)
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+                        .padding(.bottom, SpeechSpacing.related)
 
-                feedback
+                    feedback
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } actions: {
                 actions
+            }
+            .blur(radius: ceremonyBlur)
+            .accessibilityHidden(showCeremony)
+
+            if showCeremony {
+                PerfectTakeCeremony(contentBlur: $ceremonyBlur) {
+                    showCeremony = false
+                }
             }
         }
         .speechPageTitle("Your reading")
         .toolbar(.visible, for: .navigationBar)
-        .speechBottomBlur(bar: false)
         .onAppear {
             offersSave = recordingID != nil && !RecordingsService.keepRecordings
+        }
+        .onChange(of: recordingID) { _, _ in
+            didCelebrate = false
+            showCeremony = false
+            ceremonyBlur = 0
         }
         .onDisappear {
             discardUnsavedTake(whileStill: { if case .report = model.route { true } else { false } })
@@ -53,9 +71,14 @@ struct SessionReportView: View {
     @ViewBuilder
     private var feedback: some View {
         if let recordingID {
-            RecordingReviewLoader(recordingID: recordingID)
+            RecordingReviewLoader(
+                recordingID: recordingID,
+                stats: FeedbackStatRows.reading(report),
+                celebratesCleanTake: true,
+                onCleanTake: beginCeremony
+            )
         } else {
-            FeedbackPreparing(message: "This take didn't come through.", showsSpinner: false)
+            FeedbackPreparing(message: "This take didn't come through.")
         }
     }
 
@@ -79,6 +102,12 @@ struct SessionReportView: View {
                 SaveThisTakeButton(recordingID: recordingID, kept: $keptThisTake)
             }
         }
+    }
+
+    private func beginCeremony() {
+        guard !didCelebrate else { return }
+        didCelebrate = true
+        showCeremony = true
     }
 
     private func discardUnsavedTake(whileStill stillHere: () -> Bool) {

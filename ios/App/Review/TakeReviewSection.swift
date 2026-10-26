@@ -4,6 +4,9 @@ import SpeechAppKit
 struct TakeReviewSection: View {
     let manifest: RecordingManifest
     let saveError: String?
+    /// A thin or crisis conversation already explains itself. The line would
+    /// call that take perfect. Gallery has no report kind, so it leaves this on.
+    var showsPerfectLine: Bool = true
 
     @State private var selectedTakeIndex: Int = 0
     @State private var player = TakePlayer()
@@ -70,11 +73,15 @@ struct TakeReviewSection: View {
                         currentTime: player.currentTime,
                         markers: take.markers,
                         partnerTurns: take.partnerTurns ?? [],
+                        scrubGeneration: player.scrubGeneration,
                         onSeek: { player.seek(to: $0) },
                         onMarkerTap: { marker in
                             activeMarker = marker
                             player.seek(to: max(0, marker.start - 2), andPlay: true)
-                        }
+                        },
+                        onScrubBegan: { player.beginScrub() },
+                        onScrub: { time, generation in player.scrub(to: time, generation: generation) },
+                        onScrubEnded: { generation in player.endScrub(generation: generation) }
                     )
 
                     HStack(spacing: SpeechSpacing.related) {
@@ -94,7 +101,7 @@ struct TakeReviewSection: View {
                         PlayheadTime(time: player.currentTime)
                         Spacer(minLength: SpeechSpacing.cluster)
                         Text(timeLabel(player.duration > 0 ? player.duration : take.durationSeconds))
-                            .font(.subheadline.monospacedDigit())
+                            .font(.body.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
 
@@ -105,11 +112,32 @@ struct TakeReviewSection: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    if let activeMarker {
+                    if let activeMarker, !activeMarker.note.isEmpty {
                         Text(activeMarker.note)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                            .padding(.leading, 15)
+                            .background(alignment: .leading) {
+                                Rectangle()
+                                    .fill(markerColor(activeMarker.kind))
+                                    .frame(width: 3)
+                                    .accessibilityHidden(true)
+                            }
+                    } else if showsPerfectLine, PerfectTake.isClean(take) {
+                        Text(PerfectTake.line)
+                            .font(.subheadline)
+                            .foregroundStyle(.white)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 12)
+                            .padding(.leading, 15)
+                            .background(alignment: .leading) {
+                                Rectangle()
+                                    .fill(PerfectTake.green)
+                                    .frame(width: 3)
+                                    .accessibilityHidden(true)
+                            }
+                            .accessibilityLabel(PerfectTake.lineLabel)
                     }
                 }
 
@@ -176,7 +204,7 @@ private struct PlayheadDigits: View, Equatable {
 
     var body: some View {
         Text(label)
-            .font(.subheadline.monospacedDigit())
+            .font(.body.monospacedDigit())
             .foregroundStyle(.secondary)
             .digitRoll(label, countsDown: false, reduceMotion: reduceMotion)
     }
