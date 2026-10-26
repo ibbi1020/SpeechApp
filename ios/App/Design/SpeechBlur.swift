@@ -333,7 +333,7 @@ private struct PauseVeil: ViewModifier {
 /// fade into a thin strip, so the body reads as a slab until the last moment.
 /// Reduce Motion fades the full wash in place. The climb is the motion that
 /// setting exists to avoid.
-private struct PauseWash: View {
+struct PauseWash: View {
     var progress: CGFloat
     var reduceMotion: Bool
     var bottomOpacity: Double

@@ -22,6 +22,9 @@ packages:
   SwiftUI-Flow:
     url: https://github.com/tevelee/SwiftUI-Flow
     from: 3.0.0
+  Lottie:
+    url: https://github.com/airbnb/lottie-ios
+    from: 4.5.0
 targets:
   SpeechApp:
     type: application
@@ -30,8 +33,14 @@ targets:
       - path: App
         excludes:
           - "Resources/Ambient/**"
+          - "Resources/ConfettiFalling.lottie"
+          - "Resources/ConfettiFalling.license.txt"
           - "XAISecrets.plist"
       - path: App/Resources/Ambient
+        buildPhase: resources
+      - path: App/Resources/ConfettiFalling.lottie
+        buildPhase: resources
+      - path: App/Resources/ConfettiFalling.license.txt
         buildPhase: resources
       - path: Shared
       - path: ../font/InstrumentSerif-Regular.ttf
@@ -61,6 +70,8 @@ targets:
         product: DSWaveformImageViews
       - package: SwiftUI-Flow
         product: Flow
+      - package: Lottie
+        product: Lottie
       - target: SpeechAppWidget
         embed: true
     info:

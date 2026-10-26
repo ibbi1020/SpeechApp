@@ -4,6 +4,9 @@ import SpeechAppKit
 struct TakeReviewSection: View {
     let manifest: RecordingManifest
     let saveError: String?
+    /// A thin or crisis conversation already explains itself. The line would
+    /// call that take perfect. Gallery has no report kind, so it leaves this on.
+    var showsPerfectLine: Bool = true
 
     @State private var selectedTakeIndex: Int = 0
     @State private var player = TakePlayer()
@@ -121,6 +124,20 @@ struct TakeReviewSection: View {
                                     .frame(width: 3)
                                     .accessibilityHidden(true)
                             }
+                    } else if showsPerfectLine, PerfectTake.isClean(take) {
+                        Text(PerfectTake.line)
+                            .font(.subheadline)
+                            .foregroundStyle(.white)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 12)
+                            .padding(.leading, 15)
+                            .background(alignment: .leading) {
+                                Rectangle()
+                                    .fill(PerfectTake.green)
+                                    .frame(width: 3)
+                                    .accessibilityHidden(true)
+                            }
+                            .accessibilityLabel(PerfectTake.lineLabel)
                     }
                 }
 

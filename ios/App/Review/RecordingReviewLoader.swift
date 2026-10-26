@@ -60,16 +60,30 @@ private struct SaveProgressRing: View {
 struct RecordingReviewLoader: View {
     let recordingID: UUID?
     var stats: [FeedbackStat] = []
+    var showsPerfectLine: Bool = true
+    /// Post-exercise only. The gallery and the saved-talk library leave this off.
+    var celebratesCleanTake: Bool = false
+    var onCleanTake: (() -> Void)? = nil
 
     @State private var manifest: RecordingManifest?
     @State private var gaveUp = false
     @State private var fraction: Double = 0
     @State private var message = "Saving your take"
     @State private var detail: String?
+    @State private var didFireCleanTake = false
 
-    init(recordingID: UUID?, stats: [FeedbackStat] = []) {
+    init(
+        recordingID: UUID?,
+        stats: [FeedbackStat] = [],
+        showsPerfectLine: Bool = true,
+        celebratesCleanTake: Bool = false,
+        onCleanTake: (() -> Void)? = nil
+    ) {
         self.recordingID = recordingID
         self.stats = stats
+        self.showsPerfectLine = showsPerfectLine
+        self.celebratesCleanTake = celebratesCleanTake
+        self.onCleanTake = onCleanTake
         if let recordingID, let loaded = Self.ready(recordingID) {
             _manifest = State(initialValue: loaded)
         }
@@ -83,7 +97,11 @@ struct RecordingReviewLoader: View {
                         FeedbackStatList(rows: stats)
                             .padding(.bottom, SpeechSpacing.section)
                     }
-                    TakeReviewSection(manifest: manifest, saveError: manifest.saveError)
+                    TakeReviewSection(
+                        manifest: manifest,
+                        saveError: manifest.saveError,
+                        showsPerfectLine: showsPerfectLine
+                    )
                 }
             } else if gaveUp {
                 FeedbackPreparing(message: "This take didn't come through.")
@@ -94,6 +112,28 @@ struct RecordingReviewLoader: View {
         .task(id: recordingID) {
             await watch()
         }
+        .onChange(of: recordingID) { _, newID in
+            didFireCleanTake = false
+            gaveUp = false
+            fraction = 0
+            if let newID, let loaded = Self.ready(newID) {
+                manifest = loaded
+            } else {
+                manifest = nil
+            }
+        }
+        .onChange(of: manifest?.id, initial: true) { _, _ in
+            considerCleanTake()
+        }
+    }
+
+    /// `ready()` often fills the manifest in `init`, before `watch()` runs.
+    /// `initial: true` is what sees that. A later save hits the same path.
+    private func considerCleanTake() {
+        guard celebratesCleanTake, !didFireCleanTake, let manifest else { return }
+        guard manifest.id == recordingID, PerfectTake.recordingIsClean(manifest) else { return }
+        didFireCleanTake = true
+        onCleanTake?()
     }
 
     private func watch() async {

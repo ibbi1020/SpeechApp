@@ -12,6 +12,9 @@ struct MonologueReportView: View {
 
     @State private var offersSave = false
     @State private var keptThisTake = false
+    @State private var showCeremony = false
+    @State private var didCelebrate = false
+    @State private var ceremonyBlur: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -26,10 +29,23 @@ struct MonologueReportView: View {
             } actions: {
                 actions
             }
+            .blur(radius: ceremonyBlur)
+            .accessibilityHidden(showCeremony)
+
+            if showCeremony, !showsLines {
+                PerfectTakeCeremony(contentBlur: $ceremonyBlur) {
+                    showCeremony = false
+                }
+            }
         }
         .speechPageTitle("Your talk")
         .onAppear {
             offersSave = !showsLines && regimenID != nil && !RecordingsService.keepRecordings
+        }
+        .onChange(of: regimenID) { _, _ in
+            didCelebrate = false
+            showCeremony = false
+            ceremonyBlur = 0
         }
         .onDisappear {
             guard offersSave, !keptThisTake, let regimenID else { return }
@@ -66,7 +82,10 @@ struct MonologueReportView: View {
         if let regimenID {
             RecordingReviewLoader(
                 recordingID: regimenID,
-                stats: FeedbackStatRows.talkAfterExercise(report)
+                stats: FeedbackStatRows.talkAfterExercise(report),
+                showsPerfectLine: report.kind != .crisis,
+                celebratesCleanTake: report.kind != .crisis,
+                onCleanTake: beginCeremony
             )
         } else {
             FeedbackPreparing(message: "This take didn't come through.")
@@ -94,8 +113,11 @@ struct MonologueReportView: View {
             }
 
             if regimenID != nil {
-                RecordingReviewLoader(recordingID: regimenID)
-                    .padding(.top, SpeechSpacing.section)
+                RecordingReviewLoader(
+                    recordingID: regimenID,
+                    showsPerfectLine: report.kind != .crisis
+                )
+                .padding(.top, SpeechSpacing.section)
             }
         }
     }
@@ -109,6 +131,12 @@ struct MonologueReportView: View {
                 SaveThisTakeButton(recordingID: regimenID, kept: $keptThisTake)
             }
         }
+    }
+
+    private func beginCeremony() {
+        guard !didCelebrate else { return }
+        didCelebrate = true
+        showCeremony = true
     }
 
     private func goHome() {

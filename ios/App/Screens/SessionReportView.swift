@@ -9,6 +9,9 @@ struct SessionReportView: View {
 
     @State private var offersSave = false
     @State private var keptThisTake = false
+    @State private var showCeremony = false
+    @State private var didCelebrate = false
+    @State private var ceremonyBlur: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -25,11 +28,24 @@ struct SessionReportView: View {
             } actions: {
                 actions
             }
+            .blur(radius: ceremonyBlur)
+            .accessibilityHidden(showCeremony)
+
+            if showCeremony {
+                PerfectTakeCeremony(contentBlur: $ceremonyBlur) {
+                    showCeremony = false
+                }
+            }
         }
         .speechPageTitle("Your reading")
         .toolbar(.visible, for: .navigationBar)
         .onAppear {
             offersSave = recordingID != nil && !RecordingsService.keepRecordings
+        }
+        .onChange(of: recordingID) { _, _ in
+            didCelebrate = false
+            showCeremony = false
+            ceremonyBlur = 0
         }
         .onDisappear {
             discardUnsavedTake(whileStill: { if case .report = model.route { true } else { false } })
@@ -57,7 +73,9 @@ struct SessionReportView: View {
         if let recordingID {
             RecordingReviewLoader(
                 recordingID: recordingID,
-                stats: FeedbackStatRows.reading(report)
+                stats: FeedbackStatRows.reading(report),
+                celebratesCleanTake: true,
+                onCleanTake: beginCeremony
             )
         } else {
             FeedbackPreparing(message: "This take didn't come through.")
@@ -84,6 +102,12 @@ struct SessionReportView: View {
                 SaveThisTakeButton(recordingID: recordingID, kept: $keptThisTake)
             }
         }
+    }
+
+    private func beginCeremony() {
+        guard !didCelebrate else { return }
+        didCelebrate = true
+        showCeremony = true
     }
 
     private func discardUnsavedTake(whileStill stillHere: () -> Bool) {
