@@ -15,11 +15,25 @@ struct RawMicrophoneTests {
         #expect(chosen == "Front")
     }
 
-    @Test("a built-in route is locked, a headset is not")
+    @Test("a built-in route is locked, a wired headset is not")
     func lockOnlyBuiltIn() {
         #expect(RawMicrophone.shouldLockBuiltInMic(routePortTypes: ["MicrophoneBuiltIn"]))
-        #expect(!RawMicrophone.shouldLockBuiltInMic(routePortTypes: ["MicrophoneWired"]))
-        #expect(!RawMicrophone.shouldLockBuiltInMic(routePortTypes: []))
+        #expect(!RawMicrophone.shouldPreferBuiltIn(
+            routePortTypes: ["MicrophoneWired"],
+            hardwareVoiceProcessed: false
+        ))
+        #expect(!RawMicrophone.shouldPreferBuiltIn(
+            routePortTypes: [],
+            hardwareVoiceProcessed: false
+        ))
+    }
+
+    @Test("a hands-free route with its own voice processor comes back to the phone")
+    func handsFreeComesBack() {
+        #expect(RawMicrophone.shouldPreferBuiltIn(
+            routePortTypes: ["BluetoothHFP"],
+            hardwareVoiceProcessed: true
+        ))
     }
 
     @Test("speaker leak is not treated as the person")

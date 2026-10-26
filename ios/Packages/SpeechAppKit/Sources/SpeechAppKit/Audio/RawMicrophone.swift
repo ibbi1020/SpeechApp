@@ -39,6 +39,17 @@ public enum RawMicrophone {
         !routePortTypes.isEmpty && routePortTypes.allSatisfy { $0 == builtInPort }
     }
 
+    /// A hands-free port runs its own voice processor. Pull the mic back to the phone.
+    /// A wired headset without that processor stays where it is.
+    public static func shouldPreferBuiltIn(
+        routePortTypes: [String],
+        hardwareVoiceProcessed: Bool,
+        builtInPort: String = builtInPort
+    ) -> Bool {
+        if hardwareVoiceProcessed { return true }
+        return shouldLockBuiltInMic(routePortTypes: routePortTypes, builtInPort: builtInPort)
+    }
+
     /// Mic energy that is not the phone speaker.
     /// `HumLevel.speakerLeak` is the fraction of playback a phone mic hears.
     public static func aboveSpeaker(micRMS: Float, speakerRMS: Float) -> Float {
@@ -58,10 +69,17 @@ public enum RawMicrophone {
 
     /// One built-in capsule, omnidirectional when the hardware allows it.
     /// Call after the session is active and before installing the tap.
-    /// A headset route is not touched.
+    /// A wired headset is left alone. A hands-free route is not: that port
+    /// has its own voice processor.
     public static func lockBuiltInCapsule(_ session: AVAudioSession) {
-        let ports = session.currentRoute.inputs.map(\.portType.rawValue)
-        guard shouldLockBuiltInMic(routePortTypes: ports, builtInPort: AVAudioSession.Port.builtInMic.rawValue) else {
+        let inputs = session.currentRoute.inputs
+        let ports = inputs.map(\.portType.rawValue)
+        let hardwareVoice = inputs.contains { $0.hasHardwareVoiceCallProcessing }
+        guard shouldPreferBuiltIn(
+            routePortTypes: ports,
+            hardwareVoiceProcessed: hardwareVoice,
+            builtInPort: AVAudioSession.Port.builtInMic.rawValue
+        ) else {
             return
         }
         guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else {
@@ -83,6 +101,15 @@ public enum RawMicrophone {
             try? builtIn.setPreferredDataSource(source)
         }
         try? session.setPreferredInput(builtIn)
+        // The pattern does not apply until this port is the live route.
+        guard let active = session.currentRoute.inputs.first(where: { $0.portType == .builtInMic }),
+              let selected = active.selectedDataSource,
+              selected.supportedPolarPatterns?.contains(.omnidirectional) == true,
+              selected.selectedPolarPattern != .omnidirectional
+        else {
+            return
+        }
+        try? selected.setPreferredPolarPattern(.omnidirectional)
     }
 
     /// Starting the engine can put the session back into voice chat.
