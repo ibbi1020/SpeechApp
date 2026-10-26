@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<!--
+PROTOTYPE. Throwaway. Not the app.
+
+Issue 88. Greeting and Begin fade together. Sheets slide, Gallery first.
+The phone matches the current Home: black, New York greeting,
+Begin, Progress behind Gallery.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home entrance</title>
+<style>
+  :root {
+    --ink: #f5f5f7;
+    --muted: rgba(235, 235, 245, 0.6);
+    --faint: rgba(235, 235, 245, 0.42);
+    --line: rgba(255, 255, 255, 0.1);
+    --phone-w: 390px;
+    --phone-h: 844px;
+    --fit: 0.72;
+    --out: cubic-bezier(0.23, 1, 0.32, 1);
+    --drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100dvh;
+    background: #1c1c1e;
+    color: var(--ink);
+    font-family: "SF Pro Text", "SF Pro", -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .bench {
+    height: 100dvh;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 280px);
+    align-items: center;
+    gap: 20px;
+    padding: 16px 20px 16px 12px;
+    overflow: hidden;
+  }
+  .panel {
+    max-height: 100%;
+    overflow: auto;
+    padding-right: 4px;
+  }
+  .device {
+    display: flex;
+    justify-content: center;
+  }
+  .fit {
+    width: calc(var(--phone-w) * var(--fit));
+    height: calc(var(--phone-h) * var(--fit));
+    flex: none;
+  }
+  .phone {
+    width: var(--phone-w);
+    height: var(--phone-h);
+    background: #000;
+    border-radius: 48px;
+    position: relative;
+    overflow: hidden;
+    transform: scale(var(--fit));
+    transform-origin: top left;
+    box-shadow:
+      0 30px 80px rgba(0, 0, 0, 0.45),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+  .status {
+    position: absolute;
+    z-index: 6;
+    top: 16px;
+    left: 28px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    pointer-events: none;
+  }
+  .greeting {
+    position: absolute;
+    z-index: 2;
+    top: 75px;
+    left: 24px;
+    right: 24px;
+    margin: 0;
+    color: #fff;
+    font-family: ".New York", "New York", "Iowan Old Style", Palatino, serif;
+    font-weight: 600;
+    font-size: 51px;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+  }
+  .greeting span {
+    display: block;
+  }
+  .greeting,
+  .begin { opacity: 0; }
+  .progress { transform: translate3d(0, 176px, 0); }
+  .gallery { transform: translate3d(0, 120px, 0); }
+  .progress,
+  .gallery { will-change: transform; }
+  .begin {
+    position: absolute;
+    z-index: 2;
+    left: 36px;
+    right: 36px;
+    bottom: 180px;
+    height: 61px;
+    border: 0;
+    border-radius: 999px;
+    background: #fff;
+    color: #000;
+    font-family: "SF Pro Text", "SF Pro", -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 500;
+    font-size: 17px;
+    pointer-events: none;
+  }
+  .stack {
+    position: absolute;
+    z-index: 3;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 144px;
+  }
+  .sheet {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 32px 32px 0 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  }
+  .sheet h2 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.33px;
+    line-height: 1.05;
+  }
+  .progress {
+    height: 144px;
+    background: rgba(255, 255, 255, 0.07);
+    padding: 14px 16px 0;
+  }
+  .gallery {
+    z-index: 1;
+    height: 88px;
+    background: rgba(255, 255, 255, 0.13);
+    padding: 22px 16px 0;
+  }
+  .gallery h2 span {
+    margin-left: 6px;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
+  .indicator {
+    position: absolute;
+    z-index: 7;
+    left: 50%;
+    bottom: 8px;
+    width: 134px;
+    height: 5px;
+    margin-left: -67px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.9);
+    pointer-events: none;
+  }
+  .panel h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .issue {
+    margin: 0 0 6px;
+    color: var(--faint);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .lead, .foot {
+    margin: 12px 0 0;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 16px;
+  }
+  .option {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 10px 12px;
+    text-align: left;
+    color: inherit;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    cursor: pointer;
+    font: inherit;
+  }
+  .option:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+  }
+  .option[aria-checked="true"] {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.28);
+  }
+  .option strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .option p {
+    display: none;
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .option[aria-checked="true"] p { display: block; }
+  .beats {
+    margin: 8px 0 0;
+    color: var(--faint);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.45;
+  }
+  .tools {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .replay, .copy button {
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font: 600 15px/1 "SF Pro Text", "SF Pro", -apple-system, sans-serif;
+    padding: 0;
+    cursor: pointer;
+  }
+  .replay {
+    height: 36px;
+    padding: 0 16px;
+    border-radius: 999px;
+    background: #fff;
+    color: #000;
+    font-weight: 500;
+  }
+  .replay:active { transform: scale(0.97); }
+  .clock {
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .copy {
+    display: flex;
+    gap: 16px;
+    margin-top: 14px;
+  }
+  .copy button[aria-pressed="true"] { color: #fff; }
+  .copy button[aria-pressed="false"] { color: var(--faint); font-weight: 500; }
+  .foot { margin-top: 18px; font-size: 13px; }
+  @media (max-width: 480px) {
+    .bench {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto minmax(0, 1fr);
+      justify-items: center;
+      overflow: auto;
+    }
+    .panel { width: min(400px, 100%); max-height: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .replay:active { transform: none; }
+    .greeting,
+    .begin { opacity: 1; }
+    .progress,
+    .gallery { transform: none; }
+  }
+</style>
+</head>
+<body>
+  <main class="bench">
+    <div class="device">
+      <div class="fit">
+        <div class="phone" id="phone">
+          <div class="status">9:41</div>
+          <p class="greeting" id="greeting">
+            <span class="line1" id="line1">Speak with</span>
+            <span class="line2" id="line2">poise</span>
+          </p>
+          <button class="begin" id="begin" type="button" tabindex="-1">Begin</button>
+          <div class="stack" id="stack">
+            <section class="sheet progress" aria-hidden="true">
+              <h2>Progress</h2>
+            </section>
+            <section class="sheet gallery" aria-hidden="true">
+              <h2>Gallery <span>0</span></h2>
+            </section>
+          </div>
+          <div class="indicator" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
+
+    <section class="panel">
+      <p class="issue">Issue 88</p>
+      <h1>Home entrance</h1>
+      <p class="lead">The greeting and Begin fade in together. The sheets slide up from the same place. Gallery lands first.</p>
+      <div class="copy" role="group" aria-label="Greeting">
+        <button type="button" id="copy-poise" aria-pressed="true">Speak with poise</button>
+        <button type="button" id="copy-voice" aria-pressed="false">Find your voice</button>
+      </div>
+      <div class="options" id="options" role="radiogroup" aria-label="Entrance"></div>
+      <div class="tools">
+        <button class="replay" id="replay" type="button">Replay</button>
+        <span class="clock" id="clock">0.0s</span>
+      </div>
+      <p class="foot" id="foot">R replays. This plays once, on the first open. Later opens stay still. Reduce Motion skips it.</p>
+    </section>
+  </main>
+<script>
+const OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
+const SHEET = "cubic-bezier(0, 0, 0.58, 1)";
+
+const FROM = { gallery: 120, progress: 176 };
+
+const variants = [
+  {
+    id: "lead",
+    name: "Gallery leads",
+    text: "Greeting and Begin fade together, both lines at once. The sheets leave from the same place. Gallery is home a tenth of a second before Progress.",
+    fade: { delay: 0, duration: 480 },
+    gallery: { delay: 0, duration: 184, from: FROM.gallery },
+    progress: { delay: 0, duration: 284, from: FROM.progress },
+  },
+];
+
+const lines = {
+  poise: ["Speak with", "poise"],
+  voice: ["Find your", "voice"],
+};
+
+const greeting = document.getElementById("greeting");
+const line1 = document.getElementById("line1");
+const line2 = document.getElementById("line2");
+const progressSheet = document.querySelector(".progress");
+const gallerySheet = document.querySelector(".gallery");
+const begin = document.getElementById("begin");
+const options = document.getElementById("options");
+const clock = document.getElementById("clock");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let current = "lead";
+let copy = "poise";
+let running = [];
+let clockFrame = 0;
+
+function seconds(ms) {
+  const value = ms / 1000;
+  return (Math.round(value * 10) / 10).toFixed(1) + "s";
+}
+
+function beatLines(variant) {
+  return [
+    seconds(variant.fade.delay) + "  greeting and Begin",
+    seconds(variant.gallery.delay) + "  both sheets leave",
+    seconds(variant.gallery.delay + variant.gallery.duration) + "  Gallery lands",
+    seconds(variant.progress.delay + variant.progress.duration) + "  Progress lands",
+  ];
+}
+
+function endOf(variant) {
+  return Math.max(
+    variant.fade.delay + variant.fade.duration,
+    variant.gallery.delay + variant.gallery.duration,
+    variant.progress.delay + variant.progress.duration
+  );
+}
+
+function renderOptions() {
+  options.replaceChildren();
+  variants.forEach((variant, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "option";
+    button.setAttribute("role", "radio");
+    button.setAttribute("aria-checked", variant.id === current ? "true" : "false");
+    button.dataset.id = variant.id;
+
+    const title = document.createElement("strong");
+    title.textContent = (index + 1) + "  " + variant.name;
+
+    const text = document.createElement("p");
+    text.textContent = variant.text;
+
+    const beats = document.createElement("p");
+    beats.className = "beats";
+    beats.textContent = beatLines(variant).join("\n");
+    beats.style.whiteSpace = "pre-line";
+
+    button.append(title, text, beats);
+    button.addEventListener("click", () => select(variant.id, true));
+    options.append(button);
+  });
+}
+
+function cancel() {
+  running.forEach((animation) => animation.cancel());
+  running = [];
+  cancelAnimationFrame(clockFrame);
+}
+
+function fade(el, spec) {
+  return el.animate(
+    [{ opacity: 0 }, { opacity: 1 }],
+    { delay: spec.delay, duration: spec.duration, easing: OUT, fill: "both" }
+  );
+}
+
+function slide(el, spec) {
+  return el.animate(
+    [
+      { transform: "translate3d(0, " + spec.from + "px, 0)" },
+      { transform: "translate3d(0, 0, 0)" },
+    ],
+    { delay: spec.delay, duration: spec.duration, easing: SHEET, fill: "both" }
+  );
+}
+
+function settle() {
+  cancel();
+  greeting.style.opacity = "1";
+  begin.style.opacity = "1";
+  progressSheet.style.transform = "none";
+  gallerySheet.style.transform = "none";
+  clock.textContent = "still";
+}
+
+function play(id) {
+  const variant = variants.find((item) => item.id === id);
+  cancel();
+  greeting.style.opacity = "";
+  begin.style.opacity = "";
+  progressSheet.style.transform = "";
+  gallerySheet.style.transform = "";
+  if (reduce) {
+    settle();
+    return;
+  }
+  running = [
+    fade(greeting, variant.fade),
+    fade(begin, variant.fade),
+    slide(gallerySheet, variant.gallery),
+    slide(progressSheet, variant.progress),
+  ];
+  const total = endOf(variant);
+  const started = performance.now();
+  clock.textContent = "0.0s";
+  const tick = (now) => {
+    const elapsed = Math.min(total, now - started);
+    clock.textContent = seconds(elapsed);
+    if (elapsed < total) clockFrame = requestAnimationFrame(tick);
+  };
+  clockFrame = requestAnimationFrame(tick);
+}
+
+function select(id, replay) {
+  const changed = id !== current;
+  current = id;
+  [...options.children].forEach((button) => {
+    button.setAttribute("aria-checked", button.dataset.id === id ? "true" : "false");
+  });
+  if (changed || replay) play(id);
+}
+
+function setCopy(next) {
+  copy = next;
+  line1.textContent = lines[next][0];
+  line2.textContent = lines[next][1];
+  document.getElementById("copy-poise").setAttribute("aria-pressed", next === "poise" ? "true" : "false");
+  document.getElementById("copy-voice").setAttribute("aria-pressed", next === "voice" ? "true" : "false");
+  play(current);
+}
+
+document.getElementById("replay").addEventListener("click", () => play(current));
+document.getElementById("copy-poise").addEventListener("click", () => setCopy("poise"));
+document.getElementById("copy-voice").addEventListener("click", () => setCopy("voice"));
+document.addEventListener("keydown", (event) => {
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.key === "r" || event.key === "R") play(current);
+});
+
+if (reduce) {
+  document.getElementById("foot").textContent = "Reduce Motion is on, so the phone stays still.";
+}
+
+function fitPhone() {
+  const panel = document.querySelector(".panel");
+  const sideBySide = innerWidth > 480;
+  const availH = innerHeight - 32;
+  const availW = sideBySide ? innerWidth - panel.offsetWidth - 56 : innerWidth - 24;
+  const scale = Math.min(1, availH / 844, availW / 390);
+  document.documentElement.style.setProperty("--fit", String(Math.max(0.42, scale)));
+}
+
+renderOptions();
+fitPhone();
+addEventListener("resize", fitPhone);
+play(current);
+</script>
+</body>
+</html>

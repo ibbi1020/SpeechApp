@@ -1,11 +1,29 @@
 import SwiftUI
 import SpeechAppKit
 
-/// Shows the launch mark still on white, then reveals Home with no motion.
+private struct SplashRevealedKey: EnvironmentKey {
+    /// False until SplashContainer has removed the mark and painted that frame.
+    /// True here would let Home start its entrance underneath the splash.
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True only after the launch mark is gone and that frame is on screen.
+    var splashRevealed: Bool {
+        get { self[SplashRevealedKey.self] }
+        set { self[SplashRevealedKey.self] = newValue }
+    }
+}
+
+/// Shows the launch mark still on white, then reveals Home.
+/// The mark itself does not move. Home may animate after it appears.
 struct SplashContainer<Content: View>: View {
     private var content: Content
 
     @State private var revealed = false
+    /// Flips after the mark is gone, on a later turn than `revealed`, so Home's
+    /// entrance does not run inside the transaction that removes the splash.
+    @State private var homeOnScreen = false
     @State private var didPlay = false
 
     init(@ViewBuilder content: () -> Content) {
@@ -16,6 +34,7 @@ struct SplashContainer<Content: View>: View {
         ZStack {
             content
                 .ignoresSafeArea()
+                .environment(\.splashRevealed, homeOnScreen)
                 .opacity(revealed ? 1 : 0)
                 .allowsHitTesting(revealed)
                 .accessibilityHidden(!revealed)
@@ -53,6 +72,11 @@ struct SplashContainer<Content: View>: View {
         withTransaction(transaction) {
             revealed = true
         }
+
+        // Let the mark leave and that frame draw before Home is allowed to move.
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        homeOnScreen = true
     }
 }
 

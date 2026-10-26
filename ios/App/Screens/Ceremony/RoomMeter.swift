@@ -66,6 +66,8 @@ final class RoomMeter {
         if engine.isRunning {
             engine.stop()
         }
+        RawMicrophone.silenceVoiceProcessing(engine)
+        try? RawMicrophone.useMeasurementMode(AVAudioSession.sharedInstance())
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0 else { return false }
@@ -76,6 +78,7 @@ final class RoomMeter {
         engine.prepare()
         do {
             try engine.start()
+            try? RawMicrophone.useMeasurementMode(AVAudioSession.sharedInstance())
         } catch {
             removeTap()
             state.close()
@@ -140,6 +143,7 @@ final class RoomMeter {
             } else {
                 try session.setActive(true)
             }
+            RawMicrophone.lockBuiltInCapsule(session)
             return true
         } catch {
             return false

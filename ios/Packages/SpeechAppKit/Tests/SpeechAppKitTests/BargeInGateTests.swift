@@ -52,4 +52,31 @@ struct BargeInGateTests {
         #expect(gate.agentSpeaking == false)
         #expect(gate.onSpeechStopped() == .passThrough)
     }
+
+    @Test("a short local blip is not released when the partner finishes")
+    func localBlipDoesNotRelease() {
+        var gate = BargeInGate()
+        gate.noteAgentAudio()
+        #expect(gate.onLocalLevel(now: 0, level: 0.2) == .hold)
+        #expect(gate.onLocalLevel(now: 0.1, level: 0.01) == .hold)
+        #expect(gate.noteResponseDone() == nil)
+    }
+
+    @Test("sustained local level commits a cancel")
+    func localSustainCommits() {
+        var gate = BargeInGate()
+        gate.noteAgentAudio()
+        #expect(gate.onLocalLevel(now: 0, level: 0.2) == .hold)
+        #expect(gate.onLocalLevel(now: 0.2, level: 0.2) == .hold)
+        #expect(gate.onLocalLevel(now: 0.35, level: 0.2) == .commitCancel)
+    }
+
+    @Test("speaker leak never starts a local barge-in")
+    func localLeakStaysQuiet() {
+        var gate = BargeInGate()
+        gate.noteAgentAudio()
+        #expect(gate.onLocalLevel(now: 0, level: 0.01) == .hold)
+        #expect(gate.onLocalLevel(now: 0.5, level: 0.01) == .hold)
+        #expect(gate.noteResponseDone() == nil)
+    }
 }
