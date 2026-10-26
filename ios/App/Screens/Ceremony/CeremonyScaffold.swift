@@ -9,7 +9,7 @@ struct CeremonyScaffold: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var breatheDone = false
     @State private var humPhase: HumPhase = .explain
-    @State private var clip = HumTone.rotate()
+    private let clip = VocalClip.ceremony
     @State private var breathFill: CGFloat = 0
     @State private var showCircle = false
     @State private var humProgress: CGFloat = 0
@@ -28,7 +28,8 @@ struct CeremonyScaffold: View {
 
     private var control: CeremonyControl {
         if showingRoomWarning {
-            return CeremonyControls.roomWarning(warning: roomWarning)
+            let next: CeremonyAdvance = model.runsGrounding ? .step : .start(chosen)
+            return CeremonyControls.roomWarning(warning: roomWarning, then: next)
         }
         return CeremonyControls.control(
             step: model.ceremonyStep,
@@ -36,7 +37,8 @@ struct CeremonyScaffold: View {
             budget: model.budget,
             breatheDone: breatheDone,
             humPhase: humPhase,
-            roomReady: roomReady
+            roomReady: roomReady,
+            grounding: model.runsGrounding
         )
     }
 
@@ -167,8 +169,14 @@ struct CeremonyScaffold: View {
 
     private func commit() {
         if showingRoomWarning {
+            let advance = control.advance
             showingRoomWarning = false
-            model.advanceCeremony()
+            switch advance {
+            case .start:
+                model.finishCeremony()
+            case .step, .armHum:
+                model.advanceCeremony()
+            }
             return
         }
         switch control.advance {
@@ -186,6 +194,13 @@ struct CeremonyScaffold: View {
         case .armHum:
             humPhase = .playing
         case .start:
+            // The exercise step starts straight in when this sitting is already
+            // open. A loud room still gets its warning before that start.
+            guard model.ceremonyStep != .exercise || roomReady else { return }
+            if model.ceremonyStep == .exercise, roomWarning {
+                showingRoomWarning = true
+                return
+            }
             model.finishCeremony()
         }
     }

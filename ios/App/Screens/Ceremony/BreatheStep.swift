@@ -1,7 +1,7 @@
 import SpeechAppKit
 import SwiftUI
 
-/// Paced breathing at six breaths a minute, four seconds in and six out, once.
+/// Paced breathing at six breaths a minute, four seconds in and six out, twice.
 ///
 /// The circle is the pacer: it grows for the whole inhale and shrinks for the whole
 /// exhale, so nobody has to read a number to know where they are. It stays off screen

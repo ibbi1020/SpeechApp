@@ -45,9 +45,9 @@ public enum CeremonyCopy {
     public static let breatheIn = "Breathe in"
     public static let breatheOut = "Breathe out"
     public static let breatheButton = "Done"
-    /// What they just did. The pace is still six a minute, four in and six out, but
-    /// that number here reads as if the exercise was six breaths. It is one.
-    public static let breatheRate = "One breath"
+    /// What they just did. The pace is still six a minute, four in and six out.
+    /// Naming that rate here would read as six breaths. It is two.
+    public static let breatheRate = "Two breaths"
 
     public static let exerciseButton = "This one"
 
@@ -71,16 +71,16 @@ public enum CeremonyCopy {
 ///
 /// Six breaths a minute is the standard target and 4 + 6 is the protocol used in the
 /// literature, though the ratio itself is not established: 1:2 and 1:1 produced no
-/// measurable HRV difference at this rate. One cycle is enough to slow the person
-/// down, which is the job of this step. The shortest *tested* dose is five minutes,
-/// so the length is inference and the pacing is not. See docs/scoping-entry-ritual.md.
+/// measurable HRV difference at this rate. Two cycles, because this step runs once
+/// per sitting rather than before every exercise. The shortest *tested* dose is five
+/// minutes, so the length is inference and the pacing is not. See docs/scoping-entry-ritual.md.
 public enum BreathPacing {
     /// Still, before the first inhale. Landing on a screen already mid-breath means
     /// missing that breath.
     public static let settle: Double = 3
     public static let inhale: Double = 4
     public static let exhale: Double = 6
-    public static let cycles = 1
+    public static let cycles = 2
 
     public static var cycle: Double { inhale + exhale }
     public static var total: Double { cycle * Double(cycles) }
@@ -161,7 +161,11 @@ public enum VocalClip: String, Equatable, Sendable, CaseIterable {
     /// Ten seconds. Twenty ran people out of breath.
     public static let seconds: Double = 10
 
-    /// Walks the list so the exercise differs run to run.
+    /// The ceremony hum. Closed lips are something people can do. The other clips
+    /// stay defined for the player, and the ceremony does not rotate to them.
+    public static let ceremony: VocalClip = .hum
+
+    /// Walks the list so a caller can vary the exercise. The ceremony does not.
     public static func next(after previous: VocalClip?) -> VocalClip {
         guard let previous, let index = allCases.firstIndex(of: previous) else {
             return allCases[0]
@@ -199,15 +203,15 @@ public struct CeremonyControl: Equatable, Sendable {
 }
 
 public enum CeremonyControls {
-    /// The pinned button for one step. A spent conversation month is stopped here,
-    /// before the hum, so the user is not walked to a control that cannot start.
     /// The pinned button while the loud-room warning is up. Copy follows the
     /// button band, which has hysteresis. The field color does not.
-    public static func roomWarning(warning: Bool) -> CeremonyControl {
+    /// `then` is where Continue goes. A sitting that is already open starts the
+    /// exercise. A new sitting walks on to the breath.
+    public static func roomWarning(warning: Bool, then advance: CeremonyAdvance = .step) -> CeremonyControl {
         CeremonyControl(
             title: warning ? CeremonyCopy.roomContinueAnyway : CeremonyCopy.roomContinue,
             isEnabled: true,
-            advance: .step
+            advance: advance
         )
     }
 
@@ -217,8 +221,11 @@ public enum CeremonyControls {
         budget: ConversationBudgetSnapshot,
         breatheDone: Bool = false,
         humPhase: HumPhase = .explain,
-        roomReady: Bool = false
+        roomReady: Bool = false,
+        grounding: Bool = true
     ) -> CeremonyControl {
+        // A spent conversation month is stopped here, before the hum, so the
+        // user is not walked to a control that cannot start.
         switch step {
         case .breathe:
             return CeremonyControl(
@@ -230,6 +237,14 @@ public enum CeremonyControls {
             if chosen == .conversation, budget.startEnabled == false {
                 let blocked = PracticeFormat.startControl(for: .conversation, budget: budget)
                 return CeremonyControl(title: blocked.title, isEnabled: false, advance: .step)
+            }
+            if grounding == false {
+                let start = PracticeFormat.startControl(for: chosen, budget: budget)
+                return CeremonyControl(
+                    title: start.title,
+                    isEnabled: roomReady && start.isEnabled,
+                    advance: .start(chosen)
+                )
             }
             return CeremonyControl(
                 title: CeremonyCopy.exerciseButton,

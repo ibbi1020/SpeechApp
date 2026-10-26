@@ -28,20 +28,27 @@ struct CeremonyStepTests {
         #expect(Ceremony.previous(before: .speak) == nil)
     }
 
-    @Test("breathing is one cycle, six a minute, four in and six out")
+    @Test("breathing is two cycles, six a minute, four in and six out")
     func pacing() {
         #expect(BreathPacing.cycle == 10)
         #expect(BreathPacing.rate == 6)
         #expect(BreathPacing.inhale == 4)
         #expect(BreathPacing.exhale == 6)
-        #expect(BreathPacing.cycles == 1)
-        #expect(BreathPacing.total == 10)
+        #expect(BreathPacing.cycles == 2)
+        #expect(BreathPacing.total == 20)
         #expect(BreathPacing.settle == 3)
     }
 
     @Test("the voice runs ten seconds, short enough to hold in one breath")
     func vocalLength() {
         #expect(VocalClip.seconds == 10)
+    }
+
+    @Test("the ceremony voice is the closed-lip hum")
+    func ceremonyVoice() {
+        #expect(VocalClip.ceremony == .hum)
+        #expect(VocalClip.ceremony.isFluctuating == false)
+        #expect(VocalClip.ceremony.explain == "Hum on \u{201C}mmm\u{201D}, lips closed.")
     }
 
     @Test("clips rotate through both families and wrap")
@@ -66,7 +73,7 @@ struct CeremonyStepTests {
         #expect(CeremonyCopy.breatheLine.lowercased().contains("deep") == false)
         #expect(CeremonyCopy.breatheIn == "Breathe in")
         #expect(CeremonyCopy.breatheOut == "Breathe out")
-        #expect(CeremonyCopy.breatheRate == "One breath")
+        #expect(CeremonyCopy.breatheRate == "Two breaths")
     }
 
     @Test("copy never tells the user to relax or calm down")
@@ -141,6 +148,13 @@ struct CeremonyControlTests {
         #expect(openControl.isEnabled)
         #expect(openControl.advance == .step)
 
+        let straight = CeremonyControls.control(
+            step: .exercise, chosen: .reading, budget: open, roomReady: true, grounding: false
+        )
+        #expect(straight.title == "Choose a passage")
+        #expect(straight.isEnabled)
+        #expect(straight.advance == .start(.reading))
+
         let spentControl = CeremonyControls.control(
             step: .exercise, chosen: .conversation, budget: spent, roomReady: true
         )
@@ -173,6 +187,10 @@ struct CeremonyControlTests {
         #expect(quiet.title == "Continue")
         #expect(quiet.isEnabled)
         #expect(quiet.advance == .step)
+
+        let carry = CeremonyControls.roomWarning(warning: false, then: .start(.monologue))
+        #expect(carry.title == "Continue")
+        #expect(carry.advance == .start(.monologue))
 
         #expect(CeremonyCopy.roomLoud == "This room is loud.")
         #expect(CeremonyCopy.roomLoudDetail == "It will get into what you say.")
@@ -222,6 +240,70 @@ struct CeremonyControlTests {
             let control = CeremonyControls.control(step: step, chosen: .reading, budget: open)
             #expect(control.isEnabled == false)
         }
+    }
+}
+
+@Suite("Practice sitting")
+struct PracticeSittingTests {
+    private let start = Date(timeIntervalSince1970: 1_000_000)
+
+    @Test("someone with no sitting is grounded")
+    func fresh() {
+        #expect(PracticeSitting().needsGrounding(at: start))
+    }
+
+    @Test("the half hour after a ceremony skips grounding")
+    func window() {
+        let sitting = PracticeSitting().opened(at: start)
+        #expect(sitting.needsGrounding(at: start.addingTimeInterval(29 * 60)) == false)
+        #expect(sitting.needsGrounding(at: start.addingTimeInterval(30 * 60)))
+    }
+
+    @Test("a later exercise does not restart the half hour")
+    func noReset() {
+        let sitting = PracticeSitting()
+            .opened(at: start)
+            .startedExercise(at: start.addingTimeInterval(25 * 60))
+        #expect(sitting.startedAt == start)
+        #expect(sitting.needsGrounding(at: start.addingTimeInterval(26 * 60)) == false)
+        #expect(sitting.needsGrounding(at: start.addingTimeInterval(31 * 60)))
+    }
+
+    @Test("an exercise still going at the half hour carries ten minutes past its end")
+    func carry() {
+        let ended = start.addingTimeInterval(40 * 60)
+        let sitting = PracticeSitting()
+            .opened(at: start)
+            .startedExercise(at: start.addingTimeInterval(20 * 60))
+            .endedExercise(at: ended)
+        #expect(sitting.needsGrounding(at: ended.addingTimeInterval(9 * 60)) == false)
+        #expect(sitting.needsGrounding(at: ended.addingTimeInterval(10 * 60)))
+    }
+
+    @Test("an exercise that finished inside the half hour does not carry past it")
+    func noCarry() {
+        let sitting = PracticeSitting()
+            .opened(at: start)
+            .startedExercise(at: start)
+            .endedExercise(at: start.addingTimeInterval(10 * 60))
+        #expect(sitting.needsGrounding(at: start.addingTimeInterval(31 * 60)))
+    }
+
+    @Test("ending an exercise that never started changes nothing")
+    func endWithoutStart() {
+        let sitting = PracticeSitting().opened(at: start).endedExercise(at: start.addingTimeInterval(5 * 60))
+        #expect(sitting.exerciseEndedAt == nil)
+    }
+
+    @Test("a second end does not move the first")
+    func endOnce() {
+        let ended = start.addingTimeInterval(40 * 60)
+        let sitting = PracticeSitting()
+            .opened(at: start)
+            .startedExercise(at: start)
+            .endedExercise(at: ended)
+            .endedExercise(at: ended.addingTimeInterval(15 * 60))
+        #expect(sitting.exerciseEndedAt == ended)
     }
 }
 
