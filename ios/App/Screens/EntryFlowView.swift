@@ -78,9 +78,18 @@ struct EntryFlowView: View {
         GeometryReader { geo in
             let top = geo.safeAreaInsets.top
             let bottom = geo.safeAreaInsets.bottom
+            // The figure and floor light sit at the bottom of the picture.
+            // Stop the picture at the top of Begin so both stay in the open band,
+            // then lift it 20pt so the floor light clears the button.
+            let pictureFloor = bottom
+                + GallerySheet.homeClearance(bottomInset: bottom)
+                + ProgressSheet.lip
+                + SpeechStartMetrics.height
+                + 20
             ZStack(alignment: .top) {
                 CeremonyPalette.background
                     .ignoresSafeArea()
+                HomeBackdrop(reservedFromBottom: pictureFloor)
 
                 // The sheet is taller than this column so it can cover the status bar
                 // when it opens. Pin the column to the reader, or the stack grows with
@@ -185,6 +194,28 @@ struct EntryFlowView: View {
 
     private var homeHeader: some View {
         HomeGreetingTitle(line: EntryGreeting.line(hasBegunBefore: model.hasBegunBefore))
+    }
+}
+
+/// The home picture. Bottom of the frame is the top of Begin, so the figure
+/// and the floor light stay above the button. Anything taller than that band
+/// is cropped from the top.
+private struct HomeBackdrop: View {
+    var reservedFromBottom: CGFloat
+
+    var body: some View {
+        GeometryReader { geo in
+            let stage = max(0, geo.size.height - reservedFromBottom)
+            Image("HomeBackdrop")
+                .resizable()
+                .scaledToFill()
+                .frame(width: geo.size.width, height: stage, alignment: .bottom)
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                .clipped()
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
     }
 }
 
