@@ -111,7 +111,8 @@ struct EntryFlowView: View {
                 }
                 .padding(.horizontal, SpeechSpacing.page)
                 .padding(.top, SpeechSpacing.related)
-                .padding(.bottom, GallerySheet.homeClearance(bottomInset: bottom) + ProgressSheet.lip)
+                // 12pt below the sheet clearance, so Begin sits closer to the glass.
+                .padding(.bottom, GallerySheet.homeClearance(bottomInset: bottom) + ProgressSheet.lip - 12)
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
 
                 ProgressSheet(
