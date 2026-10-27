@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>After a take</title>
+  <style>
+    :root {
+      --secondary: rgba(235, 235, 245, 0.6);
+      --hairline: rgba(255, 255, 255, 0.12);
+      --blue: #0a84ff;
+      --page: 24px;
+      --related: 16px;
+      --section: 36px;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+      color-scheme: dark;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100dvh;
+      background: #1c1c1e;
+      color: #fff;
+      display: grid;
+      grid-template-columns: minmax(260px, 340px) 1fr;
+    }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+
+    .rail {
+      padding: 28px 24px 32px;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      overflow: auto;
+    }
+    .rail h1 {
+      margin: 0;
+      font-size: 21px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      line-height: 1.2;
+    }
+    .deck {
+      margin: 8px 0 22px;
+      max-width: 36ch;
+      color: var(--secondary);
+      font-size: 15px;
+      line-height: 1.4;
+    }
+    .options { display: flex; flex-direction: column; gap: 6px; }
+    .option {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 12px 12px;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+    }
+    .option[aria-checked="true"] { background: #2c2c2e; }
+    .option .name { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+    .option p { margin: 4px 0 0; color: var(--secondary); font-size: 14px; line-height: 1.35; }
+    .why { margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+    .why h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary); }
+    .why p { margin: 0; max-width: 40ch; font-size: 15px; line-height: 1.4; }
+    .keys { margin-top: 18px; color: rgba(235, 235, 245, 0.42); font-size: 13px; line-height: 1.4; }
+
+    .stage { display: grid; place-items: center; min-height: 100dvh; padding: 20px 16px; }
+    .device {
+      width: 390px;
+      height: min(844px, calc(100dvh - 40px));
+      background: #000;
+      border-radius: 48px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+    }
+    .screen {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(180deg, #000 0%, #000 72%, #0c0c0e 100%);
+      position: relative;
+    }
+    .island {
+      position: absolute;
+      top: 11px;
+      left: 50%;
+      width: 120px;
+      height: 36px;
+      transform: translateX(-50%);
+      border-radius: 20px;
+      background: #000;
+      box-shadow: 0 0 0 1px #2a2a2c;
+    }
+    .status {
+      height: 54px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 0 28px 6px;
+      font-size: 15px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .nav {
+      height: 44px;
+      display: grid;
+      grid-template-columns: 44px 1fr 44px;
+      align-items: center;
+      padding: 0 8px;
+    }
+    .nav .title { text-align: center; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+    .back {
+      width: 44px;
+      height: 44px;
+      border: 0;
+      background: transparent;
+      color: var(--blue);
+      display: grid;
+      place-items: center;
+    }
+    .back svg { width: 14px; height: 22px; }
+    .scroll {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      padding: 4px var(--page) 16px;
+      scrollbar-width: none;
+    }
+    .scroll::-webkit-scrollbar { display: none; }
+    .spacer { flex: 1 0 20px; }
+
+    .topic {
+      margin: 8px 0 0;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      line-height: 1.2;
+    }
+    .compare {
+      margin: 8px 0 0;
+      font-size: 16px;
+      line-height: 1.45;
+      color: var(--secondary);
+    }
+    .compare.sub { font-size: 14px; line-height: 1.4; }
+    .counts .compare,
+    .counts .stat .k,
+    .counts .section-label { color: #fff; }
+    .counts .section-label { font-size: 14px; }
+
+    .notes { margin-top: var(--related); }
+    .note {
+      display: grid;
+      grid-template-columns: 3px 1fr;
+      gap: 12px;
+      width: 100%;
+      margin: 0;
+      padding: 16px 0;
+      border: 0;
+      border-bottom: 0.5px solid var(--hairline);
+      background: transparent;
+      text-align: left;
+    }
+    .note:last-child { border-bottom: 0; }
+    .note .bar { border-radius: 2px; background: var(--mark); }
+    .kind {
+      display: block;
+      font-size: 14px;
+      line-height: 1.4;
+      color: var(--mark);
+    }
+    .sentence {
+      display: block;
+      margin-top: 2px;
+      font-size: 16px;
+      line-height: 1.45;
+      color: #fff;
+    }
+    .live-note { margin-top: 4px; }
+    .live-note:empty { display: none; }
+    .live-note .note {
+      grid-template-columns: 4px 1fr;
+      gap: 14px;
+      padding: 8px 0 0;
+      border: 0;
+      background: none;
+    }
+    .live-note .sentence {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 400;
+      letter-spacing: -0.015em;
+      line-height: 1.25;
+      color: #fff;
+      background: none;
+    }
+
+    .section-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 44px;
+      margin-top: var(--section);
+      padding: 0;
+      border: 0;
+      background: transparent;
+      text-align: left;
+    }
+    .section-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      line-height: 1.25;
+      text-transform: uppercase;
+    }
+    .chev { width: 12px; height: 12px; margin-left: auto; color: var(--secondary); display: block; }
+    .chev.open { transform: rotate(90deg); }
+    .quiet-details {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      min-height: 44px;
+      margin-top: var(--related);
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--secondary);
+      font-size: 16px;
+      line-height: 1.45;
+      text-align: left;
+    }
+
+    .drawer { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 280ms ease-in-out; }
+    .drawer.open { grid-template-rows: 1fr; }
+    .drawer-clip { overflow: hidden; }
+    .stat {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      width: 100%;
+      padding: 16px 0;
+      border: 0;
+      border-bottom: 0.5px solid var(--hairline);
+      background: transparent;
+      text-align: left;
+    }
+    .stat:last-child { border-bottom: 0; }
+    .stat .k { font-size: 16px; line-height: 1.45; color: var(--secondary); }
+    .stat .v {
+      margin-left: auto;
+      font-size: 20px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
+    }
+    .stat .v.lg { font-size: 28px; letter-spacing: -0.015em; }
+    .stat .chev { align-self: center; }
+    .pace { margin-top: var(--section); }
+
+    .block { margin-top: var(--section); }
+    .wave { position: relative; height: 56px; margin-top: 8px; touch-action: none; }
+    .bars { height: 100%; display: flex; align-items: center; gap: 2px; }
+    .bar-col { flex: 1; border-radius: 1px; background: rgba(255, 255, 255, 0.28); min-height: 2px; }
+    .bar-col.played { background: #fff; }
+    .playhead {
+      position: absolute;
+      top: 0;
+      width: 1.5px;
+      height: 100%;
+      background: #fff;
+      transform: translateX(-0.75px);
+      pointer-events: none;
+    }
+    .playhead::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #fff;
+      transform: translate(-50%, -2px);
+    }
+    .dot {
+      position: absolute;
+      top: 50%;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      transform: translate(-50%, -50%);
+    }
+    .dot::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--mark);
+      transform: translate(-50%, -50%);
+    }
+    .transport { display: flex; align-items: center; gap: 12px; min-height: 52px; }
+    .play {
+      width: 44px;
+      height: 44px;
+      border: 0;
+      border-radius: 22px;
+      background: #fff;
+      color: #000;
+      display: grid;
+      place-items: center;
+      flex: none;
+    }
+    .play svg { width: 16px; height: 16px; }
+    .play .icon-play { transform: translateX(1px); }
+    .play:active, .home:active { transform: scale(0.97); }
+    .clock { font-size: 17px; font-variant-numeric: tabular-nums; }
+    .clock.end { margin-left: auto; color: var(--secondary); }
+
+    .words { display: flex; flex-wrap: wrap; gap: 14px 8px; margin-top: var(--related); }
+    .word {
+      border: 0;
+      background: transparent;
+      padding: 0;
+      font-family: "New York", "Iowan Old Style", Palatino, Georgia, serif;
+      font-size: 22px;
+      line-height: 1.15;
+      color: #fff;
+      border-radius: 4px;
+    }
+    .word.filler { color: var(--secondary); }
+    .word.current { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; color: #fff; }
+
+    .now-note {
+      display: grid;
+      grid-template-columns: 3px 1fr;
+      gap: 12px;
+      margin: 4px 0 8px;
+    }
+    .now-note p { margin: 0; font-size: 15px; line-height: 1.35; color: var(--secondary); }
+    .now-note .bar { border-radius: 2px; background: var(--mark); }
+
+    .home {
+      width: calc(100% - 24px);
+      height: 61px;
+      margin: 8px 12px 0;
+      border: 0;
+      border-radius: 999px;
+      background: #fff;
+      color: #000;
+      font-size: 17px;
+      font-weight: 500;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .drawer, .chev, .play, .home { transition: none; }
+    }
+    @media (max-width: 800px) {
+      body { grid-template-columns: 1fr; }
+      .stage { min-height: auto; }
+      .rail { border-right: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+    }
+  </style>
+</head>
+<body>
+  <aside class="rail">
+    <h1>After a take</h1>
+    <p class="deck">Option 4. The counts lead. One sentence sits under play, in 22px regular white, and only while the playhead is near that moment.</p>
+    <div class="options" role="radiogroup" aria-label="Layouts" id="options"></div>
+    <div class="why">
+      <h2>Why this one</h2>
+      <p id="why-body"></p>
+    </div>
+    <p class="keys">Keys 1 to 4. Tap a note, a dot, or a word. Drag the waveform. The sentences are the ones the app already writes. The numbers are a sample.</p>
+  </aside>
+  <main class="stage">
+    <div class="device" id="phone" aria-label="iPhone prototype"></div>
+  </main>
+  <script>
+    const DURATION = 20;
+    const WORDS = [
+      { t: 0.2, text: "I" }, { t: 0.5, text: "kept" }, { t: 0.95, text: "watering" },
+      { t: 1.55, text: "the" }, { t: 1.8, text: "plant" }, { t: 2.25, text: "even" },
+      { t: 2.6, text: "after" }, { t: 3.0, text: "it" }, { t: 3.2, text: "was" },
+      { t: 3.5, text: "clearly" }, { t: 5.8, text: "done." },
+      { t: 7.4, text: "Um", filler: true }, { t: 7.9, text: "uh", filler: true },
+      { t: 8.5, text: "I" }, { t: 8.75, text: "mean" }, { t: 9.3, text: "even" },
+      { t: 9.7, text: "after" }, { t: 10.15, text: "the" }, { t: 10.4, text: "leaves" },
+      { t: 10.95, text: "were" }, { t: 11.3, text: "gone." },
+      { t: 13.2, text: "I" }, { t: 13.5, text: "started" }, { t: 14.05, text: "again." },
+      { t: 15.4, text: "I" }, { t: 15.7, text: "started" }, { t: 16.2, text: "again" },
+      { t: 16.7, text: "with" }, { t: 16.95, text: "a" }, { t: 17.15, text: "smaller" },
+      { t: 17.7, text: "pot." }
+    ];
+    const NOTES = [
+      { kind: "Pause", color: "#ff9f0a", time: 3.9, from: 9, to: 10, text: "A 2-second pause in the middle of a sentence. Listen: what word were you looking for?" },
+      { kind: "Fillers", color: "#ffd60a", time: 7.4, from: 11, to: 12, text: "2 fillers in 1 second. Listen: what were you about to say?" },
+      { kind: "Restart", color: "#66d4cf", time: 13.2, from: 21, to: 26, text: "You started this part again. Listen: did the second try say it better?" }
+    ];
+    const STATS = [
+      { label: "Pace", value: "148 / min", large: true },
+      { label: "Time spoken", value: "0:18", large: false },
+      { label: "Pause time", value: "0:02", large: false }
+    ];
+    const BARS = [6, 10, 16, 22, 18, 28, 24, 12, 8, 6, 5, 14, 30, 36, 28, 18, 12, 8, 10, 22, 34, 26, 16, 10, 8, 20, 32, 24, 14, 8, 6, 12, 22, 18, 10, 8, 16, 28, 22, 12, 8, 6, 10, 18, 26, 16, 10, 8];
+    const VARIATIONS = [
+      {
+        id: "now",
+        name: "1. Now",
+        blurb: "The note is hidden until a dot is tapped. Details is body text.",
+        why: "This is the screen today. The sentence only appears after a tap, in gray, under the play button. Details is the same size and color as ordinary text, so it does not read as a section."
+      },
+      {
+        id: "sections",
+        name: "2. Two sections",
+        blurb: "The notes are a list. Details is the report’s section label, and the counts start open.",
+        why: "The design system already sets Details as a label, in capitals, not as body text. The notes use the bar the screen already has, set in body so they read as the content. The stat rows stay the stat rows. Nothing new is added, and the counts are on screen without a hunt."
+      },
+      {
+        id: "pace",
+        name: "3. Pace row",
+        blurb: "Same note list. The counts open from the pace row, not from the word Details.",
+        why: "People walked past the word Details. The pace row is already the first stat, with the large number. That row becomes the disclosure. Closed, you still see 148 / min. Open, the other two rows are the same list."
+      },
+      {
+        id: "counts",
+        name: "4. Counts, then the notes",
+        blurb: "The stat list leads. One sentence shows under play, and only while the playhead is near that moment.",
+        why: "Counts stay first. The sentence is 22px regular and white, with the bar and nothing else. It is on screen only while the playhead is within a second and a half before that moment, or two seconds after. Move away and it goes."
+      }
+    ];
+
+    const NEAR_BEFORE = 1.5;
+    const NEAR_AFTER = 2;
+    const state = { variation: "counts", selected: null, detailsOpen: true, playing: false, time: NOTES[0].time };
+    const CHEV = '<svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.2 2.1 8 6 4.2 9.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const BACK = '<svg viewBox="0 0 14 22" aria-hidden="true"><path d="M11 2 3 11l8 9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const PLAY = '<svg class="icon-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 2.8v10.4L13.2 8 5.2 2.8z" fill="currentColor"/></svg>';
+    const PAUSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.2 2.6h2.3v10.8H4.2zm5.3 0h2.3v10.8H9.5z" fill="currentColor"/></svg>';
+    const phone = document.getElementById("phone");
+    const optionsEl = document.getElementById("options");
+
+    function esc(s) {
+      return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    }
+    function clock(t) {
+      const s = Math.max(0, Math.round(t));
+      return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    }
+    function chev(open) {
+      return CHEV.replace('class="chev"', 'class="chev' + (open ? " open" : "") + '"');
+    }
+    function header() {
+      return '<p class="topic">A habit you kept longer than you meant to</p>' +
+        '<p class="compare' + (state.variation === "now" ? "" : " sub") + '">A little faster than the take before.</p>';
+    }
+    function noteList() {
+      return '<div class="notes">' + NOTES.map((n, i) =>
+        '<button class="note' + (state.selected === i ? " on" : "") + '" type="button" data-note="' + i + '" style="--mark:' + n.color + '">' +
+        '<span class="bar"></span><span><span class="kind">' + esc(n.kind) + '</span><span class="sentence">' + esc(n.text) + "</span></span></button>"
+      ).join("") + "</div>";
+    }
+    function statRows(from) {
+      return STATS.slice(from).map((row, i) =>
+        '<div class="stat"><span class="k">' + esc(row.label) + '</span><span class="v' + (row.large && from === 0 ? " lg" : "") + '">' + esc(row.value) + "</span></div>"
+      ).join("");
+    }
+    function detailsLabel(open) {
+      return '<button class="section-toggle" type="button" data-action="details" aria-expanded="' + open + '">' +
+        '<span class="section-label">Details</span>' + chev(open) + "</button>" +
+        '<div class="drawer' + (open ? " open" : "") + '"><div class="drawer-clip">' + statRows(0) + "</div></div>";
+    }
+    function paceRow(open) {
+      const pace = STATS[0];
+      return '<button class="stat pace" type="button" data-action="details" aria-expanded="' + open + '">' +
+        '<span class="k">' + esc(pace.label) + '</span><span class="v lg">' + esc(pace.value) + "</span>" + chev(open) + "</button>" +
+        '<div class="drawer' + (open ? " open" : "") + '"><div class="drawer-clip">' + statRows(1) + "</div></div>";
+    }
+    function quietDetails(open) {
+      return '<button class="quiet-details" type="button" data-action="details" aria-expanded="' + open + '"><span>Details</span>' + chev(open) + "</button>" +
+        '<div class="drawer' + (open ? " open" : "") + '"><div class="drawer-clip">' + statRows(0) + "</div></div>";
+    }
+    function wave() {
+      const bars = BARS.map((h) => '<i class="bar-col" style="height:' + h + 'px"></i>').join("");
+      const dots = NOTES.map((n, i) =>
+        '<button class="dot" type="button" data-note="' + i + '" style="left:' + (n.time / DURATION * 100) + "%;--mark:" + n.color +
+        '" aria-label="' + esc(n.kind) + ' marker"></button>'
+      ).join("");
+      return '<div class="wave" role="slider" tabindex="0" aria-label="Playback" aria-valuemin="0" aria-valuemax="' + DURATION + '" aria-valuenow="' + state.time.toFixed(1) + '"><div class="bars">' + bars + '</div><div class="playhead"></div>' + dots + "</div>";
+    }
+    function transport() {
+      const icon = state.playing ? PAUSE : PLAY;
+      const label = state.playing ? "Pause" : "Play";
+      return '<div class="transport"><button class="play" type="button" data-action="play" aria-label="' + label + '">' + icon +
+        '</button><span class="clock time-now">' + clock(state.time) + '</span><span class="clock end">' + clock(DURATION) + "</span></div>";
+    }
+    function player() {
+      return '<div class="block">' + wave() + transport() + "</div>";
+    }
+    function words() {
+      return '<div class="words">' + WORDS.map((w, i) =>
+        '<button class="word' + (w.filler ? " filler" : "") + '" type="button" data-word="' + i + '">' + esc(w.text) + "</button>"
+      ).join("") + "</div>";
+    }
+    function noteNear(time) {
+      let best = null;
+      let bestDist = Infinity;
+      NOTES.forEach((n, i) => {
+        const dist = time - n.time;
+        if (dist < -NEAR_BEFORE || dist > NEAR_AFTER) return;
+        const abs = Math.abs(dist);
+        if (abs < bestDist) {
+          best = i;
+          bestDist = abs;
+        }
+      });
+      return best;
+    }
+    function renderLive() {
+      const slot = document.getElementById("live-note");
+      if (!slot) return;
+      const index = noteNear(state.time);
+      const key = index == null ? "" : String(index);
+      if (slot.dataset.index === key) return;
+      slot.dataset.index = key;
+      state.selected = index;
+      if (index == null) {
+        slot.innerHTML = "";
+        return;
+      }
+      const n = NOTES[index];
+      slot.innerHTML = '<div class="note" style="--mark:' + n.color + '"><span class="bar"></span><p class="sentence">' + esc(n.text) + "</p></div>";
+    }
+    function nowNote() {
+      const n = NOTES[state.selected];
+      if (state.selected == null || !n) return "";
+      return '<div class="now-note" style="--mark:' + n.color + '"><span class="bar"></span><p>' + esc(n.text) + "</p></div>";
+    }
+    function body() {
+      if (state.variation === "now") {
+        return header() + quietDetails(state.detailsOpen) + player() + nowNote() + words();
+      }
+      if (state.variation === "pace") {
+        return header() + noteList() + paceRow(state.detailsOpen) + player() + words();
+      }
+      if (state.variation === "counts") {
+        return header() + detailsLabel(state.detailsOpen) + player() + '<div id="live-note" class="live-note"></div>' + words();
+      }
+      return header() + noteList() + detailsLabel(state.detailsOpen) + player() + words();
+    }
+    function screen() {
+      return '<div class="screen' + (state.variation === "counts" ? " counts" : "") + '"><div class="island" aria-hidden="true"></div>' +
+        '<div class="status"><span>9:41</span><span></span></div>' +
+        '<div class="nav"><button class="back" type="button" aria-label="Back">' + BACK + '</button><div class="title">Your talk</div><span></span></div>' +
+        '<div class="scroll">' + body() + '<div class="spacer"></div><button class="home" type="button">Back to home</button></div></div>';
+    }
+
+    function paint(keepScroll) {
+      const prev = phone.querySelector(".scroll");
+      const top = keepScroll && prev ? prev.scrollTop : 0;
+      phone.innerHTML = screen();
+      const next = phone.querySelector(".scroll");
+      if (next && keepScroll) next.scrollTop = top;
+      paintTime();
+    }
+    function currentWord(time) {
+      let answer = null;
+      for (let i = 0; i < WORDS.length; i++) {
+        if (WORDS[i].t <= time) answer = i;
+        else break;
+      }
+      if (answer == null) return null;
+      const next = WORDS[answer + 1];
+      const end = next ? next.t : WORDS[answer].t + 0.4;
+      if (time > end + 0.15) return null;
+      return answer;
+    }
+    function paintTime() {
+      const t = state.time;
+      phone.querySelectorAll(".time-now").forEach((n) => { n.textContent = clock(t); });
+      const slider = phone.querySelector(".wave");
+      if (slider) slider.setAttribute("aria-valuenow", t.toFixed(1));
+      const head = phone.querySelector(".playhead");
+      if (head) head.style.left = (t / DURATION * 100) + "%";
+      phone.querySelectorAll(".bar-col").forEach((bar, i) => {
+        bar.classList.toggle("played", ((i + 0.5) / BARS.length) * DURATION <= t);
+      });
+      const play = phone.querySelector("[data-action=play]");
+      if (play) {
+        const label = state.playing ? "Pause" : "Play";
+        if (play.getAttribute("aria-label") !== label) {
+          play.setAttribute("aria-label", label);
+          play.innerHTML = state.playing ? PAUSE : PLAY;
+        }
+      }
+      if (state.variation === "counts") renderLive();
+      const current = currentWord(t);
+      phone.querySelectorAll(".word").forEach((btn) => {
+        btn.classList.toggle("current", Number(btn.dataset.word) === current);
+      });
+    }
+    function selectNote(index) {
+      state.selected = index;
+      state.time = NOTES[index].time;
+      state.playing = true;
+      paint(true);
+    }
+    function paintRail() {
+      const current = VARIATIONS.find((v) => v.id === state.variation);
+      optionsEl.innerHTML = VARIATIONS.map((v) =>
+        '<button class="option" type="button" role="radio" data-variation="' + v.id + '" aria-checked="' + (v.id === state.variation) + '">' +
+        '<span class="name">' + esc(v.name) + "</span><p>" + esc(v.blurb) + "</p></button>"
+      ).join("");
+      document.getElementById("why-body").textContent = current.why;
+    }
+    function setVariation(id) {
+      state.variation = id;
+      state.playing = false;
+      state.detailsOpen = id === "sections" || id === "counts";
+      if (id === "counts") {
+        state.selected = null;
+        state.time = NOTES[0].time;
+      } else if (id === "now") {
+        state.selected = null;
+      } else if (state.selected == null) {
+        state.selected = 0;
+        state.time = NOTES[0].time;
+      }
+      paintRail();
+      paint(false);
+    }
+
+    optionsEl.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-variation]");
+      if (btn) setVariation(btn.dataset.variation);
+    });
+    phone.addEventListener("click", (e) => {
+      const note = e.target.closest("[data-note]");
+      if (note) { selectNote(Number(note.dataset.note)); return; }
+      const word = e.target.closest("[data-word]");
+      if (word) {
+        state.time = WORDS[Number(word.dataset.word)].t;
+        state.playing = true;
+        paintTime();
+        return;
+      }
+      const action = e.target.closest("[data-action]");
+      if (!action) return;
+      if (action.dataset.action === "play") {
+        state.playing = !state.playing;
+        if (state.time >= DURATION) state.time = 0;
+        paintTime();
+      } else if (action.dataset.action === "details") {
+        state.detailsOpen = !state.detailsOpen;
+        paint(true);
+      }
+    });
+
+    let scrubbing = false;
+    function seek(event, waveEl) {
+      const rect = waveEl.getBoundingClientRect();
+      const p = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+      state.time = p * DURATION;
+      state.playing = false;
+      paintTime();
+    }
+    phone.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("button")) return;
+      const waveEl = e.target.closest(".wave");
+      if (!waveEl) return;
+      scrubbing = true;
+      waveEl.setPointerCapture(e.pointerId);
+      seek(e, waveEl);
+    });
+    phone.addEventListener("pointermove", (e) => {
+      if (!scrubbing) return;
+      const waveEl = phone.querySelector(".wave");
+      if (waveEl) seek(e, waveEl);
+    });
+    phone.addEventListener("pointerup", () => { scrubbing = false; });
+    phone.addEventListener("pointercancel", () => { scrubbing = false; });
+    phone.addEventListener("keydown", (e) => {
+      if (!e.target.closest(".wave")) return;
+      if (e.key === "ArrowRight") state.time = Math.min(DURATION, state.time + 1);
+      else if (e.key === "ArrowLeft") state.time = Math.max(0, state.time - 1);
+      else return;
+      e.preventDefault();
+      paintTime();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const n = Number(e.key);
+      if (n >= 1 && n <= VARIATIONS.length) setVariation(VARIATIONS[n - 1].id);
+    });
+
+    let last = 0;
+    function frame(now) {
+      if (state.playing) {
+        const dt = last ? (now - last) / 1000 : 0;
+        state.time += dt;
+        if (state.time >= DURATION) {
+          state.time = DURATION;
+          state.playing = false;
+        }
+        paintTime();
+      }
+      last = now;
+      requestAnimationFrame(frame);
+    }
+
+    paintRail();
+    paint(false);
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
