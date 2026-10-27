@@ -197,6 +197,54 @@ struct CeremonyControlTests {
         #expect(CeremonyCopy.roomClear == "Quieter now. Go ahead.")
     }
 
+    @Test("a quiet room moves on only while the exercise step is still up")
+    func probeAdvances() {
+        let step = ExerciseRoomProbe.outcome(
+            ready: true, denied: false, warning: false,
+            cancelled: false, stillInExercise: true, target: .step
+        )
+        let start = ExerciseRoomProbe.outcome(
+            ready: true, denied: false, warning: false,
+            cancelled: false, stillInExercise: true, target: .start
+        )
+        #expect(step == .advance(.step))
+        #expect(start == .advance(.start))
+    }
+
+    @Test("leaving or cancelling does not start the exercise")
+    func probeStays() {
+        let cancelled = ExerciseRoomProbe.outcome(
+            ready: true, denied: false, warning: false,
+            cancelled: true, stillInExercise: true, target: .start
+        )
+        let left = ExerciseRoomProbe.outcome(
+            ready: true, denied: false, warning: false,
+            cancelled: false, stillInExercise: false, target: .start
+        )
+        #expect(cancelled == .stay)
+        #expect(left == .stay)
+    }
+
+    @Test("a loud room warns, a denied mic is not a failed check, and a dead meter is")
+    func probeStops() {
+        let loud = ExerciseRoomProbe.outcome(
+            ready: true, denied: false, warning: true,
+            cancelled: false, stillInExercise: true, target: .step
+        )
+        let denied = ExerciseRoomProbe.outcome(
+            ready: false, denied: true, warning: false,
+            cancelled: false, stillInExercise: true, target: .step
+        )
+        let unavailable = ExerciseRoomProbe.outcome(
+            ready: false, denied: false, warning: false,
+            cancelled: false, stillInExercise: true, target: .step
+        )
+        #expect(loud == .warn)
+        #expect(denied == .denied)
+        #expect(unavailable == .unavailable)
+        #expect(UserFacingFailure.roomCheckDidNotFinish == "The room check didn’t finish. Try again.")
+    }
+
     @Test("humming names the mouth, the tap, and the glide")
     func hummingCopy() {
         #expect(VocalClip.hum.explain == "Hum on \u{201C}mmm\u{201D}, lips closed.")

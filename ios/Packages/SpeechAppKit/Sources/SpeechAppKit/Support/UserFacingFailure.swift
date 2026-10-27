@@ -6,6 +6,7 @@ public enum UserFacingFailure {
     public static let practiceDidNotStart = "Practice couldn’t start. Try again."
     public static let connectionDropped = "The connection dropped. Try again."
     public static let microphoneOff = "The microphone is off. Turn it on in Settings and try again."
+    public static let roomCheckDidNotFinish = "The room check didn’t finish. Try again."
     public static let needsIPhone = "This practice needs an iPhone."
     public static let topicsDidNotLoad = "Topics didn’t load. Go back and try again."
     public static let nothingToPlay = "There’s nothing to play."

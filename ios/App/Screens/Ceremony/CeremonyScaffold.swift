@@ -21,7 +21,9 @@ struct CeremonyScaffold: View {
     @State private var roomVoice = 0.0
     @State private var roomDecibels = -160.0
     @State private var roomDenied = false
+    @State private var roomUnavailable = false
     @State private var roomChecking = false
+    @State private var roomProbe: ExerciseProbe?
 
     private var chosen: PracticeFormat.Kind {
         model.chosenKind ?? .conversation
@@ -119,6 +121,9 @@ struct CeremonyScaffold: View {
                 roomReady = false
                 roomWarning = false
                 roomDenied = false
+                roomUnavailable = false
+                roomChecking = false
+                roomProbe = nil
             }
             if step != .breathe {
                 breatheDone = false
@@ -143,8 +148,16 @@ struct CeremonyScaffold: View {
                     roomDecibels = decibels
                 }
                 roomDenied = snap.denied
-                try? await Task.sleep(for: .milliseconds(32))
+                do {
+                    try await Task.sleep(for: .milliseconds(32))
+                } catch {
+                    break
+                }
             }
+        }
+        .task(id: roomProbe?.token) {
+            guard let roomProbe else { return }
+            await evaluateExerciseRoom(roomProbe)
         }
     }
 
@@ -165,7 +178,7 @@ struct CeremonyScaffold: View {
                 breatheDone = done
             }
         case .exercise:
-            ExerciseStep(blocked: roomDenied ? UserFacingFailure.microphoneOff : nil)
+            ExerciseStep(blocked: roomBlocked)
         case .hum:
             VocalStep(clip: clip, phase: humPhase, progress: $humProgress, voice: $humVoice) {
                 humPhase = .finished
@@ -207,29 +220,35 @@ struct CeremonyScaffold: View {
         }
     }
 
-    private enum ExerciseCommitTarget {
-        case step
-        case start
+    private var roomBlocked: String? {
+        if roomDenied { return UserFacingFailure.microphoneOff }
+        if roomUnavailable { return UserFacingFailure.roomCheckDidNotFinish }
+        return nil
     }
 
-    @MainActor
-    private func beginExerciseCommit(_ target: ExerciseCommitTarget) {
+    /// One tap, one check. A new token replaces the previous check, and clearing
+    /// it cancels the task SwiftUI is running for that token.
+    private struct ExerciseProbe: Equatable {
+        var token: UUID
+        var target: ExerciseRoomProbe.Target
+    }
+
+    private func beginExerciseCommit(_ target: ExerciseRoomProbe.Target) {
         guard roomChecking == false else { return }
         roomChecking = true
         roomReady = false
         roomDenied = false
-        Task { @MainActor in
-            await evaluateExerciseRoom(target)
-        }
+        roomUnavailable = false
+        roomProbe = ExerciseProbe(token: UUID(), target: target)
     }
 
-    @MainActor
-    private func evaluateExerciseRoom(_ target: ExerciseCommitTarget) async {
+    private func evaluateExerciseRoom(_ probe: ExerciseProbe) async {
         let token = await room.start()
         defer {
             room.stop(token: token)
             roomChecking = false
         }
+        guard Task.isCancelled == false else { return }
         var snap = room.snapshot
         let deadline = ContinuousClock.now + .seconds(2)
         while Task.isCancelled == false {
@@ -244,18 +263,43 @@ struct CeremonyScaffold: View {
             if snap.ready || snap.denied || ContinuousClock.now >= deadline {
                 break
             }
-            try? await Task.sleep(for: .milliseconds(32))
+            do {
+                try await Task.sleep(for: .milliseconds(32))
+            } catch {
+                break
+            }
         }
-        guard snap.ready, snap.denied == false else { return }
-        if snap.warning {
-            showingRoomWarning = true
+        let outcome = ExerciseRoomProbe.outcome(
+            ready: snap.ready,
+            denied: snap.denied,
+            warning: snap.warning,
+            cancelled: Task.isCancelled,
+            stillInExercise: model.isInCeremony && model.ceremonyStep == .exercise,
+            target: probe.target
+        )
+        switch outcome {
+        case .stay:
             return
-        }
-        switch target {
-        case .step:
+        case .denied:
+            roomDenied = true
+            roomUnavailable = false
+        case .unavailable:
+            roomDenied = false
+            roomUnavailable = true
+            UserFacingFailure.log(ExerciseRoomCheckError.notReady, context: "exercise room check")
+        case .warn:
+            roomUnavailable = false
+            showingRoomWarning = true
+        case .advance(.step):
+            roomUnavailable = false
             model.advanceCeremony()
-        case .start:
+        case .advance(.start):
+            roomUnavailable = false
             model.finishCeremony()
         }
     }
+}
+
+private enum ExerciseRoomCheckError: Error {
+    case notReady
 }
