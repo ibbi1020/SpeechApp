@@ -136,25 +136,6 @@ struct CeremonyScaffold: View {
                 humVoice = 0
             }
         }
-        .task(id: showingRoomWarning) {
-            guard showingRoomWarning else { return }
-            let token = await room.start()
-            defer { room.stop(token: token) }
-            while Task.isCancelled == false, showingRoomWarning {
-                let snap = room.snapshot
-                roomWarning = snap.warning
-                roomVoice = snap.voice
-                if let decibels = snap.decibels {
-                    roomDecibels = decibels
-                }
-                roomDenied = snap.denied
-                do {
-                    try await Task.sleep(for: .milliseconds(32))
-                } catch {
-                    break
-                }
-            }
-        }
         .task(id: roomProbe?.token) {
             guard let roomProbe else { return }
             await evaluateExerciseRoom(roomProbe)
@@ -242,6 +223,8 @@ struct CeremonyScaffold: View {
         roomProbe = ExerciseProbe(token: UUID(), target: target)
     }
 
+    /// One microphone for the check and, if the room is loud, for the warning
+    /// that follows. Starting again would wipe the reading and call the room quiet.
     private func evaluateExerciseRoom(_ probe: ExerciseProbe) async {
         let token = await room.start()
         defer {
@@ -251,52 +234,72 @@ struct CeremonyScaffold: View {
         guard Task.isCancelled == false else { return }
         var snap = room.snapshot
         let deadline = ContinuousClock.now + .seconds(2)
+        var decided = false
+        var keepListening = false
         while Task.isCancelled == false {
+            guard model.isInCeremony, model.ceremonyStep == .exercise else { return }
             snap = room.snapshot
             roomReady = snap.ready
-            roomWarning = snap.warning
+            roomWarning = RoomNoise.shownWarning(
+                held: roomWarning,
+                ready: snap.ready,
+                reading: snap.warning
+            )
             roomVoice = snap.voice
             if let decibels = snap.decibels {
                 roomDecibels = decibels
             }
             roomDenied = snap.denied
-            if snap.ready || snap.denied || ContinuousClock.now >= deadline {
-                break
+            var openedWarning = false
+            if decided == false, snap.ready || snap.denied || ContinuousClock.now >= deadline {
+                decided = true
+                switch roomOutcome(snap, target: probe.target) {
+                case .stay:
+                    return
+                case .denied:
+                    roomDenied = true
+                    roomUnavailable = false
+                    return
+                case .unavailable:
+                    roomDenied = false
+                    roomUnavailable = true
+                    UserFacingFailure.log(ExerciseRoomCheckError.notReady, context: "exercise room check")
+                    return
+                case .warn:
+                    roomUnavailable = false
+                    keepListening = true
+                    openedWarning = true
+                    showingRoomWarning = true
+                case .advance(.step):
+                    roomUnavailable = false
+                    model.advanceCeremony()
+                    return
+                case .advance(.start):
+                    roomUnavailable = false
+                    model.finishCeremony()
+                    return
+                }
+            }
+            if decided, keepListening, openedWarning == false, showingRoomWarning == false {
+                return
             }
             do {
                 try await Task.sleep(for: .milliseconds(32))
             } catch {
-                break
+                return
             }
         }
-        let outcome = ExerciseRoomProbe.outcome(
+    }
+
+    private func roomOutcome(_ snap: RoomMeterSnapshot, target: ExerciseRoomProbe.Target) -> ExerciseRoomProbe.Outcome {
+        ExerciseRoomProbe.outcome(
             ready: snap.ready,
             denied: snap.denied,
             warning: snap.warning,
             cancelled: Task.isCancelled,
             stillInExercise: model.isInCeremony && model.ceremonyStep == .exercise,
-            target: probe.target
+            target: target
         )
-        switch outcome {
-        case .stay:
-            return
-        case .denied:
-            roomDenied = true
-            roomUnavailable = false
-        case .unavailable:
-            roomDenied = false
-            roomUnavailable = true
-            UserFacingFailure.log(ExerciseRoomCheckError.notReady, context: "exercise room check")
-        case .warn:
-            roomUnavailable = false
-            showingRoomWarning = true
-        case .advance(.step):
-            roomUnavailable = false
-            model.advanceCeremony()
-        case .advance(.start):
-            roomUnavailable = false
-            model.finishCeremony()
-        }
     }
 }
 
