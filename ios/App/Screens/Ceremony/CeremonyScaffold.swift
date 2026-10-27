@@ -21,6 +21,7 @@ struct CeremonyScaffold: View {
     @State private var roomVoice = 0.0
     @State private var roomDecibels = -160.0
     @State private var roomDenied = false
+    @State private var roomChecking = false
 
     private var chosen: PracticeFormat.Kind {
         model.chosenKind ?? .conversation
@@ -37,9 +38,16 @@ struct CeremonyScaffold: View {
             budget: model.budget,
             breatheDone: breatheDone,
             humPhase: humPhase,
-            roomReady: roomReady,
+            roomReady: exerciseReady,
             grounding: model.runsGrounding
         )
+    }
+
+    private var exerciseReady: Bool {
+        if model.ceremonyStep == .exercise {
+            return roomChecking == false
+        }
+        return roomReady
     }
 
     /// Blur curve, not the spring: every change on this surface is now a dissolve,
@@ -108,6 +116,9 @@ struct CeremonyScaffold: View {
         .onChange(of: model.ceremonyStep) { _, step in
             if step != .exercise {
                 showingRoomWarning = false
+                roomReady = false
+                roomWarning = false
+                roomDenied = false
             }
             if step != .breathe {
                 breatheDone = false
@@ -120,15 +131,12 @@ struct CeremonyScaffold: View {
                 humVoice = 0
             }
         }
-        .task(id: model.ceremonyStep) {
-            guard model.ceremonyStep == .exercise else { return }
-            roomReady = false
-            roomDenied = false
+        .task(id: showingRoomWarning) {
+            guard showingRoomWarning else { return }
             let token = await room.start()
             defer { room.stop(token: token) }
-            while Task.isCancelled == false {
+            while Task.isCancelled == false, showingRoomWarning {
                 let snap = room.snapshot
-                roomReady = snap.ready
                 roomWarning = snap.warning
                 roomVoice = snap.voice
                 if let decibels = snap.decibels {
@@ -182,12 +190,7 @@ struct CeremonyScaffold: View {
         switch control.advance {
         case .step:
             if model.ceremonyStep == .exercise {
-                guard roomReady else { return }
-                if roomWarning {
-                    showingRoomWarning = true
-                } else {
-                    model.advanceCeremony()
-                }
+                beginExerciseCommit(.step)
             } else {
                 model.advanceCeremony()
             }
@@ -196,11 +199,62 @@ struct CeremonyScaffold: View {
         case .start:
             // The exercise step starts straight in when this sitting is already
             // open. A loud room still gets its warning before that start.
-            guard model.ceremonyStep != .exercise || roomReady else { return }
-            if model.ceremonyStep == .exercise, roomWarning {
-                showingRoomWarning = true
-                return
+            if model.ceremonyStep == .exercise {
+                beginExerciseCommit(.start)
+            } else {
+                model.finishCeremony()
             }
+        }
+    }
+
+    private enum ExerciseCommitTarget {
+        case step
+        case start
+    }
+
+    @MainActor
+    private func beginExerciseCommit(_ target: ExerciseCommitTarget) {
+        guard roomChecking == false else { return }
+        roomChecking = true
+        roomReady = false
+        roomDenied = false
+        Task { @MainActor in
+            await evaluateExerciseRoom(target)
+        }
+    }
+
+    @MainActor
+    private func evaluateExerciseRoom(_ target: ExerciseCommitTarget) async {
+        let token = await room.start()
+        defer {
+            room.stop(token: token)
+            roomChecking = false
+        }
+        var snap = room.snapshot
+        let deadline = ContinuousClock.now + .seconds(2)
+        while Task.isCancelled == false {
+            snap = room.snapshot
+            roomReady = snap.ready
+            roomWarning = snap.warning
+            roomVoice = snap.voice
+            if let decibels = snap.decibels {
+                roomDecibels = decibels
+            }
+            roomDenied = snap.denied
+            if snap.ready || snap.denied || ContinuousClock.now >= deadline {
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(32))
+        }
+        guard snap.ready, snap.denied == false else { return }
+        if snap.warning {
+            showingRoomWarning = true
+            return
+        }
+        switch target {
+        case .step:
+            model.advanceCeremony()
+        case .start:
             model.finishCeremony()
         }
     }
