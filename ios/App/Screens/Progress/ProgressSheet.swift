@@ -162,7 +162,11 @@ struct ProgressSheet: View {
                 let projected = origin + (-value.predictedEndTranslation.height / travel)
                 let flickUp = value.velocity.height < -650
                 let flickDown = value.velocity.height > 650
-                let commit = flickUp || (!flickDown && projected > 0.62)
+                let commit = HomeSheetDrag.commitsOpen(
+                    flickUp: flickUp,
+                    flickDown: flickDown,
+                    projected: Double(projected)
+                )
                 dragOrigin = nil
                 settle(open: commit)
             }

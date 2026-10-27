@@ -114,7 +114,7 @@ struct EntryFlowView: View {
                 )
                 .frame(width: geo.size.width, height: geo.size.height + top + bottom)
                 .offset(y: -top + progressShiftShown)
-                .zIndex(progressLift > 0.02 ? 2 : 0)
+                .zIndex(progressCoversGallery ? 2 : 0)
                 .allowsHitTesting(homeCanBeUsed)
 
                 GallerySheet(
@@ -128,10 +128,16 @@ struct EntryFlowView: View {
                 .frame(width: geo.size.width, height: geo.size.height + top + bottom)
                 .offset(y: -top + galleryShiftShown)
                 .zIndex(1)
-                .opacity(progressLift > 0.02 ? 0 : 1)
-                .allowsHitTesting(homeCanBeUsed && progressLift <= 0.02)
+                .opacity(progressCoversGallery ? 0 : 1)
+                .allowsHitTesting(homeCanBeUsed && progressCoversGallery == false)
             }
         }
+    }
+
+    /// Gallery stays in front until Progress reaches the same openness the drag
+    /// treats as open.
+    private var progressCoversGallery: Bool {
+        progressLift > CGFloat(HomeSheetDrag.openThreshold)
     }
 
     /// Starts only once `splashRevealed` is true, which is after the mark has
