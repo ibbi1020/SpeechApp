@@ -8,9 +8,13 @@ struct TakeReviewSection: View {
     /// call that take perfect. Gallery has no report kind, so it leaves this on.
     var showsPerfectLine: Bool = true
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var selectedTakeIndex: Int = 0
     @State private var player = TakePlayer()
-    @State private var activeMarker: ReviewMarker?
+    @State private var shownNote: ReviewMarker?
+    @State private var notesInside: Set<ReviewMarker.ID> = []
+    @State private var preferredNote: ReviewMarker.ID?
 
     private var takes: [RecordingManifest.Take] { manifest.takes }
 
@@ -76,8 +80,9 @@ struct TakeReviewSection: View {
                         scrubGeneration: player.scrubGeneration,
                         onSeek: { player.seek(to: $0) },
                         onMarkerTap: { marker in
-                            activeMarker = marker
-                            player.seek(to: max(0, marker.start - 2), andPlay: true)
+                            preferredNote = marker.id
+                            player.seek(to: max(0, marker.start - VisibleFeedback.vicinity), andPlay: true)
+                            followPlayhead(player.currentTime, markers: take.markers)
                         },
                         onScrubBegan: { player.beginScrub() },
                         onScrub: { time, generation in player.scrub(to: time, generation: generation) },
@@ -112,32 +117,30 @@ struct TakeReviewSection: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    if let activeMarker, !activeMarker.note.isEmpty {
-                        Text(activeMarker.note)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.leading, 15)
-                            .background(alignment: .leading) {
-                                Rectangle()
-                                    .fill(markerColor(activeMarker.kind))
-                                    .frame(width: 3)
-                                    .accessibilityHidden(true)
+                    if shownNote != nil || (showsPerfectLine && PerfectTake.isClean(take)) {
+                        ZStack(alignment: .topLeading) {
+                            if let shownNote {
+                                FeedbackNote(marker: shownNote)
+                                    .id(shownNote.id)
+                                    .transition(.opacity)
+                            } else {
+                                Text(PerfectTake.line)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.white)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(.top, 12)
+                                    .padding(.leading, 15)
+                                    .background(alignment: .leading) {
+                                        Rectangle()
+                                            .fill(PerfectTake.green)
+                                            .frame(width: 3)
+                                            .accessibilityHidden(true)
+                                    }
+                                    .accessibilityLabel(PerfectTake.lineLabel)
+                                    .transition(.opacity)
                             }
-                    } else if showsPerfectLine, PerfectTake.isClean(take) {
-                        Text(PerfectTake.line)
-                            .font(.subheadline)
-                            .foregroundStyle(.white)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, 12)
-                            .padding(.leading, 15)
-                            .background(alignment: .leading) {
-                                Rectangle()
-                                    .fill(PerfectTake.green)
-                                    .frame(width: 3)
-                                    .accessibilityHidden(true)
-                            }
-                            .accessibilityLabel(PerfectTake.lineLabel)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
 
@@ -162,15 +165,50 @@ struct TakeReviewSection: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(noteAnimation, value: shownNote?.id)
+        .onChange(of: player.currentTime) { _, time in
+            guard let take = selectedTake else { return }
+            followPlayhead(time, markers: take.markers)
+        }
+    }
+
+    /// Shorter than a screen dissolve. The sentence fades, and the transcript
+    /// moves with the space the sentence takes.
+    private var noteAnimation: Animation {
+        reduceMotion
+            ? .easeOut(duration: BlurMotion.reducedFade)
+            : .easeInOut(duration: 0.18)
+    }
+
+    private func followPlayhead(_ time: TimeInterval, markers: [ReviewMarker]) {
+        let choice = VisibleFeedback.marker(
+            at: time,
+            among: markers,
+            previouslyInside: notesInside,
+            showing: shownNote?.id,
+            preferred: preferredNote
+        )
+        if notesInside != choice.inside {
+            notesInside = choice.inside
+        }
+        if let preferredNote, !choice.inside.contains(preferredNote) {
+            self.preferredNote = nil
+        }
+        if shownNote != choice.marker {
+            shownNote = choice.marker
+        }
     }
 
     private func load(take: RecordingManifest.Take) {
-        activeMarker = nil
+        notesInside = []
+        preferredNote = nil
+        shownNote = nil
         let url = RecordingsService.store.audioURL(
             regimenID: manifest.id,
             fileName: take.audioFileName
         )
         player.load(url: url)
+        followPlayhead(player.currentTime, markers: take.markers)
     }
 
     private func timeLabel(_ t: TimeInterval) -> String {
@@ -178,6 +216,26 @@ struct TakeReviewSection: View {
         return String(format: "%d:%02d", s / 60, s % 60)
     }
 
+}
+
+/// The sentence for the marker the playhead is near. Body size, regular, and
+/// white, with the marker's bar and no fill behind the words.
+private struct FeedbackNote: View {
+    var marker: ReviewMarker
+
+    var body: some View {
+        Text(marker.note)
+            .speechType(.body)
+            .foregroundStyle(.white)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, 15)
+            .background(alignment: .leading) {
+                Rectangle()
+                    .fill(markerColor(marker.kind))
+                    .frame(width: 3)
+                    .accessibilityHidden(true)
+            }
+    }
 }
 
 /// Elapsed playback time. The player reports a new time many times a second.
