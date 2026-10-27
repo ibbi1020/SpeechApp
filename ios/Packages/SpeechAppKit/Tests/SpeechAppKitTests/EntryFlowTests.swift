@@ -80,3 +80,15 @@ struct PracticeFormatTests {
         #expect(control.note == "20 of 20 this month")
     }
 }
+
+@Suite("Home sheets")
+struct HomeSheetDragTests {
+    @Test("a drag opens only past the point where Progress may cover Gallery")
+    func openThreshold() {
+        #expect(HomeSheetDrag.openThreshold == 0.62)
+        #expect(HomeSheetDrag.commitsOpen(flickUp: false, flickDown: false, projected: 0.62) == false)
+        #expect(HomeSheetDrag.commitsOpen(flickUp: false, flickDown: false, projected: 0.63))
+        #expect(HomeSheetDrag.commitsOpen(flickUp: true, flickDown: false, projected: 0.1))
+        #expect(HomeSheetDrag.commitsOpen(flickUp: false, flickDown: true, projected: 0.9) == false)
+    }
+}

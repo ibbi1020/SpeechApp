@@ -68,7 +68,7 @@ struct EntryFlowView: View {
                 )
                 .frame(width: geo.size.width, height: geo.size.height + top + bottom)
                 .offset(y: -top)
-                .zIndex(progressLift > 0.62 ? 2 : 0)
+                .zIndex(progressCoversGallery ? 2 : 0)
 
                 GallerySheet(
                     topInset: top,
@@ -81,10 +81,16 @@ struct EntryFlowView: View {
                 .frame(width: geo.size.width, height: geo.size.height + top + bottom)
                 .offset(y: -top)
                 .zIndex(1)
-                .opacity(progressLift > 0.62 ? 0 : 1)
-                .allowsHitTesting(progressLift <= 0.62)
+                .opacity(progressCoversGallery ? 0 : 1)
+                .allowsHitTesting(progressCoversGallery == false)
             }
         }
+    }
+
+    /// Gallery stays in front until Progress reaches the same openness the drag
+    /// treats as open.
+    private var progressCoversGallery: Bool {
+        progressLift > CGFloat(HomeSheetDrag.openThreshold)
     }
 
     private var homeHeader: some View {
