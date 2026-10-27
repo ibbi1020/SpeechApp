@@ -77,6 +77,12 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
     private var bedBuffers: [AmbientPlace: AVAudioPCMBuffer] = [:]
     private var inputLevel: Float = 0
     private var outputLevel: Float = 0
+    /// Last partner buffer loudness. Used when the phone has no echo-cancelled input,
+    /// so a barge-in can ignore the speaker without the voice filter.
+    private var speakerRMS: Float = 0
+    /// iOS 18.2 echo-cancelled input. Wider than the voice unit, so a hum is not
+    /// treated as noise. False on phones that do not have it.
+    private var echoCancelledInput = false
     /// `session.update` voice. Sirius unless the phone has saved another id.
     private var voiceID: String
     /// Holds a mid-sentence pick until this reply has finished playing.
@@ -240,12 +246,29 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
 
     private func configureAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
+        // The voice unit bundles echo cancellation with a speech filter. That
+        // filter deletes a hum and cuts words when the phone moves. On a 2024
+        // or later iPhone, echo-cancelled input removes the speaker without
+        // that filter. It is only valid in the default mode. Other phones use
+        // measurement mode and keep the partner out by closing the uplink.
+        let wantEcho = session.isEchoCancelledInputAvailable
         try session.setCategory(
             .playAndRecord,
-            mode: .voiceChat,
-            options: [.defaultToSpeaker, .allowBluetoothHFP]
+            mode: wantEcho ? .default : .measurement,
+            options: [.defaultToSpeaker]
         )
+        if wantEcho {
+            try session.setPrefersEchoCancelledInput(true)
+        }
         try session.setActive(true)
+        try session.overrideOutputAudioPort(.speaker)
+        RawMicrophone.lockBuiltInCapsule(session)
+        var echo = wantEcho && session.isEchoCancelledInputEnabled
+        if wantEcho, echo == false {
+            try session.setMode(.measurement)
+            echo = false
+        }
+        lock.withLock { echoCancelledInput = echo }
     }
 
     private func startEngineIfNeeded() throws {
@@ -265,11 +288,14 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             engine.connect(bedPlayer, to: engine.mainMixerNode, format: format)
         }
 
+        RawMicrophone.silenceVoiceProcessing(engine)
+        let rawMic = lock.withLock { echoCancelledInput == false }
+        if rawMic {
+            try RawMicrophone.useMeasurementMode(AVAudioSession.sharedInstance())
+        }
         let input = engine.inputNode
-        do {
-            try input.setVoiceProcessingEnabled(true)
-        } catch {
-            Self.log.error("voice processing unavailable: \(error.localizedDescription, privacy: .public)")
+        if input.isVoiceProcessingEnabled, input.isVoiceProcessingBypassed == false {
+            Self.log.error("voice processing stayed on")
         }
         let hwFormat = input.outputFormat(forBus: 0)
         input.removeTap(onBus: 0)
@@ -278,6 +304,9 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         }
         engine.prepare()
         try engine.start()
+        if lock.withLock({ echoCancelledInput == false }) {
+            try? RawMicrophone.useMeasurementMode(AVAudioSession.sharedInstance())
+        }
         if !player.isPlaying {
             player.play()
         }
@@ -590,7 +619,14 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         let enabled = lock.withLock { () -> Bool in
             let on = micEnabled && !closed && !userPaused
             inputLevel = on ? rms : 0
-            return on
+            guard on else { return false }
+            // Without echo-cancelled input, partner audio would go straight
+            // into the model. Close the uplink until the partner stops.
+            // Phones that have the wider canceller keep the mic open.
+            if partnerPlaying, echoCancelledInput == false {
+                return false
+            }
+            return true
         }
         guard enabled else { return }
         let chunks: [Data] = lock.withLock {
@@ -629,7 +665,10 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
                 sum += sample * sample
             }
             let level = sqrt(sum / Float(frameCount))
-            lock.withLock { outputLevel = level }
+            lock.withLock {
+                outputLevel = level
+                if level > 0 { speakerRMS = level }
+            }
         }
         let playedSamples = Array(UnsafeBufferPointer(start: channel, count: frameCount))
         let hold = lock.withLock { () -> Bool in
@@ -847,6 +886,7 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         let transcript: String? = lock.withLock {
             guard partnerPlaying else { return nil }
             partnerPlaying = false
+            speakerRMS = 0
             voiceSwitch.notePlaybackFinished()
             return lastResponseTranscript
         }
@@ -956,6 +996,9 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
         if firstForTurn {
             lock.withLock { voiceSwitch.notePlaybackStarted() }
             playbackContinuation.yield(.started)
+            if lock.withLock({ echoCancelledInput == false }) {
+                startBargeInPoll()
+            }
         }
         guard !emittedPlaybackStart else { return }
         emittedPlaybackStart = true
@@ -994,7 +1037,19 @@ final class LiveConversationMouth: NSObject, ConversationMouth, @unchecked Senda
             while !Task.isCancelled {
                 let level = await self.currentInputLevel()
                 if Task.isCancelled { return }
-                let action = self.mutateBargeIn { $0.tick(now: now, level: level) }
+                let watch = self.lock.withLock { () -> (partner: Bool, speaker: Float, echo: Bool) in
+                    (partnerPlaying, speakerRMS, echoCancelledInput)
+                }
+                let heard = RawMicrophone.aboveSpeaker(
+                    micRMS: level,
+                    speakerRMS: watch.partner ? watch.speaker : 0
+                )
+                let action = self.mutateBargeIn { gate in
+                    if watch.partner, watch.echo == false {
+                        return gate.onLocalLevel(now: now, level: heard)
+                    }
+                    return gate.tick(now: now, level: level)
+                }
                 if action == .commitCancel {
                     try? await self.cancelResponse()
                     self.continuation.yield(.speechStarted)
