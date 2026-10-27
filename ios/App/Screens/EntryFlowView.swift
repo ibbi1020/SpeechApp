@@ -68,7 +68,7 @@ struct EntryFlowView: View {
                 )
                 .frame(width: geo.size.width, height: geo.size.height + top + bottom)
                 .offset(y: -top)
-                .zIndex(progressLift > 0.02 ? 2 : 0)
+                .zIndex(progressLift > 0.62 ? 2 : 0)
 
                 GallerySheet(
                     topInset: top,
@@ -81,8 +81,8 @@ struct EntryFlowView: View {
                 .frame(width: geo.size.width, height: geo.size.height + top + bottom)
                 .offset(y: -top)
                 .zIndex(1)
-                .opacity(progressLift > 0.02 ? 0 : 1)
-                .allowsHitTesting(progressLift <= 0.02)
+                .opacity(progressLift > 0.62 ? 0 : 1)
+                .allowsHitTesting(progressLift <= 0.62)
             }
         }
     }
