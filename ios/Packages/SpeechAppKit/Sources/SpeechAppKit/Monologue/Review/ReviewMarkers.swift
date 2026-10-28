@@ -109,7 +109,7 @@ public enum ReviewMarkers {
                 start: restart.start,
                 end: restart.end,
                 score: restart.score,
-                note: note(for: .restart, score: restart.score, end: restart.end, start: restart.start)
+                note: restartNote(phrase: restart.repeatedSurfaces.joined(separator: " "))
             )
         }
     }
@@ -130,7 +130,7 @@ public enum ReviewMarkers {
                     start: 0,
                     end: first.start,
                     score: first.start,
-                    note: pauseNote(seconds: first.start, spot: .unknown)
+                    note: pauseNote(seconds: first.start, spot: .unknown, after: first.surface)
                 )
             )
         }
@@ -151,7 +151,9 @@ public enum ReviewMarkers {
                     score: silence,
                     note: pauseNote(
                         seconds: silence,
-                        spot: PauseSpot.classify(before: ordered[index], after: ordered[index + 1])
+                        spot: PauseSpot.classify(before: ordered[index], after: ordered[index + 1]),
+                        before: ordered[index].surface,
+                        after: ordered[index + 1].surface
                     )
                 )
             )
@@ -185,7 +187,11 @@ public enum ReviewMarkers {
                         start: start,
                         end: end,
                         score: score,
-                        note: fillerNote(count: count, seconds: score)
+                        note: fillerNote(
+                            count: count,
+                            seconds: score,
+                            names: fillers[i...j].map(\.surface)
+                        )
                     )
                 )
                 i = j + 1
@@ -219,20 +225,59 @@ public enum ReviewMarkers {
 
     /// Mid-clause pauses point to looking for a word; pauses between clauses point to
     /// planning the next idea (pause location literature, Int J Appl Linguist, ijal.12472).
-    static func pauseNote(seconds: TimeInterval, spot: PauseSpot) -> String {
-        let lead = "A \(Int(seconds.rounded()))-second pause"
+    static func pauseNote(
+        seconds: TimeInterval,
+        spot: PauseSpot,
+        before: String? = nil,
+        after: String? = nil
+    ) -> String {
+        let head = pauseHead(seconds: seconds, before: before, after: after)
         switch spot {
         case .midClause:
-            return "\(lead) in the middle of a sentence. Listen: what word were you looking for?"
+            return "\(head), in the middle of a sentence. Listen: what word were you looking for?"
         case .betweenClauses:
-            return "\(lead) between sentences. Listen: were you planning your next point?"
+            return "\(head), between sentences. Listen: were you planning your next point?"
         case .unknown:
-            return "\(lead). Listen: were you looking for a word, or your next point?"
+            return "\(head). Listen: were you looking for a word, or your next point?"
         }
     }
 
-    private static func fillerNote(count: Int, seconds: TimeInterval) -> String {
+    private static func pauseHead(seconds: TimeInterval, before: String?, after: String?) -> String {
+        let lead = "A \(Int(seconds.rounded()))-second pause"
+        let earlier = quoted(before)
+        let later = quoted(after)
+        switch (earlier, later) {
+        case let (earlier?, later?):
+            return "\(lead) after \(earlier), before \(later)"
+        case (nil, let later?):
+            return "\(lead) before \(later)"
+        case (let earlier?, nil):
+            return "\(lead) after \(earlier)"
+        default:
+            return lead
+        }
+    }
+
+    private static func quoted(_ surface: String?) -> String? {
+        guard let surface else { return nil }
+        let trimmed = surface.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return "“\(trimmed)”"
+    }
+
+    private static func fillerNote(count: Int, seconds: TimeInterval, names: [String] = []) -> String {
         let secs = max(1, Int(seconds.rounded()))
-        return "\(count) fillers in \(secs) seconds. Listen: what were you about to say?"
+        let heard = names
+            .map { ScriptWord.normalize($0) }
+            .filter { !$0.isEmpty }
+        let countText = "\(count) fillers in \(secs) seconds"
+        let head = heard.isEmpty ? countText : "\(heard.joined(separator: ", ")). \(countText)"
+        return "\(head). Listen: what were you about to say?"
+    }
+
+    private static func restartNote(phrase: String) -> String {
+        let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        let named = trimmed.isEmpty ? "You started this part again" : "You started this part again: “\(trimmed)”"
+        return "\(named). Listen: did the second try say it better?"
     }
 }

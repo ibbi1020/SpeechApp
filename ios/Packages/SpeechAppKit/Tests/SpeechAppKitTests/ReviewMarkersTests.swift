@@ -67,7 +67,7 @@ struct ReviewMarkersTests {
         let markers = ReviewMarkers.build(words: words, durationSeconds: 60)
         let cluster = markers.first { $0.kind == .fillerCluster }
         #expect(cluster != nil)
-        #expect(cluster?.note.contains("2 fillers") == true)
+        #expect(cluster?.note.contains("um, uh. 2 fillers") == true)
     }
 
     @Test("single filler is not a marker")
@@ -112,7 +112,7 @@ struct ReviewMarkersTests {
         ]
         let markers = ReviewMarkers.build(words: words, durationSeconds: 60)
         #expect(markers.contains { $0.kind == .restart })
-        #expect(markers.contains { $0.note.contains("started this part again") })
+        #expect(markers.contains { $0.note.contains("started this part again: “I went”") })
     }
 
     @Test("pause note uses the settled wording")
