@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<!--
+PROTOTYPE. Throwaway. Not the app.
+
+Issue 97. The Progress calendar can filter the pictures.
+Default is all time. A tap filters to one day.
+A second tap, or a drag across days, filters to that stretch.
+The highlight is one shape. It stretches to the days you choose.
+Clear removes the selection. Same marks, type, and spacing as the sheet.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Progress calendar</title>
+<style>
+  :root {
+    --ink: #f5f5f7;
+    --muted: rgba(245, 245, 247, 0.62);
+    --quiet: rgba(245, 245, 247, 0.55);
+    --line: rgba(255, 255, 255, 0.16);
+    --fill: rgba(255, 255, 255, 0.12);
+    --band: rgba(255, 255, 255, 0.14);
+    --end: rgba(255, 255, 255, 0.24);
+    --phone-w: 390px;
+    --phone-h: 844px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: #1c1c1e;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif;
+    min-height: 100dvh;
+  }
+  .stage {
+    padding: 36px 24px 64px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+  }
+  .intro { width: min(1180px, 100%); }
+  .intro h1 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+  }
+  .intro p {
+    margin: 8px 0 0;
+    max-width: 62ch;
+    font-size: 16px;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  .phones {
+    width: min(1280px, 100%);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 28px;
+    align-items: flex-start;
+  }
+  .variant { width: var(--phone-w); }
+  .variant h2 {
+    margin: 0 0 6px;
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  .variant .why {
+    margin: 0 0 14px;
+    min-height: 44px;
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--muted);
+  }
+  .phone {
+    width: var(--phone-w);
+    height: var(--phone-h);
+    background: #000;
+    border-radius: 48px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+  .status {
+    position: absolute;
+    z-index: 3;
+    top: 16px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  .sheet {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 18px;
+  }
+  .sheet header {
+    flex: none;
+    padding: 58px 16px 4px;
+  }
+  .sheet header h2 {
+    margin: 0;
+    font-size: 36px;
+    font-weight: 600;
+    letter-spacing: -0.012em;
+    line-height: 1.1;
+  }
+  .cal { flex: none; padding: 12px 24px 0; }
+  .month-row {
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .month-row h3 {
+    margin: 0;
+    text-align: center;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+  }
+  .month-row h3:active { cursor: grabbing; }
+  .chev {
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--fill);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    cursor: pointer;
+  }
+  .chev svg { width: 14px; height: 14px; display: block; }
+  .chev:active { transform: scale(0.97); }
+  .chev:disabled { opacity: 0.28; cursor: default; transform: none; }
+  .wdays, .grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .wdays span {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--quiet);
+    padding-bottom: 4px;
+  }
+  .grid { position: relative; row-gap: 2px; touch-action: none; user-select: none; }
+  .cell, .day {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .day {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    padding: 0;
+    cursor: pointer;
+  }
+  .day:focus-visible { outline: 2px solid #fff; outline-offset: -2px; border-radius: 12px; }
+  .hl { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+  .bar {
+    position: absolute;
+    border-radius: 14px;
+    pointer-events: none;
+  }
+  .stack {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .day.pressed .stack { transform: scale(0.96); }
+  .num {
+    font-size: 11px;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.72);
+    transition: color 220ms ease;
+  }
+  .day.on .num { color: #fff; font-weight: 600; }
+  .cell.mute .num { color: rgba(255, 255, 255, 0.28); }
+  .cell.future .num { color: rgba(255, 255, 255, 0.35); }
+  .mark {
+    width: 20px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+    position: relative;
+  }
+  .mark.today::after {
+    content: "";
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 1px solid #fff;
+    border-radius: 50%;
+  }
+  .pip {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.55);
+  }
+  .pip.future { background: rgba(255, 255, 255, 0.22); }
+  .check {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    display: grid;
+    place-items: center;
+  }
+  .check svg { width: 10px; height: 10px; display: block; }
+  .clear-row {
+    flex: none;
+    margin: 4px 24px 0;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .clear-row[hidden] { display: none; }
+  .clear {
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font: 600 16px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 44px;
+    padding: 0 2px;
+    cursor: pointer;
+  }
+  .clear:active { opacity: 0.55; }
+  .reel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    margin-top: 8px;
+  }
+  .reel::-webkit-scrollbar { display: none; }
+  .page {
+    flex: 0 0 100%;
+    width: 100%;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    padding: 0 24px;
+    display: flex;
+    flex-direction: column;
+  }
+  .swap { min-height: 0; }
+  .claim {
+    margin: 0 0 8px;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+  }
+  .art { min-height: 168px; }
+  .art svg { display: block; width: 100%; height: auto; }
+  .empty {
+    margin: 0;
+    min-height: 168px;
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  .caption {
+    margin: 10px 0 0;
+    font-size: 15px;
+    line-height: 1.35;
+    color: var(--muted);
+  }
+  .pager {
+    flex: none;
+    display: flex;
+    justify-content: center;
+    gap: 2px;
+    padding-top: 4px;
+  }
+  .pager button {
+    width: 22px;
+    height: 22px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    position: relative;
+  }
+  .pager button::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.28);
+    transform: translate(-50%, -50%);
+  }
+  .pager button[aria-current="true"]::after { background: #fff; }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .trace { stroke-dasharray: 900; stroke-dashoffset: 900; animation: draw 0.7s ease-out forwards; }
+  .rise { transform-box: fill-box; transform-origin: center bottom; transform: scaleY(0); animation: rise 0.55s ease-out forwards; }
+  .still .trace, .still .rise { animation: none; stroke-dashoffset: 0; transform: none; }
+  .swap {
+    transition: filter 126ms ease-in-out, opacity 126ms ease-in-out;
+  }
+  .swap.out { filter: blur(16px); opacity: 0.15; }
+  .notes {
+    width: min(1180px, 100%);
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes rise { to { transform: scaleY(1); } }
+  @media (prefers-reduced-motion: reduce) {
+    .stack, .chev, .clear, .swap, .num { transition: none; }
+    .swap.out { filter: none; opacity: 0; transition: opacity 200ms ease; }
+    .trace, .rise { animation: none; stroke-dashoffset: 0; transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="intro">
+    <h1>Filter Progress by day</h1>
+    <p>All time is the default. Tap a day for that day. Tap a second day, or drag across days, for a stretch. One highlight stretches across those days. Clear removes the selection.</p>
+  </div>
+  <div class="phones">
+    <section class="variant">
+      <h2>Ease</h2>
+      <p class="why">One highlight eases out to the day you choose. It always takes the same time.</p>
+      <div class="phone" data-motion="ease"></div>
+    </section>
+    <section class="variant">
+      <h2>Weight</h2>
+      <p class="why">One highlight is heavy. It lags behind your finger, then settles. It does not bounce.</p>
+      <div class="phone" data-motion="weight"></div>
+    </section>
+    <section class="variant">
+      <h2>Reach</h2>
+      <p class="why">One highlight follows your finger, then settles.</p>
+      <div class="phone" data-motion="reach"></div>
+    </section>
+  </div>
+  <p class="notes">A check is a saved session. A dot is a day since the first session with nothing saved. A faint dot is later this month. The ring is today. Future days do not select. Sounds, skipped words, and reading speed have no date in the app yet. These pictures use sample sessions so the filter is visible. Turns and long silences already have a date on the recording.</p>
+</div>
+<script>
+const START = "2026-08-12";
+const TODAY = "2026-10-27";
+const FIRST = { y: 2026, m: 8 };
+const LAST = { y: 2026, m: 10 };
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const SHORT = ["S", "M", "T", "W", "T", "F", "S"];
+const PRACTICED = new Set([
+  "2026-08-12", "2026-08-14", "2026-08-16", "2026-08-18", "2026-08-22", "2026-08-27", "2026-08-29",
+  "2026-09-02", "2026-09-03", "2026-09-08", "2026-09-11", "2026-09-16", "2026-09-19", "2026-09-22", "2026-09-28",
+  "2026-10-02", "2026-10-05", "2026-10-08", "2026-10-09", "2026-10-11", "2026-10-14", "2026-10-19", "2026-10-22", "2026-10-24", "2026-10-26", "2026-10-27"
+]);
+const REDUCE = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const AXIS = "-apple-system, BlinkMacSystemFont, sans-serif";
+const AXIS_INK = "rgba(245,245,247,0.55)";
+
+function pad(n) { return String(n).padStart(2, "0"); }
+function iso(y, m, d) { return y + "-" + pad(m) + "-" + pad(d); }
+function parts(value) { return value.split("-").map(Number); }
+function utc(value) {
+  const [y, m, d] = parts(value);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+function addDays(value, n) {
+  const [y, m, d] = parts(value);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+function daysIn(y, m) { return new Date(Date.UTC(y, m, 0)).getUTCDate(); }
+function canSelect(value) { return value >= START && value <= TODAY; }
+function pretty(value) {
+  const [, m, d] = parts(value);
+  return MONTHS[m - 1] + " " + d;
+}
+function order(a, b) { return a <= b ? [a, b] : [b, a]; }
+function spanLabel(start, end, pending) {
+  if (!start) return "All time";
+  const [s, e] = order(start, end || start);
+  if (pending && s === e) return "From " + pretty(s);
+  if (s === e) return pretty(s);
+  const [ys, ms, ds] = parts(s);
+  const [, me, de] = parts(e);
+  if (ys === parts(e)[0] && ms === me) return MONTHS[ms - 1] + " " + ds + " to " + de;
+  return pretty(s) + " to " + pretty(e);
+}
+function seed(value) {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i++) h = Math.imul(h ^ value.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+function session(value) {
+  const n = seed(value);
+  const kind = n % 5;
+  const turns = kind === 0 || kind === 3 ? [8 + (n % 24)] : [];
+  const gaps = kind === 1 || kind === 3 ? [6 + (n % 4), 4 + (n % 3), 2 + (n % 2)] : null;
+  const sounds = {};
+  const skips = {};
+  if (kind === 2 || kind === 4 || kind === 3) {
+    sounds["ɪ"] = 1 + (n % 3);
+    if (n % 2) sounds["i"] = 1 + (n % 2);
+    if (n % 4 === 0) sounds["l"] = 2;
+  }
+  if (kind === 2 || kind === 4) {
+    skips.ship = 1 + (n % 2);
+    if (n % 3 === 0) skips.river = 1;
+    if (n % 2 === 0) skips.light = 1;
+  }
+  const rates = kind === 2 || kind === 4 || kind === 0 ? [138 + (n % 30)] : [];
+  return { turns, gaps, sounds, skips, rates };
+}
+function collect(start, end) {
+  const days = [...PRACTICED].filter((day) => !start || (day >= start && day <= end)).sort();
+  const turns = [];
+  const talks = [];
+  const sounds = {};
+  const skips = {};
+  const rates = [];
+  days.forEach((day) => {
+    const item = session(day);
+    turns.push(...item.turns);
+    if (item.gaps) talks.push(item.gaps);
+    Object.entries(item.sounds).forEach(([key, count]) => { sounds[key] = (sounds[key] || 0) + count; });
+    Object.entries(item.skips).forEach(([key, count]) => { skips[key] = (skips[key] || 0) + count; });
+    rates.push(...item.rates);
+  });
+  const single = !!(start && start === end);
+  const all = !start;
+  return {
+    all,
+    single,
+    empty: days.length === 0,
+    turns,
+    talks,
+    sounds: rank(sounds, { "ɪ": true, "i": true }),
+    skips: rank(skips, {}),
+    rates: all ? rates.slice(-10) : rates
+  };
+}
+function rank(map, high) {
+  return Object.entries(map)
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 5)
+    .map(([label, count]) => ({ label, count, high: !!high[label] }));
+}
+function none(noun, data) {
+  if (data.all) return "Not enough data.";
+  return data.single ? "No " + noun + " this day." : "No " + noun + " in this range.";
+}
+const PAGES = [
+  {
+    title: (data) => data.all ? "Turns got longer" : "Turns",
+    caption: (data) => data.turns.length ? (data.all
+      ? "Seconds you spoke in a turn, from your earliest saved conversation to the latest."
+      : data.single ? "Seconds you spoke in a turn on this day." : "Seconds you spoke in a turn on these days.")
+      : none("conversations", data),
+    empty: (data) => data.turns.length === 0,
+    chart: (data) => lineChart(data.turns, 0, "seconds", "Earliest", "Latest")
+  },
+  {
+    title: (data) => data.all ? "Fewer long silences" : "Long silences",
+    caption: (data) => data.talks.length ? (data.all
+      ? "Long silences in each saved talk, from the first take to the last."
+      : data.single ? "Long silences in each take saved this day." : "Long silences in each talk saved on these days.")
+      : none("talks", data),
+    empty: (data) => data.talks.length === 0,
+    chart: (data) => gapChart(data.talks)
+  },
+  {
+    title: () => "Sounds you miss",
+    caption: (data) => data.sounds.length ? (data.all
+      ? "How many times you missed each sound."
+      : data.single ? "Sounds missed on this day." : "Sounds missed on these days.")
+      : none("missed sounds", data),
+    empty: (data) => data.sounds.length === 0,
+    chart: (data) => barChart(data.sounds, "misses")
+  },
+  {
+    title: () => "Words you skip",
+    caption: (data) => data.skips.length ? (data.all
+      ? "How many times you skipped each word while reading."
+      : data.single ? "Words skipped on this day." : "Words skipped on these days.")
+      : none("skipped words", data),
+    empty: (data) => data.skips.length === 0,
+    chart: (data) => barChart(data.skips, "skips")
+  },
+  {
+    title: () => "Reading speed",
+    caption: (data) => data.rates.length ? (data.all
+      ? "Your last 10 reading speeds, in syllables per minute."
+      : data.single ? "Reading speed on this day, in syllables per minute." : "Reading speeds on these days, in syllables per minute.")
+      : none("readings", data),
+    empty: (data) => data.rates.length === 0,
+    chart: (data) => lineChart(data.rates, null, "syl/min", "Oldest", "Newest")
+  }
+];
+
+function chevron(dir) {
+  const d = dir === "left" ? "M10 3.2 5.2 8 10 12.8" : "M6 3.2 10.8 8 6 12.8";
+  return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="' + d + '" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+function check() {
+  return '<span class="check"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8.3 6.4 11.4 12.8 4.6" fill="none" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+}
+function plotBox(h, yMin, yMax) {
+  const w = 342;
+  const left = 36;
+  const right = 4;
+  const top = 18;
+  const bottom = 22;
+  const y = (v) => top + (1 - (v - yMin) / (yMax - yMin)) * (h - top - bottom);
+  return { w, h, left, right, top, bottom, y };
+}
+function gridLines(box, yMin, yMax, ticks, unit) {
+  let html = '<text x="' + box.left + '" y="12" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">' + unit + "</text>";
+  ticks.forEach((tick) => {
+    const yy = box.y(tick);
+    html += '<line x1="' + box.left + '" y1="' + yy.toFixed(1) + '" x2="' + (box.w - box.right) + '" y2="' + yy.toFixed(1) + '" stroke="rgba(255,255,255,0.10)"/>';
+    html += '<text x="' + (box.left - 6) + '" y="' + (yy + 3).toFixed(1) + '" text-anchor="end" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">' + tick + "</text>";
+  });
+  return html;
+}
+function niceTop(values, floor) {
+  const max = Math.max(...values, 1);
+  if (floor === 0) return Math.max(4, Math.ceil(max * 1.15));
+  return null;
+}
+function lineChart(values, floor, unit, startName, endName) {
+  if (!values.length) return "";
+  const low = floor === 0 ? 0 : Math.min(...values) - 12;
+  const high = floor === 0 ? niceTop(values, 0) : Math.max(...values) + 12;
+  const ticks = [low, Math.round((low + high) / 2), high].map((n) => Math.round(n));
+  const box = plotBox(168, ticks[0], ticks[2]);
+  const n = values.length;
+  const x = (i) => box.left + (n === 1 ? 0.5 : i / (n - 1)) * (box.w - box.left - box.right);
+  const d = values.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + box.y(v).toFixed(1)).join(" ");
+  const dots = values.map((v, i) => '<circle cx="' + x(i).toFixed(1) + '" cy="' + box.y(v).toFixed(1) + '" r="3.2" fill="#fff"/>').join("");
+  let ends = "";
+  if (n > 1) {
+    ends = '<text x="' + x(0).toFixed(1) + '" y="' + (box.h - 4) + '" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">' + startName + "</text>"
+      + '<text x="' + x(n - 1).toFixed(1) + '" y="' + (box.h - 4) + '" text-anchor="end" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">' + endName + "</text>";
+  } else {
+    ends = '<text x="' + x(0).toFixed(1) + '" y="' + (box.y(values[0]) - 10).toFixed(1) + '" text-anchor="middle" fill="#f5f5f7" font-size="13" font-weight="600" font-family="' + AXIS + '">' + Math.round(values[0]) + "</text>";
+  }
+  const path = n > 1 ? '<path class="trace" d="' + d + '" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' : "";
+  return '<svg viewBox="0 0 ' + box.w + " " + box.h + '" aria-hidden="true">' + gridLines(box, ticks[0], ticks[2], ticks, unit) + path + dots + ends + "</svg>";
+}
+function gapChart(talks) {
+  if (!talks.length) return "";
+  const box = plotBox(168, 0, 10);
+  const x = (i) => box.left + (i / 2) * (box.w - box.left - box.right);
+  let lines = "";
+  talks.forEach((gaps, index) => {
+    const last = index === talks.length - 1;
+    const opacity = talks.length === 1 ? 1 : 0.18 + (index / (talks.length - 1)) * 0.82;
+    const pts = gaps.map((g, i) => x(i).toFixed(1) + "," + box.y(g).toFixed(1)).join(" ");
+    lines += '<polyline class="trace" points="' + pts + '" fill="none" stroke="#fff" stroke-opacity="' + opacity.toFixed(2) + '" stroke-width="' + (last ? 2 : 1.25) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+  });
+  const labels = ["1", "2", "3"].map((label, i) => {
+    const anchor = i === 0 ? "start" : i === 2 ? "end" : "middle";
+    return '<text x="' + x(i).toFixed(1) + '" y="' + (box.h - 4) + '" text-anchor="' + anchor + '" fill="' + AXIS_INK + '" font-size="11" font-family="' + AXIS + '">' + label + "</text>";
+  }).join("");
+  return '<svg viewBox="0 0 ' + box.w + " " + box.h + '" aria-hidden="true">' + gridLines(box, 0, 10, [0, 5, 10], "gaps") + lines + labels + "</svg>";
+}
+function barChart(rows, unit) {
+  if (!rows.length) return "";
+  const top = Math.max(4, Math.ceil(Math.max(...rows.map((row) => row.count)) * 1.25));
+  const box = plotBox(168, 0, top);
+  const plotW = box.w - box.left - box.right;
+  const slot = plotW / rows.length;
+  const barW = Math.min(48, slot - 18);
+  const base = box.y(0);
+  let marks = "";
+  rows.forEach((row, i) => {
+    const cx = box.left + slot * i + slot / 2;
+    const y = box.y(row.count);
+    const h = Math.max(4, base - y);
+    const x = cx - barW / 2;
+    const r = Math.min(7, h / 2, barW / 2);
+    const path = "M" + x.toFixed(1) + " " + base.toFixed(1)
+      + "L" + x.toFixed(1) + " " + (y + r).toFixed(1)
+      + "Q" + x.toFixed(1) + " " + y.toFixed(1) + " " + (x + r).toFixed(1) + " " + y.toFixed(1)
+      + "L" + (x + barW - r).toFixed(1) + " " + y.toFixed(1)
+      + "Q" + (x + barW).toFixed(1) + " " + y.toFixed(1) + " " + (x + barW).toFixed(1) + " " + (y + r).toFixed(1)
+      + "L" + (x + barW).toFixed(1) + " " + base.toFixed(1) + "Z";
+    const fill = row.high || unit === "skips" ? "#fff" : "rgba(255,255,255,0.42)";
+    marks += '<path class="rise" style="animation-delay:' + (i * 50) + 'ms" d="' + path + '" fill="' + fill + '"/>';
+    marks += '<text x="' + cx.toFixed(1) + '" y="' + (y - 6).toFixed(1) + '" text-anchor="middle" fill="#f5f5f7" font-size="12" font-weight="600" font-family="' + AXIS + '">' + row.count + "</text>";
+    marks += '<text x="' + cx.toFixed(1) + '" y="' + (box.h - 4) + '" text-anchor="middle" fill="#f5f5f7" font-size="13" font-weight="600" font-family="' + AXIS + '">' + row.label + "</text>";
+  });
+  return '<svg viewBox="0 0 ' + box.w + " " + box.h + '" aria-hidden="true">' + gridLines(box, 0, top, [0, Math.round(top / 2), top], unit) + marks + "</svg>";
+}
+
+function mount(phone, motion) {
+  const state = {
+    y: LAST.y,
+    m: LAST.m,
+    start: null,
+    end: null,
+    anchor: null,
+    pending: false,
+    page: 0,
+    signature: "",
+    token: 0,
+    gesture: null
+  };
+  phone.innerHTML = ''
+    + '<div class="status">9:41</div>'
+    + '<div class="sheet">'
+    + '<header><h2>Progress</h2></header>'
+    + '<div class="cal">'
+    + '<div class="month-row">'
+    + '<button class="chev prev" type="button" aria-label="Previous month">' + chevron("left") + "</button>"
+    + '<h3 class="month"></h3>'
+    + '<button class="chev next" type="button" aria-label="Next month">' + chevron("right") + "</button>"
+    + "</div>"
+    + '<div class="wdays" aria-hidden="true">' + SHORT.map((d) => "<span>" + d + "</span>").join("") + "</div>"
+    + '<div class="grid"></div>'
+    + "</div>"
+    + '<div class="clear-row" hidden><button class="clear" type="button">Clear</button></div>'
+    + '<div class="reel" tabindex="0" aria-label="Pictures"></div>'
+    + '<div class="pager"></div>'
+    + "</div>"
+    + '<p class="sr" aria-live="polite"></p>';
+
+  const grid = phone.querySelector(".grid");
+  const monthEl = phone.querySelector(".month");
+  const prev = phone.querySelector(".prev");
+  const next = phone.querySelector(".next");
+  const clearRow = phone.querySelector(".clear-row");
+  const clearButton = phone.querySelector(".clear");
+  const reel = phone.querySelector(".reel");
+  const pager = phone.querySelector(".pager");
+  const live = phone.querySelector(".sr");
+  const pages = [];
+
+  PAGES.forEach((page, index) => {
+    const article = document.createElement("article");
+    article.className = "page";
+    article.innerHTML = '<div class="swap"><h3 class="claim"></h3><div class="art"></div><p class="caption"></p></div>';
+    reel.appendChild(article);
+    pages.push(article);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.addEventListener("click", () => {
+      state.page = index;
+      reel.scrollTo({ left: index * reel.clientWidth, behavior: REDUCE ? "auto" : "smooth" });
+      paintPager();
+    });
+    pager.appendChild(button);
+  });
+
+  function range() {
+    return { start: state.start, end: state.end || state.start, anchor: state.anchor || state.start, pending: state.pending };
+  }
+  function shownRange() {
+    if (state.gesture) {
+      return {
+        start: state.gesture.previewStart,
+        end: state.gesture.previewEnd,
+        anchor: state.gesture.anchor,
+        pending: false
+      };
+    }
+    return range();
+  }
+  function atBound(dir) {
+    if (dir < 0) return state.y === FIRST.y && state.m === FIRST.m;
+    return state.y === LAST.y && state.m === LAST.m;
+  }
+  function shift(dir) {
+    if (atBound(dir)) return;
+    let m = state.m + dir;
+    let y = state.y;
+    if (m < 1) { m = 12; y -= 1; }
+    if (m > 12) { m = 1; y += 1; }
+    state.y = y;
+    state.m = m;
+    buildGrid();
+    paintBand(shownRange());
+  }
+  function buildGrid() {
+    monthEl.textContent = MONTHS[state.m - 1] + " " + state.y;
+    prev.disabled = atBound(-1);
+    next.disabled = atBound(1);
+    const lead = utc(iso(state.y, state.m, 1)).getUTCDay();
+    const count = daysIn(state.y, state.m);
+    let html = '<div class="hl"></div>';
+    for (let i = 0; i < lead; i++) html += '<div class="cell"></div>';
+    for (let day = 1; day <= count; day++) {
+      const id = iso(state.y, state.m, day);
+      const col = (lead + day - 1) % 7;
+      if (id < START) {
+        html += '<div class="cell mute"><span class="num">' + day + "</span></div>";
+        continue;
+      }
+      if (id > TODAY) {
+        html += '<div class="cell future"><span class="stack"><span class="num">' + day + '</span><span class="mark"><i class="pip future"></i></span></span></div>';
+        continue;
+      }
+      const prevId = day > 1 ? iso(state.y, state.m, day - 1) : "";
+      const nextId = day < count ? iso(state.y, state.m, day + 1) : "";
+      const practiced = PRACTICED.has(id);
+      const today = id === TODAY;
+      const when = WEEKDAYS[utc(id).getUTCDay()] + ", " + pretty(id) + ", " + state.y;
+      const label = when + (practiced ? ". Practiced" : ". No session");
+      const mark = practiced ? check() : '<i class="pip"></i>';
+      html += '<button type="button" class="day" data-day="' + id + '" data-col="' + col + '" data-prev="' + prevId + '" data-next="' + nextId + '" aria-label="' + label + '" aria-pressed="false">'
+        + '<span class="stack"><span class="num">' + day + '</span><span class="mark' + (today ? " today" : "") + '">' + mark + "</span></span></button>";
+    }
+    grid.innerHTML = html;
+  }
+  function selectedSet(span) {
+    const set = new Set();
+    if (!span.start) return set;
+    const [s, e] = order(span.start, span.end || span.start);
+    let cursor = s;
+    while (cursor <= e) {
+      set.add(cursor);
+      cursor = addDays(cursor, 1);
+    }
+    return set;
+  }
+  const SPRING = {
+    weight: { response: 0.62, damping: 1 },
+    reach: { response: 0.1, damping: 1 }
+  };
+  let lo = null;
+  let hi = null;
+  let loV = 0;
+  let hiV = 0;
+  let targetLo = null;
+  let targetHi = null;
+  let loFrom = 0;
+  let hiFrom = 0;
+  let hiding = false;
+  let easeFrom = null;
+  let hlRaf = 0;
+  let hlTick = 0;
+  function dayNum(id) {
+    return utc(id).getTime() / 86400000;
+  }
+  function bez(x1, y1, x2, y2, x) {
+    let t = x;
+    const cx = 3 * x1;
+    const bx = 3 * (x2 - x1) - cx;
+    const ax = 1 - cx - bx;
+    for (let i = 0; i < 6; i++) {
+      const z = ((ax * t + bx) * t + cx) * t - x;
+      const dx = (3 * ax * t + 2 * bx) * t + cx;
+      if (Math.abs(dx) < 1e-5) break;
+      t = Math.min(1, Math.max(0, t - z / dx));
+    }
+    const cy = 3 * y1;
+    const by = 3 * (y2 - y1) - cy;
+    const ay = 1 - cy - by;
+    return ((ay * t + by) * t + cy) * t;
+  }
+  function springTo(x, v, target, dt, spec) {
+    const omega = (2 * Math.PI) / spec.response;
+    const steps = Math.max(1, Math.ceil(dt / 0.008));
+    const h = dt / steps;
+    let p = x - target;
+    let vel = v;
+    for (let i = 0; i < steps; i++) {
+      const acc = -omega * omega * p - 2 * spec.damping * omega * vel;
+      vel += acc * h;
+      p += vel * h;
+    }
+    return { x: p + target, v: vel };
+  }
+  function shownEdge(value, target, from) {
+    if (motion !== "reach" || target == null) return value;
+    const dir = Math.sign(target - from);
+    if (!dir) return value;
+    const past = (value - target) * dir;
+    if (past > 0) return target;
+    return value;
+  }
+  function barFill(segLo, segHi, spanLo, spanHi) {
+    const span = spanHi - spanLo;
+    if (span <= 2.05) return "var(--end)";
+    const width = segHi - segLo;
+    if (width <= 0) return "var(--band)";
+    const starts = segLo <= spanLo + 0.02;
+    const ends = segHi >= spanHi - 0.02;
+    if (!starts && !ends) return "var(--band)";
+    const tip = Math.min(1, width);
+    const at = (days) => (days / width * 100).toFixed(1) + "%";
+    const stops = [];
+    if (starts) stops.push("var(--end) 0%", "var(--end) " + at(tip), "var(--band) " + at(tip));
+    else stops.push("var(--band) 0%");
+    if (ends) stops.push("var(--band) " + at(Math.max(0, width - tip)), "var(--end) " + at(Math.max(0, width - tip)), "var(--end) 100%");
+    else stops.push("var(--band) 100%");
+    return "linear-gradient(to right," + stops.join(",") + ")";
+  }
+  function drawHighlight() {
+    const layer = grid.querySelector(".hl");
+    if (!layer) return;
+    if (lo == null || hi == null) {
+      layer.innerHTML = "";
+      grid.querySelectorAll(".day.on").forEach((el) => el.classList.remove("on"));
+      return;
+    }
+    const spanLo = Math.min(shownEdge(lo, targetLo, loFrom), shownEdge(hi, targetHi, hiFrom));
+    const spanHi = Math.max(shownEdge(lo, targetLo, loFrom), shownEdge(hi, targetHi, hiFrom));
+    const pieces = [];
+    let run = null;
+    grid.querySelectorAll(".day").forEach((el) => {
+      const d = dayNum(el.dataset.day);
+      const a = Math.max(spanLo, d);
+      const b = Math.min(spanHi, d + 1);
+      const covered = b - a > 0.45;
+      el.classList.toggle("on", covered);
+      if (b - a <= 0.004) {
+        if (run) { pieces.push(run); run = null; }
+        return;
+      }
+      const from = a - d;
+      const to = b - d;
+      const x0 = el.offsetLeft + el.offsetWidth * from;
+      const x1 = el.offsetLeft + el.offsetWidth * to;
+      if (run && run.top === el.offsetTop && x0 <= run.right + 1) {
+        run.right = x1;
+        run.segHi = d + to;
+      } else {
+        if (run) pieces.push(run);
+        run = { left: x0, right: x1, top: el.offsetTop, h: el.offsetHeight, segLo: d + from, segHi: d + to };
+      }
+    });
+    if (run) pieces.push(run);
+    layer.innerHTML = pieces.map((p) => {
+      const width = Math.max(0, p.right - p.left);
+      return '<div class="bar" style="left:' + p.left.toFixed(1)
+        + "px;top:" + (p.top + 2).toFixed(1)
+        + "px;width:" + width.toFixed(1)
+        + "px;height:" + (p.h - 4).toFixed(1)
+        + "px;background:" + barFill(p.segLo, p.segHi, spanLo, spanHi) + '"></div>';
+    }).join("");
+  }
+  function ensureHL() {
+    if (hlRaf) return;
+    hlTick = 0;
+    hlRaf = requestAnimationFrame(stepHL);
+  }
+  function stepHL(now) {
+    if (!hlTick) hlTick = now;
+    const dt = Math.min(0.04, (now - hlTick) / 1000);
+    hlTick = now;
+    let live = true;
+    if (motion === "ease") {
+      const u = Math.min(1, (now - easeFrom.t) / 380);
+      const e = bez(0.33, 0.02, 0.15, 1, u);
+      lo = easeFrom.lo + (targetLo - easeFrom.lo) * e;
+      hi = easeFrom.hi + (targetHi - easeFrom.hi) * e;
+      loV = 0;
+      hiV = 0;
+      live = u < 1;
+    } else {
+      const spec = SPRING[motion];
+      const a = springTo(lo, loV, targetLo, dt, spec);
+      const b = springTo(hi, hiV, targetHi, dt, spec);
+      const heldLo = shownEdge(a.x, targetLo, loFrom);
+      const heldHi = shownEdge(b.x, targetHi, hiFrom);
+      lo = heldLo;
+      loV = heldLo === a.x ? a.v : 0;
+      hi = heldHi;
+      hiV = heldHi === b.x ? b.v : 0;
+      live = Math.abs(lo - targetLo) > 0.004 || Math.abs(hi - targetHi) > 0.004 || Math.abs(loV) > 0.02 || Math.abs(hiV) > 0.02;
+    }
+    if (!live && hiding) {
+      lo = null;
+      hi = null;
+      loV = 0;
+      hiV = 0;
+    }
+    drawHighlight();
+    hlRaf = live ? requestAnimationFrame(stepHL) : 0;
+    if (!hlRaf) hlTick = 0;
+  }
+  function paintBand(span) {
+    const set = selectedSet(span);
+    grid.querySelectorAll(".day").forEach((el) => {
+      el.setAttribute("aria-pressed", set.has(el.dataset.day) ? "true" : "false");
+    });
+    clearRow.hidden = !span.start;
+    let nextLo;
+    let nextHi;
+    if (!span.start) {
+      hiding = true;
+      if (lo == null) {
+        drawHighlight();
+        return;
+      }
+      const mid = (lo + hi) / 2;
+      nextLo = mid;
+      nextHi = mid;
+    } else {
+      hiding = false;
+      const anchorId = span.anchor || span.start;
+      const otherId = anchorId === span.start ? (span.end || span.start) : span.start;
+      const a = dayNum(anchorId);
+      const b = dayNum(otherId);
+      nextLo = Math.min(a, b);
+      nextHi = Math.max(a, b) + 1;
+    }
+    if (lo == null) {
+      const mid = (nextLo + nextHi) / 2;
+      lo = mid;
+      hi = mid;
+      loV = 0;
+      hiV = 0;
+    }
+    const same = nextLo === targetLo && nextHi === targetHi;
+    if (nextLo !== targetLo) loFrom = lo;
+    if (nextHi !== targetHi) hiFrom = hi;
+    targetLo = nextLo;
+    targetHi = nextHi;
+    if (REDUCE) {
+      lo = hiding ? null : targetLo;
+      hi = hiding ? null : targetHi;
+      loV = 0;
+      hiV = 0;
+      drawHighlight();
+      return;
+    }
+    if (same && !hlRaf) {
+      drawHighlight();
+      return;
+    }
+    if (motion === "ease") easeFrom = { lo: lo, hi: hi, t: performance.now() };
+    ensureHL();
+  }
+  function paintPager() {
+    [...pager.children].forEach((button, index) => {
+      const on = index === state.page;
+      if (on) button.setAttribute("aria-current", "true");
+      else button.removeAttribute("aria-current");
+      button.setAttribute("aria-label", PAGES[index].title(collect(null, null)));
+    });
+  }
+  function drawCharts(animate) {
+    const span = motion === "live" && state.gesture
+      ? { start: state.gesture.previewStart, end: state.gesture.previewEnd }
+      : { start: state.start, end: state.end };
+    const data = collect(span.start, span.end);
+    const signature = JSON.stringify(span);
+    if (signature === state.signature) return;
+    const first = state.signature === "";
+    state.signature = signature;
+    const blur = animate && !REDUCE && !first;
+    const token = ++state.token;
+    pages.forEach((article, index) => {
+      const page = PAGES[index];
+      const swap = article.querySelector(".swap");
+      const apply = () => {
+        if (token !== state.token) return;
+        article.querySelector(".claim").textContent = page.title(data);
+        const art = article.querySelector(".art");
+        if (page.empty(data)) {
+          art.className = "art";
+          art.innerHTML = '<p class="empty">' + page.caption(data) + "</p>";
+          article.querySelector(".caption").textContent = "";
+        } else {
+          art.className = blur || (first && !REDUCE) ? "art" : "art still";
+          art.innerHTML = page.chart(data);
+          article.querySelector(".caption").textContent = page.caption(data);
+        }
+      };
+      if (!blur) {
+        swap.classList.remove("out");
+        apply();
+        return;
+      }
+      swap.classList.add("out");
+      window.setTimeout(() => {
+        if (token !== state.token) return;
+        apply();
+        swap.classList.remove("out");
+      }, 130);
+    });
+    pager.querySelectorAll("button").forEach((button, index) => {
+      button.setAttribute("aria-label", PAGES[index].title(data));
+    });
+  }
+  function announce() {
+    const text = spanLabel(state.start, state.end, false);
+    if (!state.start) live.textContent = "Showing all time";
+    else if (state.pending) live.textContent = "From " + text + ". Tap the last day.";
+    else live.textContent = "Showing " + text;
+  }
+  function commit(start, end, pending, anchor) {
+    const [s, e] = start ? order(start, end || start) : [null, null];
+    state.start = s;
+    state.end = e;
+    state.anchor = start ? (anchor || start) : null;
+    state.pending = !!pending && !!s && s === e;
+    paintBand(range());
+    drawCharts(motion !== "live");
+    announce();
+  }
+  function clear() { commit(null, null, false); }
+  function handleTap(day) {
+    if (state.pending && state.start && state.start !== day) {
+      commit(state.start, day, false, state.start);
+      return;
+    }
+    if (state.pending && state.start === day) return;
+    commit(day, day, true, day);
+  }
+  function preview(anchor, day) {
+    const [s, e] = order(anchor, day);
+    state.gesture.previewStart = s;
+    state.gesture.previewEnd = e;
+    paintBand({ start: s, end: e, anchor: anchor, pending: false });
+    if (motion === "live") drawCharts(false);
+  }
+
+  prev.addEventListener("click", () => shift(-1));
+  next.addEventListener("click", () => shift(1));
+  clearButton.addEventListener("click", clear);
+
+  let monthDrag = null;
+  monthEl.addEventListener("pointerdown", (event) => {
+    monthDrag = { x: event.clientX, y: event.clientY };
+    monthEl.setPointerCapture(event.pointerId);
+  });
+  monthEl.addEventListener("pointerup", (event) => {
+    if (!monthDrag) return;
+    const dx = event.clientX - monthDrag.x;
+    const dy = event.clientY - monthDrag.y;
+    monthDrag = null;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    shift(dx < 0 ? 1 : -1);
+  });
+  monthEl.addEventListener("pointercancel", () => { monthDrag = null; });
+
+  grid.addEventListener("pointerdown", (event) => {
+    const day = event.target.closest(".day");
+    if (!day || event.button !== 0) return;
+    event.preventDefault();
+    try { grid.setPointerCapture(event.pointerId); } catch (err) { /* a synthetic pointer has nothing to capture */ }
+    const extending = state.pending && state.start && state.start !== day.dataset.day;
+    state.gesture = {
+      pointerId: event.pointerId,
+      anchor: extending ? state.start : day.dataset.day,
+      moved: false,
+      extending,
+      x: event.clientX,
+      y: event.clientY,
+      previewStart: extending ? order(state.start, day.dataset.day)[0] : day.dataset.day,
+      previewEnd: extending ? order(state.start, day.dataset.day)[1] : day.dataset.day
+    };
+    day.classList.add("pressed");
+    paintBand({
+      start: state.gesture.previewStart,
+      end: state.gesture.previewEnd,
+      anchor: state.gesture.anchor,
+      pending: false
+    });
+    if (motion === "live") drawCharts(false);
+  });
+  grid.addEventListener("pointermove", (event) => {
+    const gesture = state.gesture;
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    const dx = event.clientX - gesture.x;
+    const dy = event.clientY - gesture.y;
+    if (!gesture.moved && Math.hypot(dx, dy) < 8) return;
+    gesture.moved = true;
+    grid.querySelectorAll(".pressed").forEach((el) => el.classList.remove("pressed"));
+    const hit = document.elementFromPoint(event.clientX, event.clientY);
+    const day = hit && hit.closest(".day");
+    if (!day || day.closest(".phone") !== phone) return;
+    if (!canSelect(day.dataset.day)) return;
+    day.classList.add("pressed");
+    if (gesture.previewEnd !== day.dataset.day) preview(gesture.anchor, day.dataset.day);
+  });
+  let blockClick = false;
+  function endGesture(event) {
+    const gesture = state.gesture;
+    if (!gesture || (event && event.pointerId !== gesture.pointerId)) return;
+    grid.querySelectorAll(".pressed").forEach((el) => el.classList.remove("pressed"));
+    state.gesture = null;
+    blockClick = true;
+    window.setTimeout(() => { blockClick = false; }, 0);
+    if (event && event.type === "pointercancel") {
+      paintBand(range());
+      if (motion === "live") drawCharts(false);
+      return;
+    }
+    if (!gesture.moved) handleTap(gesture.anchor);
+    else commit(gesture.previewStart, gesture.previewEnd, false, gesture.anchor);
+  }
+  grid.addEventListener("pointerup", endGesture);
+  grid.addEventListener("pointercancel", endGesture);
+  grid.addEventListener("click", (event) => {
+    const day = event.target.closest(".day");
+    if (!day || blockClick) return;
+    handleTap(day.dataset.day);
+  });
+
+  reel.addEventListener("scroll", () => {
+    const width = reel.clientWidth || 1;
+    const page = Math.max(0, Math.min(PAGES.length - 1, Math.round(reel.scrollLeft / width)));
+    if (page === state.page) return;
+    state.page = page;
+    paintPager();
+  }, { passive: true });
+
+  buildGrid();
+  paintBand(range());
+  paintPager();
+  drawCharts(true);
+}
+
+document.querySelectorAll(".phone").forEach((phone) => mount(phone, phone.dataset.motion));
+</script>
+</body>
+</html>

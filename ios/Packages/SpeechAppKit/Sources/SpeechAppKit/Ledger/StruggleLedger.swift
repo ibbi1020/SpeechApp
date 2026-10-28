@@ -26,25 +26,71 @@ public struct SkipWordStruggle: Codable, Equatable, Sendable {
     }
 }
 
-public struct StruggleLedger: Codable, Equatable, Sendable {
+/// One missed sound from a saved reading. The dated log is never trimmed.
+public struct PhoneMissEvent: Codable, Equatable, Sendable {
+    public var phone: String
+    public var flBand: FunctionalLoadBand
+    public var date: Date
+
+    public init(phone: String, flBand: FunctionalLoadBand, date: Date) {
+        self.phone = phone
+        self.flBand = flBand
+        self.date = date
+    }
+}
+
+/// One skipped word from a saved reading. The dated log is never trimmed.
+public struct SkipEvent: Codable, Equatable, Sendable {
+    public var wordId: String
+    public var surface: String
+    public var date: Date
+
+    public init(wordId: String, surface: String, date: Date) {
+        self.wordId = wordId
+        self.surface = surface
+        self.date = date
+    }
+}
+
+/// One reading speed from a saved reading. The dated log is never trimmed.
+public struct SpeechRateEvent: Codable, Equatable, Sendable {
+    public var syllablesPerMinute: Double
+    public var date: Date
+
+    public init(syllablesPerMinute: Double, date: Date) {
+        self.syllablesPerMinute = syllablesPerMinute
+        self.date = date
+    }
+}
+
+public struct StruggleLedger: Equatable, Sendable {
     public var phones: [PhoneStruggle]
     public var skipWords: [SkipWordStruggle]
     public var extras: [String: Int]
     public var recentSpeechRates: [Double]
     public var seenPassageIDs: [String]
+    public var missEvents: [PhoneMissEvent]
+    public var skipEvents: [SkipEvent]
+    public var speechRateEvents: [SpeechRateEvent]
 
     public init(
         phones: [PhoneStruggle] = [],
         skipWords: [SkipWordStruggle] = [],
         extras: [String: Int] = [:],
         recentSpeechRates: [Double] = [],
-        seenPassageIDs: [String] = []
+        seenPassageIDs: [String] = [],
+        missEvents: [PhoneMissEvent] = [],
+        skipEvents: [SkipEvent] = [],
+        speechRateEvents: [SpeechRateEvent] = []
     ) {
         self.phones = phones
         self.skipWords = skipWords
         self.extras = extras
         self.recentSpeechRates = recentSpeechRates
         self.seenPassageIDs = seenPassageIDs
+        self.missEvents = missEvents
+        self.skipEvents = skipEvents
+        self.speechRateEvents = speechRateEvents
     }
 
     public var averageSpeechRate: Double? {
@@ -52,7 +98,10 @@ public struct StruggleLedger: Codable, Equatable, Sendable {
         return recentSpeechRates.reduce(0, +) / Double(recentSpeechRates.count)
     }
 
-    public mutating func record(report: SessionReport) {
+    /// Updates the running totals, keeps the last 10 speeds, and appends one dated
+    /// event per miss, skip, and reading speed. `date` is the session save time.
+    /// The dated log is never trimmed. Pass a fixed date from tests.
+    public mutating func record(report: SessionReport, at date: Date = Date()) {
         if !seenPassageIDs.contains(report.passageID) {
             seenPassageIDs.append(report.passageID)
         }
@@ -60,6 +109,12 @@ public struct StruggleLedger: Codable, Equatable, Sendable {
         if recentSpeechRates.count > 10 {
             recentSpeechRates.removeFirst(recentSpeechRates.count - 10)
         }
+        speechRateEvents.append(
+            SpeechRateEvent(
+                syllablesPerMinute: report.speechRateSyllablesPerMinute,
+                date: date
+            )
+        )
 
         for mark in report.marks where mark.kind == .skip {
             guard let wordID = mark.scriptWordID else { continue }
@@ -74,6 +129,7 @@ public struct StruggleLedger: Codable, Equatable, Sendable {
                     )
                 )
             }
+            skipEvents.append(SkipEvent(wordId: wordID, surface: mark.message, date: date))
         }
 
         for mark in report.marks where mark.kind == .extra {
@@ -84,7 +140,7 @@ public struct StruggleLedger: Codable, Equatable, Sendable {
         for tag in report.missedPhoneTags {
             if let index = phones.firstIndex(where: { $0.phone == tag.phone }) {
                 phones[index].missCount += 1
-                phones[index].lastSession = Date()
+                phones[index].lastSession = date
                 if tag.flBand > phones[index].flBand {
                     phones[index].flBand = tag.flBand
                 }
@@ -93,11 +149,52 @@ public struct StruggleLedger: Codable, Equatable, Sendable {
                     PhoneStruggle(
                         phone: tag.phone,
                         flBand: tag.flBand,
-                        missCount: 1
+                        missCount: 1,
+                        lastSession: date
                     )
                 )
             }
+            missEvents.append(PhoneMissEvent(phone: tag.phone, flBand: tag.flBand, date: date))
         }
+    }
+}
+
+extension StruggleLedger: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case phones
+        case skipWords
+        case extras
+        case recentSpeechRates
+        case seenPassageIDs
+        case missEvents
+        case skipEvents
+        case speechRateEvents
+    }
+
+    /// Missing event arrays are empty. A synthesized `Codable` would fail on a
+    /// ledger saved before those keys existed, and `loadOrCreate` would replace it.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        phones = try container.decode([PhoneStruggle].self, forKey: .phones)
+        skipWords = try container.decode([SkipWordStruggle].self, forKey: .skipWords)
+        extras = try container.decode([String: Int].self, forKey: .extras)
+        recentSpeechRates = try container.decode([Double].self, forKey: .recentSpeechRates)
+        seenPassageIDs = try container.decode([String].self, forKey: .seenPassageIDs)
+        missEvents = try container.decodeIfPresent([PhoneMissEvent].self, forKey: .missEvents) ?? []
+        skipEvents = try container.decodeIfPresent([SkipEvent].self, forKey: .skipEvents) ?? []
+        speechRateEvents = try container.decodeIfPresent([SpeechRateEvent].self, forKey: .speechRateEvents) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(phones, forKey: .phones)
+        try container.encode(skipWords, forKey: .skipWords)
+        try container.encode(extras, forKey: .extras)
+        try container.encode(recentSpeechRates, forKey: .recentSpeechRates)
+        try container.encode(seenPassageIDs, forKey: .seenPassageIDs)
+        try container.encode(missEvents, forKey: .missEvents)
+        try container.encode(skipEvents, forKey: .skipEvents)
+        try container.encode(speechRateEvents, forKey: .speechRateEvents)
     }
 }
 
