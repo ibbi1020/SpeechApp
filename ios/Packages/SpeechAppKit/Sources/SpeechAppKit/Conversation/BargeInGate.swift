@@ -70,6 +70,22 @@ public struct BargeInGate: Sendable {
         return .commitCancel
     }
 
+    /// Mic level while the uplink is held closed, so the server cannot see a barge-in.
+    /// A blip below the sustain is forgotten. It does not become speech when the partner finishes.
+    public mutating func onLocalLevel(now: TimeInterval, level: Float) -> Action {
+        guard agentSpeaking else { return .hold }
+        if level < Self.echoFloor {
+            if pendingSpeech { clearHold() }
+            return .hold
+        }
+        if !pendingSpeech {
+            beginHold()
+            lastTickAt = now
+            return .hold
+        }
+        return tick(now: now, level: level)
+    }
+
     private mutating func beginHold() {
         pendingSpeech = true
         loudAccumulated = 0

@@ -1,3 +1,5 @@
+import CoreGraphics
+import Foundation
 import Testing
 @testable import SpeechAppKit
 
@@ -21,16 +23,51 @@ struct HumLevelTests {
         #expect(abs(atEightSeconds - atFiveSeconds) < 0.05)
     }
 
-    @Test("the speaker alone does not lift the field")
+    @Test("a bleed no louder than the picture cap stays down")
     func speakerLeak() {
         var level = HumLevel()
-        level.playbackRMS = 0.48
-        let micFromSpeaker = 0.48 * HumLevel.speakerLeak
+        level.playbackRMS = 0.64
         var value = 0.0
         for _ in 0 ..< (8 * Self.buffersPerSecond) {
-            value = level.observe(micRMS: micFromSpeaker)
+            value = level.observe(micRMS: HumLevel.pictureLeak)
         }
         #expect(value == 0)
+    }
+
+    /// The played tone is near full scale, about 0.64 RMS. Five percent of that
+    /// is 0.03, which is the loudness the field calls a raised voice. Speech is
+    /// louder than that, so speech still moved the drawing and a hum did not.
+    @Test("a hum lifts the field while the tone is playing")
+    func humDuringTone() {
+        var level = HumLevel()
+        level.playbackRMS = 0.64
+        var smoothed = 0.0
+        for _ in 0 ..< Self.buffersPerSecond {
+            smoothed = level.observe(micRMS: 0.03)
+        }
+        #expect(smoothed > 0.5)
+        let size = CGSize(width: 390, height: 700)
+        #expect(Self.litDots(voice: smoothed, size: size) > Self.litDots(voice: 0, size: size))
+    }
+
+    private static func litDots(voice: Double, size: CGSize) -> Int {
+        let driven = DitherHorizon.level(voice: voice, reduceMotion: false)
+        let cell = DitherHorizon.cell(forWidth: size.width)
+        let field = DitherHorizon.field(size: size, level: driven, gain: DitherHorizon.humGain)
+        let columns = Int(ceil(size.width / cell))
+        let rows = Int(ceil(size.height / cell))
+        var count = 0
+        for row in 0 ..< rows {
+            for column in 0 ..< columns where DitherHorizon.dotSide(
+                column: column,
+                row: row,
+                cell: cell,
+                field: field
+            ) > 0 {
+                count += 1
+            }
+        }
+        return count
     }
 
     @Test("before the tone, a voice still lifts the field")

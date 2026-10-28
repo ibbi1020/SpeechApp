@@ -55,6 +55,16 @@ final class AppModel {
 
     private static let hasBegunKey = "entry.hasBegun"
 
+    /// The Home entrance plays once, the first time Home is actually shown.
+    /// Separate from `hasBegunBefore`, which only flips when a session starts.
+    /// The earlier key was stored while this motion still ran under the splash,
+    /// so this name lets that install play the visible entrance once.
+    var hasPlayedHomeEntrance = UserDefaults.standard.bool(forKey: AppModel.homeEntranceKey)
+
+    private static let homeEntranceKey = "entry.homeEntranceSeen"
+
+    var needsHomeEntrance: Bool { !hasPlayedHomeEntrance }
+
     var entry: EntrySurface = .home
 
     /// Where the user is inside the ceremony. Ignored while `entry` is `.home`.
@@ -220,6 +230,12 @@ final class AppModel {
         guard !hasBegunBefore else { return }
         hasBegunBefore = true
         UserDefaults.standard.set(true, forKey: Self.hasBegunKey)
+    }
+
+    func noteHomeEntrancePlayed() {
+        guard !hasPlayedHomeEntrance else { return }
+        hasPlayedHomeEntrance = true
+        UserDefaults.standard.set(true, forKey: Self.homeEntranceKey)
     }
 
     func requestStartConversation() {

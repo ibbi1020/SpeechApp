@@ -6,11 +6,51 @@ import SpeechAppKit
 struct EntryFlowView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.splashRevealed) private var splashRevealed
     @State private var progressLift: CGFloat = 0
     @State private var galleryLift: CGFloat = 0
+    /// Greeting and Begin. Starts at rest so a later open never flashes hidden.
+    @State private var copyOpacity = 1.0
+    @State private var galleryShift: CGFloat = 0
+    @State private var progressShift: CGFloat = 0
+    @State private var entranceArmed = false
+    /// False while the first-open entrance is moving. State jumps to the end
+    /// pose as soon as the animation starts, so the clock, not the values, decides when Home can be used.
+    @State private var entranceInteractive = true
 
     private var motion: Animation {
         SpeechBlur.motion(reduceMotion: reduceMotion)
+    }
+
+    /// First frame of a first open, before the entrance has been armed.
+    /// The settled values stay in state so a later open has nothing to animate.
+    private var entranceConcealed: Bool {
+        model.needsHomeEntrance && !reduceMotion && !entranceArmed
+    }
+
+    private var copyOpacityShown: Double {
+        entranceConcealed ? 0 : copyOpacity
+    }
+
+    private var galleryShiftShown: CGFloat {
+        entranceConcealed ? galleryTravel : galleryShift
+    }
+
+    private var progressShiftShown: CGFloat {
+        entranceConcealed ? progressTravel : progressShift
+    }
+
+    private var galleryTravel: CGFloat {
+        HomeEntrance.travel(cardHeight: GallerySheet.peek)
+    }
+
+    private var progressTravel: CGFloat {
+        HomeEntrance.travel(cardHeight: ProgressSheet.lip + GallerySheet.peek)
+    }
+
+    /// Begin and the sheets stay still until the fade, the longest of the three, has finished.
+    private var homeCanBeUsed: Bool {
+        !entranceConcealed && entranceInteractive
     }
 
     var body: some View {
@@ -28,6 +68,7 @@ struct EntryFlowView: View {
         .animation(motion, value: model.isInCeremony)
         .navigationTitle(EntryGreeting.appName)
         .toolbar(.hidden, for: .navigationBar)
+        .task(id: splashRevealed) { await beginEntranceIfNeeded() }
     }
 
     private var home: some View {
@@ -37,15 +78,26 @@ struct EntryFlowView: View {
         GeometryReader { geo in
             let top = geo.safeAreaInsets.top
             let bottom = geo.safeAreaInsets.bottom
+            // The figure and floor light sit at the bottom of the picture.
+            // Stop the picture at the top of Begin so both stay in the open band,
+            // then lift it 20pt so the floor light clears the button.
+            let pictureFloor = bottom
+                + GallerySheet.homeClearance(bottomInset: bottom)
+                + ProgressSheet.lip
+                + SpeechStartMetrics.height
+                + 20
             ZStack(alignment: .top) {
                 CeremonyPalette.background
                     .ignoresSafeArea()
+                HomeBackdrop(reservedFromBottom: pictureFloor)
 
                 // The sheet is taller than this column so it can cover the status bar
                 // when it opens. Pin the column to the reader, or the stack grows with
                 // the sheet and Begin slides down under the glass.
                 VStack(alignment: .leading, spacing: 0) {
                     homeHeader
+                        .opacity(copyOpacityShown)
+                        .accessibilityHidden(copyOpacityShown < 0.01)
                     Spacer(minLength: SpeechSpacing.section)
                     Button {
                         model.beginCeremony()
@@ -53,10 +105,14 @@ struct EntryFlowView: View {
                         Text("Begin")
                     }
                     .buttonStyle(SpeechStartButtonStyle())
+                    .opacity(copyOpacityShown)
+                    .accessibilityHidden(copyOpacityShown < 0.01)
+                    .allowsHitTesting(homeCanBeUsed)
                 }
                 .padding(.horizontal, SpeechSpacing.page)
                 .padding(.top, SpeechSpacing.related)
-                .padding(.bottom, GallerySheet.homeClearance(bottomInset: bottom) + ProgressSheet.lip)
+                // 12pt below the sheet clearance, so Begin sits closer to the glass.
+                .padding(.bottom, GallerySheet.homeClearance(bottomInset: bottom) + ProgressSheet.lip - 12)
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
 
                 ProgressSheet(
@@ -67,8 +123,9 @@ struct EntryFlowView: View {
                     otherLift: galleryLift
                 )
                 .frame(width: geo.size.width, height: geo.size.height + top + bottom)
-                .offset(y: -top)
-                .zIndex(progressLift > 0.02 ? 2 : 0)
+                .offset(y: -top + progressShiftShown)
+                .zIndex(progressCoversGallery ? 2 : 0)
+                .allowsHitTesting(homeCanBeUsed)
 
                 GallerySheet(
                     topInset: top,
@@ -79,16 +136,87 @@ struct EntryFlowView: View {
                     startOpen: model.presentGallery
                 )
                 .frame(width: geo.size.width, height: geo.size.height + top + bottom)
-                .offset(y: -top)
+                .offset(y: -top + galleryShiftShown)
                 .zIndex(1)
-                .opacity(progressLift > 0.02 ? 0 : 1)
-                .allowsHitTesting(progressLift <= 0.02)
+                .opacity(progressCoversGallery ? 0 : 1)
+                .allowsHitTesting(homeCanBeUsed && progressCoversGallery == false)
             }
         }
     }
 
+    /// Gallery stays in front until Progress reaches the same openness the drag
+    /// treats as open.
+    private var progressCoversGallery: Bool {
+        progressLift > CGFloat(HomeSheetDrag.openThreshold)
+    }
+
+    /// Starts only once `splashRevealed` is true, which is after the mark has
+    /// left the screen. The hidden pose is committed first, then the next turn
+    /// animates, so the motion is not spent under the splash and the settled
+    /// Home never flashes for a frame.
+    /// Reduce Motion shows Home immediately and still marks the entrance played.
+    private func beginEntranceIfNeeded() async {
+        guard splashRevealed else { return }
+        guard model.needsHomeEntrance, !entranceArmed else { return }
+        if reduceMotion {
+            model.noteHomeEntrancePlayed()
+            return
+        }
+
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            copyOpacity = 0
+            galleryShift = galleryTravel
+            progressShift = progressTravel
+        }
+
+        await Task.yield()
+        guard !Task.isCancelled, splashRevealed, !entranceArmed else { return }
+
+        entranceArmed = true
+        entranceInteractive = false
+        model.noteHomeEntrancePlayed()
+        // Separate transactions so the fade and the two slides keep their own curves.
+        withAnimation(HomeEntranceMotion.fade) {
+            copyOpacity = 1
+        }
+        withAnimation(HomeEntranceMotion.gallery) {
+            galleryShift = 0
+        }
+        withAnimation(HomeEntranceMotion.progress) {
+            progressShift = 0
+        }
+
+        try? await Task.sleep(for: .seconds(HomeEntrance.fadeDuration))
+        guard !Task.isCancelled else { return }
+        entranceInteractive = true
+    }
+
     private var homeHeader: some View {
         HomeGreetingTitle(line: EntryGreeting.line(hasBegunBefore: model.hasBegunBefore))
+    }
+}
+
+/// The home picture. Bottom of the frame is the top of Begin, so the figure
+/// and the floor light stay above the button. Anything taller than that band
+/// is cropped from the top.
+private struct HomeBackdrop: View {
+    var reservedFromBottom: CGFloat
+
+    var body: some View {
+        GeometryReader { geo in
+            let stage = max(0, geo.size.height - reservedFromBottom)
+            Image("HomeBackdrop")
+                .resizable()
+                .scaledToFill()
+                .frame(width: geo.size.width, height: stage, alignment: .bottom)
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                .clipped()
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
     }
 }
 
@@ -133,5 +261,24 @@ private struct HomeGreetingTitle: View {
             .multilineTextAlignment(.leading)
             .accessibilityLabel(line)
             .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Timing curves for the first-open Home entrance. Durations live on `HomeEntrance`.
+private enum HomeEntranceMotion {
+    static var fade: Animation {
+        curve(HomeEntrance.fadeCurve, duration: HomeEntrance.fadeDuration)
+    }
+
+    static var gallery: Animation {
+        curve(HomeEntrance.slideCurve, duration: HomeEntrance.galleryDuration)
+    }
+
+    static var progress: Animation {
+        curve(HomeEntrance.slideCurve, duration: HomeEntrance.progressDuration)
+    }
+
+    private static func curve(_ curve: HomeEntrance.Curve, duration: TimeInterval) -> Animation {
+        .timingCurve(curve.x1, curve.y1, curve.x2, curve.y2, duration: duration)
     }
 }

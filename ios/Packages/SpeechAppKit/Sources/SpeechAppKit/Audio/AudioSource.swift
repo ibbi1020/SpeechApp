@@ -111,6 +111,9 @@ public final class MicAudioSource: AudioSource, @unchecked Sendable {
         // Ask for ~20 ms hardware buffers so taps arrive often; the default can hold ~100 ms.
         try? session.setPreferredIOBufferDuration(0.02)
         try session.setActive(true)
+        RawMicrophone.lockBuiltInCapsule(session)
+        RawMicrophone.silenceVoiceProcessing(engine)
+        try RawMicrophone.useMeasurementMode(session)
 
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
@@ -132,6 +135,7 @@ public final class MicAudioSource: AudioSource, @unchecked Sendable {
 
         engine.prepare()
         try engine.start()
+        try? RawMicrophone.useMeasurementMode(session)
     }
 
     public func stop() async {

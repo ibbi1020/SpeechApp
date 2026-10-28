@@ -65,6 +65,18 @@ struct RoomNoiseTests {
         #expect((reading.decibels ?? 0) < RoomNoise.clear)
     }
 
+    @Test("a meter that just opened does not call a warned room quiet")
+    func freshMeterHoldsWarning() {
+        #expect(RoomNoise.shownWarning(held: true, ready: false, reading: false))
+        #expect(RoomNoise.shownWarning(held: true, ready: true, reading: true))
+        #expect(RoomNoise.shownWarning(held: true, ready: true, reading: false) == false)
+
+        var restarted = RoomReading()
+        feed(&restarted, rms: Self.rms(decibels: -37), from: 0, through: 1.4)
+        #expect(restarted.ready)
+        #expect(restarted.warning == false)
+    }
+
     private static func rms(decibels: Double) -> Double {
         pow(10, decibels / 20)
     }

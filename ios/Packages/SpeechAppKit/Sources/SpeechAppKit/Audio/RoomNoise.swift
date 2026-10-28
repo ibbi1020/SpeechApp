@@ -45,6 +45,13 @@ public enum RoomNoise {
         return decibels >= warn
     }
 
+    /// What the warning screen should say. A meter that just opened has no verdict,
+    /// so it must not replace a warning already on screen with "quieter now."
+    public static func shownWarning(held: Bool, ready: Bool, reading: Bool) -> Bool {
+        guard ready else { return held }
+        return reading
+    }
+
     public enum Band: Equatable, Sendable {
         case green
         case yellow

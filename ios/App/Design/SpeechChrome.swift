@@ -802,35 +802,9 @@ enum FeedbackStatRows {
         lines.map { FeedbackStat(label: $0.label, value: $0.value) }
     }
 
-    /// Pace, time spoken, and pause time from the last counted take.
-    /// A thin talk has no counted take, so its saved lines are shown as they are.
+    /// Every line on the profile. A thin talk has no counted pair, so its saved lines are shown as they are.
     static func talkAfterExercise(_ report: MonologueReport) -> [FeedbackStat] {
-        guard let start = report.lines.lastIndex(where: { $0.label.hasPrefix("Take ") }) else {
-            return stored(report.lines)
-        }
-        var timeSpoken: String?
-        var pause: String?
-        var pace: String?
-        for line in report.lines[start...] {
-            if line.label.hasPrefix("Take ") {
-                timeSpoken = line.value
-            } else if line.label == "Pause time" {
-                pause = line.value
-            } else if line.label == "Pace" {
-                pace = line.value
-            }
-        }
-        var rows: [FeedbackStat] = []
-        if let pace {
-            rows.append(FeedbackStat(label: "Pace", value: pace))
-        }
-        if let timeSpoken {
-            rows.append(FeedbackStat(label: "Time spoken", value: timeSpoken))
-        }
-        if let pause {
-            rows.append(FeedbackStat(label: "Pause time", value: pause))
-        }
-        return rows
+        stored(report.lines)
     }
 }
 
@@ -839,6 +813,14 @@ struct FeedbackStatList: View {
     let rows: [FeedbackStat]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var open = false
+
+    /// Speech rate is the headline number. A thin talk has none, so the first row is.
+    private func prominentStat(_ row: FeedbackStat, index: Int, rows: [FeedbackStat]) -> Bool {
+        if rows.contains(where: { $0.label == MonologueFluency.Label.speechRate }) {
+            return row.label == MonologueFluency.Label.speechRate
+        }
+        return index == 0
+    }
 
     var body: some View {
         if !rows.isEmpty {
@@ -874,7 +856,7 @@ struct FeedbackStatList: View {
                                     .fixedSize(horizontal: false, vertical: true)
                                 Spacer(minLength: 12)
                                 Text(row.value)
-                                    .font(.system(size: index == 0 ? 28 : 20, weight: .semibold))
+                                    .font(.system(size: prominentStat(row, index: index, rows: rows) ? 28 : 20, weight: .semibold))
                                     .monospacedDigit()
                                     .multilineTextAlignment(.trailing)
                                     .fixedSize(horizontal: false, vertical: true)

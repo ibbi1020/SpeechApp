@@ -33,13 +33,97 @@ struct StruggleLedgerTests {
         #expect(ledger.seenPassageIDs == ["p1"])
     }
 
+    @Test("record keeps the running totals and the 10-speed cap, and appends every dated event")
+    func recordAppendsDatedEvents() {
+        var ledger = StruggleLedger()
+        let start = Date(timeIntervalSinceReferenceDate: 1_000_000)
+        for index in 0..<12 {
+            let when = start.addingTimeInterval(Double(index) * 86_400)
+            ledger.record(
+                report: readingReport(
+                    rate: Double(100 + index),
+                    miss: index < 3 ? "ɪ" : nil,
+                    skip: index < 4 ? "w0" : nil
+                ),
+                at: when
+            )
+        }
+        #expect(ledger.recentSpeechRates == (2..<12).map { Double(100 + $0) })
+        #expect(ledger.speechRateEvents.map(\.syllablesPerMinute) == (0..<12).map { Double(100 + $0) })
+        #expect(ledger.speechRateEvents.map(\.date) == (0..<12).map {
+            start.addingTimeInterval(Double($0) * 86_400)
+        })
+        #expect(ledger.phones.first?.missCount == 3)
+        #expect(ledger.missEvents.count == 3)
+        #expect(ledger.missEvents.map(\.date) == (0..<3).map {
+            start.addingTimeInterval(Double($0) * 86_400)
+        })
+        #expect(ledger.skipWords.first?.count == 4)
+        #expect(ledger.skipEvents.count == 4)
+    }
+
+    @Test("an old ledger JSON with no event arrays still loads its counts")
+    func legacyLedgerJSON() throws {
+        let saved = Date(timeIntervalSinceReferenceDate: 20)
+        let legacy = StruggleLedger(
+            phones: [PhoneStruggle(phone: "r", flBand: .high, missCount: 4, lastSession: saved)],
+            skipWords: [SkipWordStruggle(wordId: "w0", surface: "ship", count: 3)],
+            extras: ["um": 2],
+            recentSpeechRates: [120, 130],
+            seenPassageIDs: ["p1"]
+        )
+        var object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(legacy)) as! [String: Any]
+        object.removeValue(forKey: "missEvents")
+        object.removeValue(forKey: "skipEvents")
+        object.removeValue(forKey: "speechRateEvents")
+        let data = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(StruggleLedger.self, from: data)
+        #expect(decoded.phones.first?.phone == "r")
+        #expect(decoded.phones.first?.missCount == 4)
+        #expect(decoded.skipWords.first?.count == 3)
+        #expect(decoded.extras["um"] == 2)
+        #expect(decoded.recentSpeechRates == [120, 130])
+        #expect(decoded.seenPassageIDs == ["p1"])
+        #expect(decoded.missEvents.isEmpty)
+        #expect(decoded.skipEvents.isEmpty)
+        #expect(decoded.speechRateEvents.isEmpty)
+    }
+
     @Test("round-trips through JSON encode/decode")
     func codableRoundTrip() throws {
         var ledger = StruggleLedger()
         ledger.phones = [PhoneStruggle(phone: "r", flBand: .high, missCount: 2)]
+        let when = Date(timeIntervalSinceReferenceDate: 30)
+        ledger.missEvents = [PhoneMissEvent(phone: "r", flBand: .high, date: when)]
+        ledger.skipEvents = [SkipEvent(wordId: "w0", surface: "ship", date: when)]
+        ledger.speechRateEvents = [SpeechRateEvent(syllablesPerMinute: 140, date: when)]
         let data = try JSONEncoder().encode(ledger)
         let decoded = try JSONDecoder().decode(StruggleLedger.self, from: data)
         #expect(decoded.phones == ledger.phones)
+        #expect(decoded.missEvents == ledger.missEvents)
+        #expect(decoded.skipEvents == ledger.skipEvents)
+        #expect(decoded.speechRateEvents == ledger.speechRateEvents)
+    }
+
+    private func readingReport(rate: Double, miss: String?, skip: String?) -> SessionReport {
+        var marks: [LiveMarkCodable] = []
+        if let skip {
+            marks.append(LiveMarkCodable(kind: .skip, scriptWordID: skip, message: "Skipped"))
+        }
+        return SessionReport(
+            passageID: "p1",
+            passageTitle: "Test",
+            marks: marks,
+            matchCount: 1,
+            skipCount: skip == nil ? 0 : 1,
+            extraCount: 0,
+            substituteCount: 0,
+            speechRateSyllablesPerMinute: rate,
+            averageSpeechRateSyllablesPerMinute: nil,
+            durationSeconds: 10,
+            missedPhoneTags: miss.map { [MissedPhoneTag(phone: $0, flBand: .high)] } ?? [],
+            engineKind: "dictationTranscriber"
+        )
     }
 }
 

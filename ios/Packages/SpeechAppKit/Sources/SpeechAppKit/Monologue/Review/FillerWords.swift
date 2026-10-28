@@ -2,7 +2,7 @@ import Foundation
 
 /// Filled pauses that Grok returns when `filler_words=true`.
 /// Kept in review transcripts/markers; stripped before Reading alignment and
-/// Monologue overlap / pace so existing report numbers stay stable.
+/// Monologue reuse and articulation rate, so fillers stay out of those counts.
 public enum FillerWords {
     public static let surfaces: Set<String> = ["uh", "um", "er", "uhm", "umm", "ah"]
 

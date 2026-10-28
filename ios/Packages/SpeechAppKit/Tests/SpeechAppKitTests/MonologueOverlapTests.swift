@@ -1,45 +1,44 @@
 import Testing
 @testable import SpeechAppKit
 
-@Suite("Monologue token overlap")
+@Suite("Monologue verbatim reuse")
 struct MonologueOverlapTests {
     @Test("identical wording is 100")
     func identical() {
-        let percent = MonologueOverlap.tokenPercent(
+        let percent = MonologueOverlap.verbatimPercent(
             previous: "I take the bus to work",
             current: "I take the bus to work"
         )
         #expect(percent == 100)
     }
 
-    @Test("disjoint wording is 0")
-    func disjoint() {
-        let percent = MonologueOverlap.tokenPercent(
-            previous: "cats sleep",
-            current: "dogs run"
+    @Test("the same words in a new order are not a repeated stretch")
+    func reordered() {
+        let percent = MonologueOverlap.verbatimPercent(
+            previous: "I went to the store",
+            current: "the store I went to"
         )
-        #expect(percent == 0)
+        // Only "I went to" is still in order. Three of the five words.
+        #expect(percent == 60)
     }
 
-    @Test("partial overlap is Jaccard on unique tokens")
-    func partial() {
-        // {a,b} vs {b,c} → 1/3
-        let percent = MonologueOverlap.tokenPercent(previous: "a b", current: "b c")
-        #expect(percent == 100.0 / 3.0)
+    @Test("a short pair cannot form a stretch")
+    func tooShort() {
+        #expect(MonologueOverlap.verbatimPercent(previous: "a b", current: "b c") == 0)
     }
 
     @Test("empty pair is nil")
     func empty() {
-        #expect(MonologueOverlap.tokenPercent(previous: "  ", current: "") == nil)
+        #expect(MonologueOverlap.verbatimPercent(previous: "  ", current: "") == nil)
     }
 
-    @Test("fillers do not change overlap")
+    @Test("fillers do not change reuse")
     func fillersIgnored() {
-        let without = MonologueOverlap.tokenPercent(
+        let without = MonologueOverlap.verbatimPercent(
             previous: "I went to the store",
             current: "I went to the store"
         )
-        let with = MonologueOverlap.tokenPercent(
+        let with = MonologueOverlap.verbatimPercent(
             previous: "I um went uh to the store",
             current: "I went to the store"
         )
