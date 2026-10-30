@@ -563,7 +563,8 @@ struct MonologueSessionView: View {
         let engine: any TranscriptionEngine
         do {
             engine = try await LiveSpeech.engine(
-                apiKey: XAIDirectKey.load(),
+                relayBase: MintClient.configuredBase(),
+                accountID: model.account.accountUUID.uuidString,
                 phrases: Self.keyterms(prompt: session.prompt, reuseLine: session.reuseLine)
             )
         } catch is CancellationError {

@@ -47,21 +47,16 @@ targets:
         buildPhase: resources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.speechapp.prototype.format1
+        # Production bundle id. The Google iOS client's bundle id can be edited
+        # until App Check is turned on.
+        PRODUCT_BUNDLE_IDENTIFIER: com.speechapp.orator
         PRODUCT_NAME: SpeechApp
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/SpeechApp.entitlements
         CODE_SIGN_STYLE: Automatic
-        # Personal Team (free provisioning) — Ibraheem Farooq
-        DEVELOPMENT_TEAM: 45SVH8S72R
+        DEVELOPMENT_TEAM: Q2Z32YFFGP
         SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
-    postBuildScripts:
-      - name: Copy XAI key
-        basedOnDependencyAnalysis: false
-        script: |
-          if [ -f "$SRCROOT/App/XAISecrets.plist" ]; then
-            cp "$SRCROOT/App/XAISecrets.plist" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/XAISecrets.plist"
-          fi
     dependencies:
       - package: SpeechAppKit
       - package: DSWaveformImage
@@ -80,9 +75,11 @@ targets:
         CFBundleDisplayName: Orator
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "5"
-        # Bonjour name of this Mac. Stays valid when the DHCP address changes.
-        # Phone and Mac have to be on the same Wi-Fi. Do not put a 192.168 address here.
-        CONVERSATION_API_BASE: "http://Ibraheens-MacBook-Air.local:8787"
+        # Mint Worker. The xAI key stays on that Worker. Speech and the voice list go here.
+        CONVERSATION_API_BASE: "https://orator-mint.ibraheemfrq.workers.dev"
+        # Public iOS client id. Not a secret. Edit the bundle id on this same
+        # Google client when the app id changes. Leave App Check off.
+        GOOGLE_CLIENT_ID: "88161816596-qofcacj2vpkqqtte1cr5944iro9kist8.apps.googleusercontent.com"
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSLocalNetworkUsageDescription: Orator can connect to your Mac on the local network for practice limits. Speech is sent to xAI.
@@ -91,6 +88,9 @@ targets:
           - CFBundleURLName: com.speechapp.conversation
             CFBundleURLSchemes:
               - orator
+          - CFBundleURLName: com.speechapp.google
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.88161816596-qofcacj2vpkqqtte1cr5944iro9kist8
         UIBackgroundModes:
           - audio
         UIAppFonts:
@@ -119,11 +119,12 @@ targets:
       - path: Shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.speechapp.prototype.format1.widget
+        # Production widget id. Same team field as the app.
+        PRODUCT_BUNDLE_IDENTIFIER: com.speechapp.orator.widget
         PRODUCT_NAME: SpeechAppWidget
         INFOPLIST_FILE: Widget/Info.plist
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: 45SVH8S72R
+        DEVELOPMENT_TEAM: Q2Z32YFFGP
         GENERATE_INFOPLIST_FILE: NO
         SKIP_INSTALL: YES
     dependencies:

@@ -267,11 +267,16 @@ struct ReadingSessionView: View {
             connectingStarted = nil
         }
 
-        let apiKey = XAIDirectKey.load()
+        let relayBase = MintClient.configuredBase()
+        let accountID = model.account.accountUUID.uuidString
         let phrases = ReadingSession.contextualPhrases(for: passage, fromIndex: 0)
         let engine: any TranscriptionEngine
         do {
-            engine = try await LiveSpeech.engine(apiKey: apiKey, phrases: phrases)
+            engine = try await LiveSpeech.engine(
+                relayBase: relayBase,
+                accountID: accountID,
+                phrases: phrases
+            )
         } catch is CancellationError {
             return
         } catch {
@@ -289,8 +294,8 @@ struct ReadingSessionView: View {
             let recorder = TakeRecorder()
             try? recorder.start()
             takeRecorder = recorder
-            if engine.engineKind == .grokVoiceTranscribe, let apiKey {
-                let transcriber = FeedbackTranscriber(apiKey: apiKey)
+            if engine.engineKind == .grokVoiceTranscribe, let relayBase {
+                let transcriber = FeedbackTranscriber(relayBase: relayBase, accountID: accountID)
                 await transcriber.start()
                 feedbackTranscriber = transcriber
                 session?.onRecordedChunk = { chunk in

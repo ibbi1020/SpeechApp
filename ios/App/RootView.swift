@@ -7,13 +7,29 @@ struct RootView: View {
 
     var body: some View {
         SplashContainer {
-            navigation
+            if showsSignIn {
+                SignInView()
+            } else {
+                navigation
+            }
         }
         .preferredColorScheme(.dark)
         .onChange(of: scenePhase) { _, phase in
             if phase == .background {
                 model.rememberBackground()
             }
+        }
+    }
+
+    /// Sign-in replaces Home. It is not pushed. A live exercise is never covered,
+    /// so Reading and Monologue stay as they are once the screen has been dismissed.
+    private var showsSignIn: Bool {
+        guard !model.hasPassedSignIn else { return false }
+        switch model.route {
+        case .reading, .conversation, .monologue, .crisis:
+            return false
+        default:
+            return true
         }
     }
 

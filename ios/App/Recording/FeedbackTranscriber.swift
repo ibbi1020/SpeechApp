@@ -17,8 +17,9 @@ final class FeedbackTranscriber {
     /// Fired on the main actor when new final timed words arrive (Conversation live nudge).
     var onFinalWords: (([RecordedWord]) -> Void)?
 
-    init(apiKey: String) {
-        engine = GrokTranscriptionEngine(endpoint: .direct, bearerToken: apiKey)
+    /// `accountID` is sent to the relay. The relay holds the xAI key.
+    init(relayBase: URL, accountID: String) {
+        engine = GrokTranscriptionEngine(endpoint: .relay(relayBase), bearerToken: accountID)
     }
 
     func start() async {

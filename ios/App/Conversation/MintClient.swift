@@ -69,16 +69,23 @@ final class MintClient: Sendable {
     }
 
     /// `nil` when `CONVERSATION_API_BASE` is missing, empty, or not a host URL.
-    /// Empty plist value means skip POSTs — never fall back to a baked-in host.
-    static func makeIfConfigured(
-        uuid: UUID,
+    /// Empty plist value means skip the server — never fall back to a baked-in host.
+    static func configuredBase(
         info: [String: Any]? = Bundle.main.infoDictionary
-    ) -> MintClient? {
+    ) -> URL? {
         guard let raw = info?[apiBaseKey] as? String else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let url = URL(string: trimmed), url.host != nil else {
             return nil
         }
+        return url
+    }
+
+    static func makeIfConfigured(
+        uuid: UUID,
+        info: [String: Any]? = Bundle.main.infoDictionary
+    ) -> MintClient? {
+        guard let url = configuredBase(info: info) else { return nil }
         return MintClient(base: url, uuid: uuid)
     }
 

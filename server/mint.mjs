@@ -1,16 +1,8 @@
 import { createServer } from "node:http";
 import { attachSttRelay } from "./stt-relay.mjs";
+import { decideStart, monthKey } from "./mint-logic.mjs";
 
-export function monthKey(ms = Date.now()) {
-  const d = new Date(ms);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
-export function decideStart(st, month) {
-  const count = st.month === month ? st.count : 0;
-  if (count >= 20) return { allow: false, reason: "budget" };
-  return { allow: true, nextCount: count + 1 };
-}
+export { decideStart, monthKey };
 
 const accounts = new Map(); // uuid -> { month, count, concurrent, mintTimes: number[], started: Set, possibleMinor: string|null }
 let crisisCount = 0;

@@ -46,7 +46,7 @@ public final class GrokTranscriptionEngine: TranscriptionEngine, @unchecked Send
         self.bearerToken = bearerToken
     }
 
-    /// Relay socket. Eval and the mint server use this. The app uses `.direct` until launch.
+    /// Relay socket. The mint server adds the model and keeps the xAI key.
     public convenience init(relayBase: URL, bearerToken: String) {
         self.init(endpoint: .relay(relayBase), bearerToken: bearerToken)
     }

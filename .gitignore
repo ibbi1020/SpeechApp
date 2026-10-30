@@ -14,6 +14,8 @@ ios/*.xcworkspace/
 ios/local.xcconfig
 ios/App/XAISecrets.plist
 server/.env
+server/.dev.vars
+server/.wrangler/
 server/node_modules/
 
 # Device session diagnostics (share locally; do not commit)

@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-21  
 **Status:** Architecture locked. Roundtable + **Pass 2** holes locked the same day. **v1 promise aligned 2026-09-21** with the product shape (honest report, spoken cues off, backend is not mint-only). Product shape stays in `2026-09-21-conversation-format-design.md`.  
+**Vendor (verified in code 2026-10-28):** the live call is xAI `grok-voice-3.0` on `wss://api.x.ai/v1/realtime`, not OpenAI. Reading, Monologue, and listen-back use xAI `grok-voice-transcribe-2.0`. Report rules run on the phone. The OpenAI model names below are the 2026-09-21 lock and are not what the app calls.  
 **Not a build plan.** Implementation plan comes after you sign the locks.
 
 The live model is the mouth and ears. Our session controller is the brain. The model does not own the clock, wrap, or crisis. v1 spoken partner lines are `open` / `wrap_warn` / `wrap_close` only.

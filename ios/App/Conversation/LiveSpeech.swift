@@ -1,11 +1,12 @@
 import Foundation
 import SpeechAppKit
 
-/// Picks Grok on api.x.ai, then the phone if that socket cannot open.
+/// Picks Grok through the mint relay, then the phone if that socket cannot open.
 enum LiveSpeech {
-    static func engine(apiKey: String?, phrases: [String]) async throws -> any TranscriptionEngine {
-        if let apiKey {
-            let grok = GrokTranscriptionEngine(endpoint: .direct, bearerToken: apiKey)
+    /// `accountID` is the Keychain account. The relay checks it and adds the xAI key.
+    static func engine(relayBase: URL?, accountID: String, phrases: [String]) async throws -> any TranscriptionEngine {
+        if let relayBase {
+            let grok = GrokTranscriptionEngine(endpoint: .relay(relayBase), bearerToken: accountID)
             grok.setContextualPhrases(phrases)
             do {
                 let route = try await SpeechToTextConnect.route(relayConfigured: true) {

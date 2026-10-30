@@ -6,7 +6,7 @@
 
 This is an engineering reading of those locks plus BIPA, WOPRA, and SB 243 as the conversation spec already names them. Counsel still owns the consent screens and how long a bare transaction id is kept after deletion.
 
-The 2026-10-28 revision picks the host, allows Google beside Apple, and closes holes in the first draft: purchase linking, provider revocation, a dead session lock, out-of-order App Store notifications, and a cap baked into the table.
+The 2026-10-28 revision picks the host, allows Google beside Apple, and closes holes in the first draft: purchase linking, provider revocation, a dead session lock, out-of-order App Store notifications, and a cap baked into the table. It also locks how progress and recordings move between phones.
 
 ---
 
@@ -38,8 +38,9 @@ The monthly cap of 20 is configuration in the Worker, checked in that same trans
 
 1. **Apple and Google can both sign a person in.** No email/password. The first sign-in creates the account. A second provider attaches only while they are already signed in. The same email address does not merge two accounts. Email is stored on the identity, only when that provider shares it. The product works with a null email.
 2. **Conversation mint requires an active subscription.** Reading and Monologue still run on the phone with no account.
-3. **Progress rows are written only after a separate opt-in.** Budget and entitlement are not optional.
+3. **Progress rows are written only after a separate opt-in.** Budget and entitlement are not optional. Turning sync off stops new rows. It does not delete rows already stored.
 4. **One App Store subscription maps to one account.** Family Sharing stays off. A second account cannot claim the same `original_transaction_id`. `accounts.id` is the StoreKit `appAccountToken` on every purchase.
+5. **Sound stays on the phone that made it.** The numeric report syncs. The recording and the transcript do not.
 
 The current Keychain UUID (`AccountStore`) stops being the mint credential once this account exists. Until then, mint behavior stays as built.
 
@@ -62,9 +63,9 @@ The phone’s Keychain id dies on reinstall, so it cannot be the subscriber.
 | 20 starts in their calendar month | Already specified as server-enforced, in the account timezone | `conversation_months` |
 | One open conversation | A second phone must not mint a second live session | `conversation_sessions` |
 | 3 mints / 10 minutes | A per-city counter would give each city its own 3 | `mint_attempts` |
-| Numeric progress on a new phone | Reports today exist only in memory on this phone | `practice_sessions` and the metric tables |
+| Numeric progress on a new phone | Reports today exist only on this phone. The numbers can move. The sound cannot | `practice_sessions` and the metric tables |
 | Crisis volume | The spec counts referrals and forbids attaching them to a person | `crisis_referral_days` |
-| A freeze that survives deletion | A new account on a known provider id must not mint a new OpenAI safety hash | `mint_blocks` |
+| A freeze that survives deletion | A new account on a known provider id must not mint a new vendor token after a minor flag or a safety block | `mint_blocks` |
 | A purchase record with the person removed | Apple transaction disputes can outlive the account. The row has no user id | `financial_retention` |
 
 **Not in this database:** devices and push tokens (until daily pushes exist), audio of any kind, GOP score rows (until that scorer exists), a coach inbox (until that product has its own consent).
@@ -73,7 +74,7 @@ The phone’s Keychain id dies on reinstall, so it cannot be the subscriber.
 
 ## What we can keep
 
-Two piles. The first is required to sell the subscription and enforce the cap. The second is practice numbers, and only after they opt in. Both are deleted with the account, except the anonymous crisis counter and a purchase id that no longer points at them.
+Two piles. The first is required to sell the subscription and enforce the cap. The second is practice numbers, and only after they opt in. Both are deleted with the account, except the anonymous crisis counter and a purchase id that no longer points at them. Turning progress sync off is not account deletion: the number rows stay.
 
 ### Required for the paid product
 
@@ -91,15 +92,17 @@ The numbers the on-device reports already show. No population norms.
 - **Reading:** catalog `passage_id`, match / skip / extra / substitute counts, script word count, completeness ratio, stall count, speech rate, and a miss count per phone symbol plus functional-load band.
 - **Monologue:** catalog `prompt_id` when the prompt came from the bank, the generated comparison line, and per take: wall seconds, spoken seconds, phonation-time ratio, pause seconds, gap count (silences ≥ 250 ms), pace, overlap percent versus the previous counting take.
 
-At the first opt-in, the phone uploads the practice numbers already on that device, then each new session while sync stays on. `client_report_id` makes a retry the same row. The upload is the numeric report only. The recording stays on the phone that made it.
+At the first opt-in, that phone uploads the practice numbers already on it. While `progress_sync_at` is set, every signed-in phone uploads numeric rows the server does not yet have. `client_report_id` makes a retry the same row. The upload is the report only. The recording and the transcript stay on the phone that made them. Another phone shows the report and does not play the audio.
 
-Turning sync off sets `progress_sync_at` null and appends a `progress_sync_off` consent event. Rows already stored stay. The phone uploads nothing while it is null. Turning it on again sets `progress_sync_at` and uploads sessions that happen after that time. Sessions from the off window stay on the phone and are not sent later.
+Turning sync off sets `progress_sync_at` null and appends a `progress_sync_off` consent event. Rows already stored stay. Nothing uploads while it is null. Turning it on again sets `progress_sync_at`. Sessions that happened while it was off stay on the phone and are not sent later. Sessions after it is on upload as usual.
+
+A `minted` session that never starts leases for 3 minutes. A `started` session leases for 30 minutes from `started_at`. These durations are locked.
 
 ### Safety flags, not content
 
 `possible_minor` flag and date. `mint_frozen` with reason `possible_minor` or `safety_block`. The words that triggered either flag are not stored.
 
-OpenAI safety identifier: `HMAC-SHA256(server_pepper, account_id)` hex, computed at mint, sent to OpenAI, not stored. Never log it next to the account id. If OpenAI blocks it: generic unavailable, freeze mint, do not issue a new hash.
+OpenAI is not in the path. Conversation audio goes to xAI `grok-voice-3.0` (`wss://api.x.ai/v1/realtime`). Reading, Monologue, and listen-back go to xAI `grok-voice-transcribe-2.0`. Pause, pace, and review markers are computed on the phone from those words. The current mint call asks xAI only for a 120-second client secret. It does not send a safety hash. If a later xAI call needs a stable user id, compute `HMAC-SHA256(server_pepper, account_id)` at mint, send it, and do not store it. Never log it next to the account id.
 
 ---
 
@@ -107,11 +110,11 @@ OpenAI safety identifier: `HMAC-SHA256(server_pepper, account_id)` hex, computed
 
 | Data | Where it stays | Why |
 |---|---|---|
-| Audio, PCM, AAC, waveforms | Conversation: process and delete. Monologue: this phone only | BIPA and WOPRA treat a voiceprint as biometric. The spec already forbids upload and speaker embeddings |
+| Audio, PCM, AAC, waveforms | Conversation: process and delete. Monologue: the phone that recorded it. Not our server, not iCloud | BIPA and WOPRA treat a voiceprint as biometric. Listen-back on another phone is the accepted gap |
 | Transcripts, notes, custom topic text, partner speech, stance card | On the phone for the live session. Monologue transcript stays in the local recording | Technical layer: never log ASR text, partner transcript, or stance card |
 | Crisis words, and any mark that this account hit crisis | Anonymous daily counter only | Spec: crisis referral has no user id and no transcript |
 | The sentence that triggered a minor flag | Flag and timestamp on the account | Spec: not the utterance |
-| OpenAI safety identifier beside the account id | Computed at mint. Not stored | Spec: never log the hash next to the account id |
+| OpenAI safety identifier beside the account id | Not sent today. If a later xAI call needs a stable user id, compute it at mint and do not store it | A hash stored next to the account can be reversed to the person |
 | Card numbers, precise location, advertising id, birth date, disability | Apple holds payment. Timezone is a region name they can change | Not needed to run practice or billing |
 | Filler locations and word-by-word reading rows | On-device report | A count or a phone symbol is enough for a personal trend. The words reconstruct the take |
 | Coach audio and GOP audio slices | Not this database. A later queue would delete the bytes after scoring | Separate biometric consent. Out of this schema until that product exists |
@@ -129,12 +132,12 @@ A topic the person typed themselves is not stored. `monologue_regimens.prompt_id
 4. Start is one D1 batch, which runs as one transaction. The Worker, not the phone, checks: account exists, not frozen, `subscriptions.entitled` is 1, `starts_used` is under the configured cap for the open calendar month, expired open sessions for this account are closed, no `conversation_sessions` row is still `minted` or `started`, and this account has fewer than 3 `mint_attempts` in the last 10 minutes.
 5. The month boundary uses `conversation_months.timezone`, frozen when that row is created. Changing `accounts.timezone` applies to the next month, so a timezone change cannot grant a second month.
 6. `conversation_sessions.id` is the UUID the phone generated. A retry of the same id is the same row.
-7. A `minted` row leases for 3 minutes (the 120-second OpenAI secret, plus slack). Moving to `started` sets the lease to 30 minutes from `started_at` (15-minute wall clock, plus the 10-minute pause TTL, plus slack for the hang-up call). These two durations are locked. A cron closes expired leases. The start transaction also closes this account's expired lease, so correctness does not depend on the cron. `end_reason` for that close is `lease_expired`.
-8. Mint computes the OpenAI safety identifier, sends it with the ephemeral key, and does not write it down. Audio goes to OpenAI, not to us.
+7. A `minted` row leases for 3 minutes (the 120-second xAI client secret, plus slack). Moving to `started` sets the lease to 30 minutes from `started_at` (15-minute wall clock, plus the 10-minute pause TTL, plus slack for the hang-up call). These two durations are locked. A cron closes expired leases. The start transaction also closes this account's expired lease, so correctness does not depend on the cron. `end_reason` for that close is `lease_expired`.
+8. Mint asks xAI for a short-lived client secret and does not write the secret down. Audio goes to xAI, not to us and not to OpenAI.
 9. When the session counts as a start, set `started_at` and `counts_as_start` and increment `starts_used`. A drop before that does not consume a start.
 10. On hang-up the phone reports billed seconds and an end reason from `user_stop`, `wrap`, `pause_ttl`, `drop`, `config_drift`.
 11. A crisis ending uploads no practice row. The server increments `crisis_referral_days` for that UTC day and closes the open session with `end_reason` left null, so the one-session lock releases without labeling the account.
-12. If `progress_sync_at` is set, a second call uploads the numeric report. Unknown fields are rejected. The call is refused when `progress_sync_at` is null. `client_report_id` makes retries safe. Turning sync off does not delete practice rows.
+12. If `progress_sync_at` is set, a second call uploads the numeric report. Unknown fields are rejected. The call is refused when `progress_sync_at` is null. `client_report_id` makes retries safe. Turning sync off does not delete practice rows. The call carries no audio and no transcript.
 
 `entitled` is copied from Apple. Mint checks that flag. Status is for display and support.
 
@@ -426,7 +429,7 @@ create table financial_retention (
 ## Left out on purpose
 
 - No `devices` table until push notifications exist.
-- No audio bucket.
+- No audio bucket. Readable audio is not uploaded. An encrypted copy for listen-back on a second phone is a later project, not this schema.
 - No GOP score table until that scorer exists. Its audio would be a short-lived file, not a row.
 - No coach inbox until that product has its own consent.
 - No IP address column on consent or mint.

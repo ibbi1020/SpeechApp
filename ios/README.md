@@ -7,8 +7,8 @@ Passage read-aloud prototype: live skip / extra / substitute marks, stall nudge,
 ## Requirements
 
 - Xcode 26+
-- iOS 26 device or Simulator
-- Free Apple ID Personal Team signing (no paid Developer Program required)
+- iOS 26 device or Simulator. Public floor is iOS 26 on iPhone 11 and newer. There is no iOS 25.
+- Paid team `Q2Z32YFFGP` signed into Xcode. Sign in with Apple is on the app target.
 
 ## Open & run
 
@@ -19,8 +19,8 @@ open SpeechApp.xcodeproj
 ```
 
 1. Select **Ibbi’s iPhone** (or any Simulator) as the run destination.
-2. Signing is set to Personal Team `45SVH8S72R`. If Xcode asks, enable **Developer Mode** on the phone and trust the developer certificate under **Settings → General → VPN & Device Management**.
-3. Hit **Run**. Free-provisioned builds expire after **7 days** — re-run from Xcode to renew.
+2. Signing is team `Q2Z32YFFGP`. In Xcode → Settings → Accounts, that team has to be signed in. If Xcode asks, enable **Developer Mode** on the phone and trust the developer certificate under **Settings → General → VPN & Device Management**.
+3. Hit **Run**.
 
 ### First launch flow
 

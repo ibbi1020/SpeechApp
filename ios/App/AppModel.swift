@@ -29,11 +29,55 @@ final class AppModel {
         case home, ceremony
     }
 
+    /// Apple’s user id for this process. Not written to disk, and not sent to the Worker.
+    var appleUserIdentifier: String?
+
+    /// Google’s account id (`sub`) for this process. Not written to disk, and not sent to the Worker.
+    var googleUserIdentifier: String?
+
+    /// Dismisses sign-in for this launch. Apple does not persist it.
+    var hasPassedSignIn = false
+
+    #if DEBUG
+    /// Skip on this install. Release never reads it.
+    private static let debugSkipSignInKey = "debugSkipSignIn"
+    #endif
+
     init() {
         TakeRetention.discardTakesLeftFromLastLaunch()
         sitting = Self.loadSitting()
         closeExerciseLeftFromLastLaunch()
+        #if DEBUG
+        if Self.debugSkipsSignIn() {
+            hasPassedSignIn = true
+        }
+        #endif
     }
+
+    func acceptAppleSignIn(userID: String) {
+        appleUserIdentifier = userID
+        hasPassedSignIn = true
+    }
+
+    func acceptGoogleSignIn(userID: String) {
+        googleUserIdentifier = userID
+        hasPassedSignIn = true
+    }
+
+    #if DEBUG
+    /// `-SkipSignIn`, or a Skip already remembered. A normal Debug launch has neither.
+    private static func debugSkipsSignIn() -> Bool {
+        if ProcessInfo.processInfo.arguments.contains("-SkipSignIn") {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: debugSkipSignInKey)
+    }
+
+    func skipSignInForDebug() {
+        UserDefaults.standard.set(true, forKey: Self.debugSkipSignInKey)
+        hasPassedSignIn = true
+    }
+    #endif
 
     var hostedFormat: HostedFormat = .conversation
 

@@ -8,7 +8,7 @@ final class AccountStore {
         static let uuidFallback = "account.uuid"
     }
 
-    private static let keychainService = "com.speechapp.prototype.format1"
+    private static let keychainService = "com.speechapp.orator"
     private static let keychainAccount = "accountUUID"
 
     private let defaults: UserDefaults

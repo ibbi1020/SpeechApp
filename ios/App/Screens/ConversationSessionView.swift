@@ -203,7 +203,7 @@ struct ConversationSessionView: View {
             Task { await syncIsland() }
         }
         .sheet(isPresented: $showVoicePicker) {
-            PartnerVoiceSheet(selection: voiceID) { id in
+            PartnerVoiceSheet(selection: voiceID, accountID: model.account.accountUUID) { id in
                 selectVoice(id)
             }
         }
@@ -402,10 +402,14 @@ struct ConversationSessionView: View {
             try Task.checkCancellation()
             try await prepareTask.value
 
-            if let apiKey = XAIDirectKey.load() {
+            if let mintClient = built.mint {
                 do {
+                    let minted = try await mintClient.mint(
+                        timeout: ConnectionWaitPolicy.remaining(since: started, now: Date())
+                    )
+                    didMint = true
                     try await built.session.countdownReachedZero(
-                        ephemeralKey: apiKey,
+                        ephemeralKey: minted.clientSecret,
                         timeout: ConnectionWaitPolicy.remaining(since: started, now: Date())
                     )
                 } catch {
@@ -454,9 +458,13 @@ struct ConversationSessionView: View {
         listenBack?.discard()
         listenBack = nil
         guard let live = mouth as? LiveConversationMouth,
-              let apiKey = XAIDirectKey.load()
+              let relayBase = MintClient.configuredBase()
         else { return }
-        let recorder = ConversationListenBack(mouth: live, apiKey: apiKey)
+        let recorder = ConversationListenBack(
+            mouth: live,
+            relayBase: relayBase,
+            accountID: model.account.accountUUID.uuidString
+        )
         recorder.onLanguageSlip = { end in
             session.noteOtherLanguageSpan(end: end)
         }
@@ -523,7 +531,7 @@ struct ConversationSessionView: View {
         let client = MintClient.makeIfConfigured(uuid: model.account.accountUUID)
         let mouth: any ConversationMouth
         let fake: FakeConversationMouth?
-        if XAIDirectKey.load() != nil {
+        if client != nil {
             mouth = LiveConversationMouth(voiceID: voiceID)
             fake = nil
         } else {

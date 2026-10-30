@@ -12,12 +12,10 @@ enum PartnerVoiceLoader {
         var name: String?
     }
 
-    static func fetch(apiKey: String) async -> [PartnerVoice] {
-        guard let url = URL(string: "https://api.x.ai/v1/tts/voices") else {
-            return PartnerVoice.catalog
-        }
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    /// Asks the mint server. The server calls xAI with the org key.
+    static func fetch(base: URL, accountID: UUID) async -> [PartnerVoice] {
+        var request = URLRequest(url: base.appending(path: "v1/tts/voices"))
+        request.setValue("Bearer \(accountID.uuidString)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 8
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse,

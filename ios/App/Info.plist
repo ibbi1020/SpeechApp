@@ -21,7 +21,9 @@
 	<key>CFBundleVersion</key>
 	<string>5</string>
 	<key>CONVERSATION_API_BASE</key>
-	<string>http://Ibraheens-MacBook-Air.local:8787</string>
+	<string>https://orator-mint.ibraheemfrq.workers.dev</string>
+	<key>GOOGLE_CLIENT_ID</key>
+	<string>88161816596-qofcacj2vpkqqtte1cr5944iro9kist8.apps.googleusercontent.com</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
@@ -43,6 +45,14 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>orator</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.speechapp.google</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.88161816596-qofcacj2vpkqqtte1cr5944iro9kist8</string>
 			</array>
 		</dict>
 	</array>

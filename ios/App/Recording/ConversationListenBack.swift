@@ -24,9 +24,9 @@ final class ConversationListenBack {
     /// Fired when a qualifying non-English span appears in an answer.
     var onLanguageSlip: ((TimeInterval) -> Void)?
 
-    init(mouth: LiveConversationMouth, apiKey: String) {
+    init(mouth: LiveConversationMouth, relayBase: URL, accountID: String) {
         self.mouth = mouth
-        transcriber = FeedbackTranscriber(apiKey: apiKey)
+        transcriber = FeedbackTranscriber(relayBase: relayBase, accountID: accountID)
     }
 
     /// `isLive` says whether the talk is running (not paused, not over).

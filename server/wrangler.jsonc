@@ -1,0 +1,14 @@
+{
+  "name": "orator-mint",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-28",
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "orator",
+      "database_id": "3a8b1690-6ace-458d-a8c7-3b658d02d07e",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

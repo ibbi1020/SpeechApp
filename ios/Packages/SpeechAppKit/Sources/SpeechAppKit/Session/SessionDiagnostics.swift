@@ -19,7 +19,7 @@ public final class SessionDiagnostics: @unchecked Sendable {
     private let lock = NSLock()
     private let fileHandle: FileHandle?
     private let sessionStartUptime: TimeInterval
-    private let logger = Logger(subsystem: "com.speechapp.prototype", category: "SessionDiagnostics")
+    private let logger = Logger(subsystem: "com.speechapp.orator", category: "SessionDiagnostics")
 
     private var lastChunkSampleAt: TimeInterval = 0
     private var caretStuckSince: TimeInterval?

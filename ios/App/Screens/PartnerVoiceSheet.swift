@@ -4,6 +4,7 @@ import SpeechAppKit
 /// Chooser opened from the conversation sound button.
 struct PartnerVoiceSheet: View {
     let selection: String
+    let accountID: UUID
     let onSelect: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -51,8 +52,8 @@ struct PartnerVoiceSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .task {
-            guard let apiKey = XAIDirectKey.load() else { return }
-            voices = await PartnerVoiceLoader.fetch(apiKey: apiKey)
+            guard let base = MintClient.configuredBase() else { return }
+            voices = await PartnerVoiceLoader.fetch(base: base, accountID: accountID)
         }
     }
 }
